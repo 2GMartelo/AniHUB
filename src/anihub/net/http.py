@@ -26,6 +26,20 @@ class HttpError(Exception):
         self.body = body
 
 
+class OfflineError(HttpError):
+    """Raised instead of touching the internet while offline mode is on (ТЗ 5.10)."""
+
+    def __init__(self, url: str = ""):
+        super().__init__(0, f"offline mode: {url}")
+
+
+LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1", "[::1]"}
+
+
+def is_local(url: str) -> bool:
+    return (urlsplit(url).hostname or "") in LOCAL_HOSTS
+
+
 class RateLimiter:
     """Enforces a minimum interval between requests to the same host."""
 
@@ -51,6 +65,14 @@ class HttpClient:
         self._client: httpx.Client | None = None
         self._sem = threading.BoundedSemaphore(int(cfg.get("network.max_parallel", 6)))
 
+    @property
+    def offline(self) -> bool:
+        return bool(self.cfg.get("network.offline", False))
+
+    def _check_online(self, url: str) -> None:
+        if self.offline and not is_local(url):
+            raise OfflineError(url)
+
     def reconfigure(self) -> None:
         """Apply changed proxy / limits from config."""
         with self._lock:
@@ -74,6 +96,7 @@ class HttpClient:
 
     def _request(self, url: str, params=None, auth=None, throttle: bool = False, headers=None,
                  interval_ms: float | None = None) -> httpx.Response:
+        self._check_online(url)
         host = urlsplit(url).netloc
         if interval_ms is None:
             interval_ms = float(self.cfg.get("network.min_interval_ms", 250))
@@ -116,6 +139,7 @@ class HttpClient:
     def download(self, url: str, dest: Path, progress: Callable[[int, int], None] | None = None,
                  cancelled: Callable[[], bool] | None = None, headers: dict | None = None) -> None:
         """Stream to dest via a .part file. progress(done, total) (total 0 if unknown); cancelled() aborts."""
+        self._check_online(url)
         dest.parent.mkdir(parents=True, exist_ok=True)
         part = dest.with_name(dest.name + ".part")
         with self._sem:

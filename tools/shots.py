@@ -87,4 +87,11 @@ win.sd_page.tabs.setCurrentIndex(1); shot("sd_queue")
 win.sd_page.tabs.setCurrentIndex(3); shot("sd_civitai")
 win.nav.setCurrentRow(3); shot("anime")
 win.nav.setCurrentRow(4); shot("settings")
+win.nav.setCurrentRow(0); win.set_offline(True); shot("offline")
+from anihub.ui.rules_dialog import RulesDialog
+from PySide6.QtCore import Qt
+db.save_rule("Кошки в избранное", {"tags_all": ["1girl"], "ratings": ["general"]}, {"collection_id": col, "favorite": True})
+dlg = RulesDialog(ctx); dlg.resize(900, 640); dlg.show(); pump(0.8)
+dlg.grab().save(str(out / f"{mode}_rules.png")); print("saved rules", flush=True); dlg.close()
+win.set_offline(False)
 ctx.db.close()

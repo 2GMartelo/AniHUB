@@ -4,7 +4,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction, QCloseEvent
 from PySide6.QtWidgets import (
     QApplication, QLabel, QListWidget, QMainWindow, QMenu, QScrollArea, QStackedWidget, QSystemTrayIcon, QTabWidget,
-    QWidget, QHBoxLayout, QVBoxLayout,
+    QToolButton, QWidget, QHBoxLayout, QVBoxLayout,
 )
 
 from anihub import APP_NAME
@@ -18,6 +18,7 @@ from anihub.ui.manga_page import MangaPage
 from anihub.ui.sd_page import SDPage
 from anihub.ui.settings import SettingsPage
 from anihub.ui.navrail import NavRail
+from anihub.ui import style
 from anihub.ui.style import EmptyState, state_color
 from anihub.ui.theme import make_app_icon
 from anihub.ui.workers import run_async
@@ -38,7 +39,7 @@ class MainWindow(QMainWindow):
 
         self.browse = BrowseView(ctx)
         self.library = LibraryView(ctx)
-        arts = QTabWidget()
+        self.arts = arts = QTabWidget()
         arts.addTab(self.browse, tr("tab.browse"))
         arts.addTab(self.library, tr("tab.library"))
         self.browse.library_changed.connect(self.library.reload)
@@ -87,9 +88,13 @@ class MainWindow(QMainWindow):
         self.nav.currentRowChanged.connect(self.pages.setCurrentIndex)
         self.nav.setCurrentRow(0)
 
+        self.offline_banner = QLabel(tr("offline.banner"))
+        self.offline_banner.setObjectName("offlineBanner")
+        self.offline_banner.setWordWrap(True)
         content = QWidget()
         cl = QVBoxLayout(content)
         cl.setContentsMargins(10, 8, 10, 4)
+        cl.addWidget(self.offline_banner)
         cl.addWidget(self.pages)
         central = QWidget()
         row = QHBoxLayout(central)
@@ -99,8 +104,40 @@ class MainWindow(QMainWindow):
         row.addWidget(content, 1)
         self.setCentralWidget(central)
 
+        self.offline_btn = QToolButton()
+        self.offline_btn.setObjectName("offlineToggle")
+        self.offline_btn.setCheckable(True)
+        self.offline_btn.setToolTip(tr("offline.tip"))
+        self.offline_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.offline_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.statusBar().insertPermanentWidget(0, self.offline_btn)
+        self.offline_btn.toggled.connect(self.set_offline)
+        self.offline_btn.setChecked(bool(ctx.cfg.get("network.offline", False)))
+        self.set_offline(self.offline_btn.isChecked())
+
         self._setup_tray()
         run_async(ctx.library.auto_purge, on_error=lambda exc: None)  # empty what sat in the trash past the grace period
+
+    def set_offline(self, value: bool) -> None:
+        """Offline mode (ТЗ 5.10): the HTTP layer refuses non-local requests, and everything that needs the internet
+        is switched off in the UI. Local Forge, the library and already downloaded chapters keep working."""
+        self.ctx.cfg.set("network.offline", bool(value))
+        self.offline_banner.setVisible(bool(value))
+        style.bind_icon(self.offline_btn, "wifi-off" if value else "wifi", "normal", 16)
+        self.offline_btn.setText(tr("offline.offline" if value else "offline.online"))
+        arts = self.arts
+        arts.setTabEnabled(arts.indexOf(self.browse), not value)
+        if value and arts.currentWidget() is self.browse:
+            arts.setCurrentWidget(self.library)
+        manga_tabs = self.manga_page.tabs
+        for tab in (self.manga_page.browse, self.manga_page.extensions):
+            manga_tabs.setTabEnabled(manga_tabs.indexOf(tab), not value)
+        if value and manga_tabs.currentWidget() in (self.manga_page.browse, self.manga_page.extensions):
+            manga_tabs.setCurrentWidget(self.manga_page.library)
+        sd_tabs = self.sd_page.tabs
+        sd_tabs.setTabEnabled(sd_tabs.indexOf(self.sd_page.civitai), not value)
+        if value and sd_tabs.currentWidget() is self.sd_page.civitai:
+            sd_tabs.setCurrentWidget(self.sd_page.generate)
 
     @staticmethod
     def _scrollable(widget: QWidget) -> QScrollArea:

@@ -142,7 +142,7 @@ class MangaController(QObject):
 
     def check_updates(self, force_refresh: bool = False) -> None:
         """Ask Suwayomi to refresh the library now and then, and report chapters that appeared since last time."""
-        if self._checking or not self.manager.state.ready:
+        if self._checking or not self.manager.state.ready or self.ctx.cfg.get("network.offline", False):
             return
         self._checking = True
         cfg, api = self.ctx.cfg, self.api

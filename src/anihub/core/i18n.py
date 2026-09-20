@@ -38,7 +38,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "srcset.hint": "Sources that need an account ask for the login and password here. Changes are saved at once and "
                        "used by the source in the next request. Sites that log in through a web page or Cloudflare "
                        "check are not supported by the backend.",
-        "rules.title": "Automatic rules", "rules.new": "New rule", "rules.delete": "Delete", "rules.order_tip": "Rules run top to bottom",
+        "rules.title": "Automatic rules", "rules.new": "New", "rules.delete": "Delete", "rules.order_tip": "Rules run top to bottom",
         "rules.name": "Rule name", "rules.default_name": "New rule", "rules.when": "When an item…", "rules.then": "…do this",
         "rules.tags_all": "Has all tags", "rules.tags_any": "Has any tag", "rules.tags_none": "Has none of",
         "rules.tags_all_ph": "tag tag ... (a parent tag also covers its children)", "rules.tags_any_ph": "tag tag ...",
@@ -58,6 +58,9 @@ STRINGS: dict[str, dict[str, str]] = {
         "compare.title": "Compare", "compare.action": "Compare the two (before / after)...", "compare.before": "Before",
         "compare.after": "After", "compare.side_by_side": "Side by side", "compare.swap": "Swap",
         "compare.hint": "Drag the divider or use ←/→ · Space: side by side · X: swap",
+        "offline.online": "Online", "offline.offline": "Offline", "offline.tip": "Offline mode: nothing goes to the internet",
+        "offline.banner": "Offline mode: sites, the manga catalogue, CivitAI and downloads are switched off. Your library, "
+                          "saved chapters and local generation keep working. Forge picks the setting up on its next start.",
         "viewer.unsupported": "Cannot display {name}. Open the page in a browser: {url}",
         "tagcat.artist": "Artist", "tagcat.copyright": "Copyright", "tagcat.character": "Characters",
         "tagcat.general": "Tags", "tagcat.meta": "Meta",
@@ -285,7 +288,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "srcset.hint": "Источники, которым нужен аккаунт, спрашивают логин и пароль здесь. Изменения сохраняются сразу "
                        "и применяются при следующем запросе. Сайты, где вход идёт через веб-страницу или проверку "
                        "Cloudflare, бэкенд не поддерживает.",
-        "rules.title": "Автоправила", "rules.new": "Новое правило", "rules.delete": "Удалить", "rules.order_tip": "Правила выполняются сверху вниз",
+        "rules.title": "Автоправила", "rules.new": "Создать", "rules.delete": "Удалить", "rules.order_tip": "Правила выполняются сверху вниз",
         "rules.name": "Название правила", "rules.default_name": "Новое правило", "rules.when": "Если элемент…", "rules.then": "…то сделать",
         "rules.tags_all": "Есть все теги", "rules.tags_any": "Есть любой тег", "rules.tags_none": "Нет тегов",
         "rules.tags_all_ph": "тег тег ... (родительский тег охватывает и дочерние)", "rules.tags_any_ph": "тег тег ...",
@@ -305,6 +308,9 @@ STRINGS: dict[str, dict[str, str]] = {
         "compare.title": "Сравнение", "compare.action": "Сравнить два (до / после)...", "compare.before": "До",
         "compare.after": "После", "compare.side_by_side": "Рядом", "compare.swap": "Поменять местами",
         "compare.hint": "Тяните разделитель или ←/→ · Пробел: рядом · X: поменять местами",
+        "offline.online": "Онлайн", "offline.offline": "Офлайн", "offline.tip": "Офлайн-режим: ничего не уходит в интернет",
+        "offline.banner": "Офлайн-режим: сайты, каталог манги, CivitAI и загрузки отключены. Библиотека, скачанные главы "
+                          "и локальная генерация работают. Forge подхватит настройку при следующем запуске.",
         "viewer.unsupported": "Не удаётся показать {name}. Откройте страницу в браузере: {url}",
         "tagcat.artist": "Автор", "tagcat.copyright": "Тайтл", "tagcat.character": "Персонажи",
         "tagcat.general": "Теги", "tagcat.meta": "Мета",

@@ -131,7 +131,7 @@ def _oem_encoding() -> str:
     return f"cp{ctypes.windll.kernel32.GetOEMCP()}"
 
 
-def build_launcher_script(forge_dir: Path, port: int, nowebui: bool, extra_args: str) -> str:
+def build_launcher_script(forge_dir: Path, port: int, nowebui: bool, extra_args: str, offline: bool = False) -> str:
     """Batch file: the user's webui-user.bat settings, minus its final `call webui.bat`, plus our flags."""
     user_bat = forge_dir / "webui-user.bat"
     lines: list[str] = []
@@ -145,7 +145,9 @@ def build_launcher_script(forge_dir: Path, port: int, nowebui: bool, extra_args:
     env_call = [f'call "{env_bat}"'] if env_bat.exists() else []
     # Full path in `call`: a bare `call webui.bat` fails when the parent environment defines
     # NoDefaultCurrentDirectoryInExePath (cmd then no longer looks in the current directory).
-    script = ["@echo off", *env_call, f'cd /d "{forge_dir}"', *lines,
+    # Offline mode: model libraries must not try to reach the Hugging Face hub for anything.
+    offline_env = ["set HF_HUB_OFFLINE=1", "set TRANSFORMERS_OFFLINE=1", "set HF_DATASETS_OFFLINE=1"] if offline else []
+    script = ["@echo off", *env_call, f'cd /d "{forge_dir}"', *lines, *offline_env,
               f"set COMMANDLINE_ARGS=%COMMANDLINE_ARGS% {ours}", f'call "{forge_dir / "webui.bat"}"']
     return "\r\n".join(script) + "\r\n"
 
@@ -205,7 +207,8 @@ class ForgeManager(ManagedProcess):
         # cmd reads batch files in the OEM code page, so that is what non-ASCII paths must be encoded with.
         launcher.write_bytes(
             build_launcher_script(forge_dir, self.port, nowebui,
-                                  str(self.cfg.get("forge.extra_args", ""))).encode(_oem_encoding(), errors="replace"))
+                                  str(self.cfg.get("forge.extra_args", "")),
+                                  bool(self.cfg.get("network.offline", False))).encode(_oem_encoding(), errors="replace"))
         env = {**os.environ, "PYTHONUNBUFFERED": "1", "PYTHONUTF8": "1"}
         if self.gpu is not None:
             env["CUDA_VISIBLE_DEVICES"] = str(self.gpu)  # this backend sees only its own GPU (as device 0)
