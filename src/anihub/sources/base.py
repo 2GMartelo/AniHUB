@@ -42,6 +42,7 @@ class Post:
     height: int = 0
     ext: str = ""
     score: int = 0
+    title: str = ""      # galleries (E-Hentai) have a title; boorus do not
     # Sources whose listing lacks the file URL (e.g. Zerochan) fill it lazily through this hook.
     resolver: Callable[["Post"], None] | None = field(default=None, repr=False, compare=False)
 

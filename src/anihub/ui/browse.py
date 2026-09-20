@@ -135,7 +135,7 @@ class BrowseView(QWidget):
     def _hover_loader(self, post: Post):
         """Large preview when the mouse rests on a thumbnail (ТЗ 3.5): the sample for stills, the preview otherwise."""
         def load() -> QImage | None:
-            if post.badge:  # video / gif: the still preview image is enough here
+            if post.badge or (post.resolver and not post.file_url):  # video / gif / lazy file: the preview image will do
                 image = QImage.fromData(self.ctx.http.get_bytes(post.preview_url))
             else:
                 image = QImage(str(self.ctx.media.get(post.display_url())))
@@ -145,12 +145,13 @@ class BrowseView(QWidget):
 
     @staticmethod
     def _tooltip(post: Post) -> str:
-        return f"#{post.id}  {post.rating}  {post.width}x{post.height}  ★{post.score}\n{post.author}"
+        head = f"{post.title}\n" if post.title else ""
+        return f"{head}#{post.id}  {post.rating}  {post.width}x{post.height}  ★{post.score}\n{post.author}"
 
     # --- viewer / saving ---------------------------------------------------------
 
     def _view_item(self, post: Post) -> ViewItem:
-        info = (f"{post.site} #{post.id} · {post.rating} · {post.width}x{post.height}"
+        info = ((f"{post.title} · " if post.title else "") + f"{post.site} #{post.id} · {post.rating} · {post.width}x{post.height}"
                 + (f" · {post.author}" if post.author else "") + f" · ★{post.score}")
         # display_url() may hit the network (lazy sources), so it is resolved inside the worker.
         return ViewItem(f"{post.site} #{post.id}", info, lambda: self.ctx.media.get(post.display_url()),

@@ -132,6 +132,10 @@ class HttpClient:
             return []
         return resp.json()
 
+    def get_text(self, url: str, params=None, headers=None, interval_ms: float | None = None) -> str:
+        """HTML/text page (scraping sources): throttled per host."""
+        return self._request(url, params=params, throttle=True, headers=headers, interval_ms=interval_ms).text
+
     def post_json(self, url: str, payload: dict, headers: dict | None = None, interval_ms: float | None = None):
         """JSON POST (GraphQL APIs): throttled per host, no automatic retries on 4xx (a bad query stays bad)."""
         self._check_online(url)
