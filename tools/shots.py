@@ -85,7 +85,14 @@ shot("manga")
 win.nav.setCurrentRow(2); shot("sd_generate")
 win.sd_page.tabs.setCurrentIndex(1); shot("sd_queue")
 win.sd_page.tabs.setCurrentIndex(3); shot("sd_civitai")
-win.nav.setCurrentRow(3); shot("anime")
+win.nav.setCurrentRow(3)
+win.anime_page._tab_changed(0)          # the window is never shown here, so showEvent does not fire
+pump(cond=lambda: win.anime_page.season.grid.count() >= 12, limit=40); pump(5)
+shot("anime")
+seasonal = [win.anime_page.season.grid.item(i).data(0x100) for i in range(6)]
+for n, st in enumerate(["CURRENT", "CURRENT", "PLANNING", "COMPLETED", "PLANNING", "DROPPED"]):
+    ctx.anilist.track(seasonal[n], st, progress=n * 2, score=70 + n * 5)
+win.anime_page.tabs.setCurrentIndex(1); shot("anime_list")
 win.nav.setCurrentRow(4); shot("settings")
 win.nav.setCurrentRow(0); win.set_offline(True); shot("offline")
 from anihub.ui.rules_dialog import RulesDialog

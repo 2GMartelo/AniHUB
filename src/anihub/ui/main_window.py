@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
 from anihub import APP_NAME
 from anihub.context import AppContext
 from anihub.core.i18n import tr
+from anihub.ui.anime_page import AnimePage
 from anihub.ui.browse import BrowseView
 from anihub.ui.forge_controller import ForgeController
 from anihub.ui.library_view import LibraryView
@@ -72,13 +73,14 @@ class MainWindow(QMainWindow):
         self.manga_ctrl.poll()
         self.manga_ctrl.autostart_if_enabled()
 
+        self.anime_page = AnimePage(ctx)
         self.settings = SettingsPage(ctx)
         self.settings.saved.connect(self.library.reload)
 
         self.pages = QStackedWidget()
         sections = [
             (tr("nav.arts"), arts), (tr("nav.manga"), self.manga_page), (tr("nav.sd"), self.sd_page),
-            (tr("nav.anime"), _placeholder("tv", tr("nav.anime"))), (tr("nav.settings"), self.settings),
+            (tr("nav.anime"), self.anime_page), (tr("nav.settings"), self.settings),
         ]
         self.nav = NavRail()
         nav_icons = ["image", "book", "sparkles", "tv", "sliders"]
@@ -134,6 +136,7 @@ class MainWindow(QMainWindow):
             manga_tabs.setTabEnabled(manga_tabs.indexOf(tab), not value)
         if value and manga_tabs.currentWidget() in (self.manga_page.browse, self.manga_page.extensions):
             manga_tabs.setCurrentWidget(self.manga_page.library)
+        self.anime_page.set_offline(bool(value))
         sd_tabs = self.sd_page.tabs
         sd_tabs.setTabEnabled(sd_tabs.indexOf(self.sd_page.civitai), not value)
         if value and sd_tabs.currentWidget() is self.sd_page.civitai:

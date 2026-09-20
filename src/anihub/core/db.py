@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 from typing import Iterable
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 SD_TABLES = '''
 CREATE TABLE sd_presets (
@@ -28,6 +28,22 @@ RULES_TABLE = '''
 CREATE TABLE auto_rules (
     id INTEGER PRIMARY KEY, name TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1, position INTEGER NOT NULL DEFAULT 0,
     conditions TEXT NOT NULL, actions TEXT NOT NULL);       -- both JSON, see library/rules.py
+'''
+
+ANIME_TABLE = '''
+CREATE TABLE anime_list (
+    media_id INTEGER PRIMARY KEY,                 -- AniList media id
+    kind TEXT NOT NULL DEFAULT 'anime',
+    title TEXT NOT NULL, title_native TEXT, cover_url TEXT, format TEXT,
+    episodes INTEGER,                             -- total, NULL while unknown
+    airing_status TEXT, next_episode INTEGER, next_airing REAL,
+    status TEXT NOT NULL,                         -- CURRENT | PLANNING | COMPLETED | PAUSED | DROPPED | REPEATING
+    progress INTEGER NOT NULL DEFAULT 0,          -- episodes watched
+    score INTEGER NOT NULL DEFAULT 0,             -- 0..100 like AniList's raw score
+    entry_id INTEGER,                             -- AniList list entry id once synced
+    updated_at REAL NOT NULL,
+    synced INTEGER NOT NULL DEFAULT 0);           -- 1 = the tracker has this exact state
+CREATE INDEX idx_anime_status ON anime_list(status, updated_at);
 '''
 
 # Each step upgrades from version N to N+1 (fresh databases run SCHEMA, then jump to SCHEMA_VERSION).
@@ -58,6 +74,7 @@ MIGRATIONS = {
     """,
     3: SD_TABLES,
     4: RULES_TABLE,
+    5: ANIME_TABLE,
 }
 
 SCHEMA = """
@@ -116,7 +133,7 @@ CREATE TABLE collection_items (
     added_at REAL NOT NULL, PRIMARY KEY (collection_id, item_id));
 CREATE INDEX idx_collection_items_item ON collection_items(item_id);
 CREATE TABLE smart_tags (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE, tags TEXT NOT NULL);
-""" + SD_TABLES + RULES_TABLE
+""" + SD_TABLES + RULES_TABLE + ANIME_TABLE
 
 SORTS = {
     "added": "i.added_at",
@@ -479,6 +496,46 @@ class Database:
             "SELECT ci.collection_id, COUNT(*) FROM collection_items ci JOIN items i ON i.id=ci.item_id "
             "WHERE i.kind=? AND i.trashed_at IS NULL GROUP BY ci.collection_id", (kind,)).fetchall()
         return {r[0]: r[1] for r in rows}
+
+    # --- anime list (own tracking, optionally mirrored to AniList) -----------------
+
+    ANIME_COLS = ("media_id", "kind", "title", "title_native", "cover_url", "format", "episodes", "airing_status",
+                  "next_episode", "next_airing", "status", "progress", "score", "entry_id", "updated_at", "synced")
+
+    def anime_entries(self, status: str | None = None) -> list[sqlite3.Row]:
+        sql, args = "SELECT * FROM anime_list", ()
+        if status:
+            sql, args = sql + " WHERE status=?", (status,)
+        return self.conn.execute(sql + " ORDER BY updated_at DESC", args).fetchall()
+
+    def anime_get(self, media_id: int) -> sqlite3.Row | None:
+        return self.conn.execute("SELECT * FROM anime_list WHERE media_id=?", (media_id,)).fetchone()
+
+    def anime_counts(self) -> dict[str, int]:
+        return {r[0]: r[1] for r in self.conn.execute("SELECT status, COUNT(*) FROM anime_list GROUP BY status")}
+
+    def anime_upsert(self, **fields) -> None:
+        """Insert or update by media_id; only the given columns change on update."""
+        unknown = set(fields) - set(self.ANIME_COLS)
+        if unknown or "media_id" not in fields:
+            raise ValueError(f"bad anime fields: {sorted(unknown) or 'media_id missing'}")
+        fields.setdefault("updated_at", time.time())
+        with self.conn:
+            if self.conn.execute("SELECT 1 FROM anime_list WHERE media_id=?", (fields["media_id"],)).fetchone():
+                cols = [c for c in fields if c != "media_id"]
+                self.conn.execute(f"UPDATE anime_list SET {', '.join(f'{c}=?' for c in cols)} WHERE media_id=?",
+                                  [fields[c] for c in cols] + [fields["media_id"]])
+            else:
+                cols = list(fields)
+                self.conn.execute(f"INSERT INTO anime_list ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})",
+                                  [fields[c] for c in cols])
+
+    def anime_delete(self, media_id: int) -> None:
+        with self.conn:
+            self.conn.execute("DELETE FROM anime_list WHERE media_id=?", (media_id,))
+
+    def anime_unsynced(self) -> list[sqlite3.Row]:
+        return self.conn.execute("SELECT * FROM anime_list WHERE synced=0 ORDER BY updated_at").fetchall()
 
     # --- automatic rules -------------------------------------------------------
 

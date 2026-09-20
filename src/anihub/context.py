@@ -10,6 +10,7 @@ from anihub.core.paths import LibraryPaths
 from anihub.library.media import MediaCache
 from anihub.library.service import LibraryService
 from anihub.net.http import HttpClient
+from anihub.services.anilist import AniList
 from anihub.services.autotag import Autotagger, model_dir_default
 from anihub.services.backends import build_backends
 from anihub.services.forge import ForgeManager
@@ -31,6 +32,7 @@ class AppContext:
     backends: list[ForgeManager]
     suwayomi: SuwayomiManager
     autotagger: Autotagger
+    anilist: AniList
 
     @classmethod
     def build(cls, cfg: Config) -> "AppContext":
@@ -44,7 +46,7 @@ class AppContext:
         ctx = cls(cfg, paths, db, http, build_sources(http, cfg), LibraryService(db, paths, http, cfg), media,
                   backends[0], backends,
                   SuwayomiManager(cfg, config_dir() / "suwayomi", paths.manga / "suwayomi", config_dir() / "logs"),
-                  Autotagger(model_dir_default(config_dir())))
+                  Autotagger(model_dir_default(config_dir())), AniList(http, cfg, db))
         ctx.refresh_tagger()
         return ctx
 

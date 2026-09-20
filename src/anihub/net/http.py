@@ -132,6 +132,31 @@ class HttpClient:
             return []
         return resp.json()
 
+    def post_json(self, url: str, payload: dict, headers: dict | None = None, interval_ms: float | None = None):
+        """JSON POST (GraphQL APIs): throttled per host, no automatic retries on 4xx (a bad query stays bad)."""
+        self._check_online(url)
+        interval = max(interval_ms or 0, float(self.cfg.get("network.min_interval_ms", 250))) / 1000
+        last: Exception | None = None
+        for attempt in range(3):
+            self._limiter.wait(urlsplit(url).netloc, interval)
+            try:
+                resp = self.client.post(url, json=payload, headers=headers)
+            except httpx.TransportError as exc:
+                last = exc
+                time.sleep(1 + attempt)
+                continue
+            if resp.status_code == 429 or resp.status_code >= 500:
+                retry_after = resp.headers.get("Retry-After", "")
+                time.sleep(min(float(retry_after), 65) if retry_after.isdigit() else 2 * (attempt + 1))
+                last = HttpError(resp.status_code, resp.text)
+                continue
+            if resp.status_code >= 400:
+                raise HttpError(resp.status_code, resp.text)
+            return resp.json()
+        if isinstance(last, HttpError):
+            raise last
+        raise HttpError(0, str(last))
+
     def get_bytes(self, url: str) -> bytes:
         with self._sem:
             return self._request(url).content
