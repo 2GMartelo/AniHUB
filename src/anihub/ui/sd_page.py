@@ -26,6 +26,7 @@ from anihub.ui.forge_controller import ForgeController
 from anihub.ui.style import StatusChip
 from anihub.ui.grid import ThumbGrid, image_to_thumb
 from anihub.ui.mask_editor import MaskDialog
+from anihub.ui.xy_dialog import XYDialog
 from anihub.ui.library_view import LibraryView
 from anihub.ui.sd_civitai import CivitaiView
 from anihub.ui.sd_dialogs import InsertDialog
@@ -197,6 +198,8 @@ class GenerateView(QWidget):
         self.stop_btn.setMinimumHeight(38)
         self.stop_btn.setEnabled(False)
         self.queue_btn = style.secondary(QPushButton(tr("sd.to_queue")), "list")
+        self.xy_btn = style.secondary(QPushButton(tr("xy.button")), "grid")
+        self.xy_btn.setToolTip(tr("xy.tip"))
         self.queue_count = QSpinBox(minimum=1, maximum=500, value=1)
         self.queue_count.setPrefix("×")
         self.queue_count.setToolTip(tr("sd.queue_count_hint"))
@@ -258,6 +261,7 @@ class GenerateView(QWidget):
         actions.addWidget(self.stop_btn, 1)
         queue_row = QHBoxLayout()
         queue_row.addWidget(self.queue_btn, 1)
+        queue_row.addWidget(self.xy_btn)
         queue_row.addWidget(self.queue_count)
 
         inner = QWidget()
@@ -324,6 +328,7 @@ class GenerateView(QWidget):
         self.generate_btn.clicked.connect(self.generate)
         self.stop_btn.clicked.connect(self.interrupt)
         self.queue_btn.clicked.connect(self._add_to_queue)
+        self.xy_btn.clicked.connect(self._open_xy)
         self.init_choose.clicked.connect(self._choose_init)
         self.init_clear.clicked.connect(lambda: self.set_init_image(None))
         self.mask_btn.clicked.connect(self._edit_mask)
@@ -360,6 +365,7 @@ class GenerateView(QWidget):
         ready = self.controller.state.ready
         queue_uses_main = self.queue.is_busy("main")
         self.generate_btn.setEnabled(ready and not self._generating and not queue_uses_main)
+        self.xy_btn.setEnabled(ready and not self._generating and not queue_uses_main)
         self.stop_btn.setEnabled(self._generating)
         self.add_btn.setEnabled(bool(self.grid.selectedItems()))
         self.up_btn.setEnabled(bool(self.grid.selectedItems()) and ready and not self._generating)
@@ -701,6 +707,34 @@ class GenerateView(QWidget):
             self.message.setText(tr("status.error", msg=str(exc)))
 
         run_async(work, on_done=done, on_error=failed)
+
+    # --- X/Y grid (ТЗ 5.8) -----------------------------------------------------------------------------------------
+
+    def _open_xy(self) -> None:
+        if self._generating or not self.controller.state.ready or self.queue.is_busy("main"):
+            return
+
+        def begin() -> bool:
+            if self._generating or self.queue.is_busy("main") or not self.controller.state.ready:
+                return False
+            self._generating = True
+            self.controller.set_busy(True)
+            self.queue.set_external_busy("main", True)
+            self._update_buttons()
+            return True
+
+        def end() -> None:
+            self._finish()
+            self.history_changed.emit()
+
+        def options(axis: str) -> list[str]:
+            box = {"sampler_name": self.sampler, "scheduler": self.scheduler, "model": self.model}.get(axis)
+            if box is None:
+                return []
+            return [str(box.itemData(i) or box.itemText(i)) if axis == "model" else box.itemText(i) for i in range(box.count())]
+
+        dlg = XYDialog(self.ctx, self.controller.manager.api, self._params, begin, end, options, self)
+        dlg.exec()
 
     def add_results(self, results: list[GenResult]) -> None:
         for res in results:
