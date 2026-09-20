@@ -132,6 +132,7 @@ QToolButton[viewer="true"]:hover { background: $surface3; border-color: $border_
 QToolButton[viewer="true"]:checked { background: $soft; border-color: $accent; }
 QToolButton[viewer="true"]:disabled { background: transparent; border-color: transparent; }
 QLabel#offlineBanner { background: $soft; border: 1px solid $warning; border-radius: 8px; padding: 8px 12px; color: $text; }
+QToolButton#updateNotice { border-radius: 10px; padding: 3px 10px; color: $accent_text; font-weight: 600; }
 QToolButton#offlineToggle { border-radius: 10px; padding: 3px 10px; color: $dim; }
 QToolButton#offlineToggle:checked { background: $soft; color: $text; }
 QToolButton[section="true"] { background: transparent; border: 0; padding: 4px 2px; font-weight: 600; color: $text; text-align: left; }

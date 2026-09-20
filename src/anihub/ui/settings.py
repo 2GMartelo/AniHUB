@@ -16,6 +16,7 @@ from anihub.services.backends import gpu_list
 from anihub.sources.base import RATINGS
 from anihub.ui.workers import run_async
 from anihub.ui import style
+from anihub.ui.about_box import AboutBox
 from anihub.ui.theme import apply_theme
 
 
@@ -23,10 +24,11 @@ class SettingsPage(QWidget):
     saved = Signal()
     _tag_progress = Signal(str, int, int)  # emitted from the download worker thread
 
-    def __init__(self, ctx: AppContext, parent=None):
+    def __init__(self, ctx: AppContext, parent=None, quit_app=lambda: None):
         super().__init__(parent)
         self.ctx = ctx
         cfg = ctx.cfg
+        self.about = AboutBox(ctx, quit_app)
 
         self.lang = QComboBox()
         self.lang.addItem("Русский", "ru")
@@ -196,7 +198,7 @@ class SettingsPage(QWidget):
         cl = QVBoxLayout(content)
         cl.setContentsMargins(0, 0, 8, 12)
         cl.setSpacing(6)
-        for box in (look_box, storage_box, network_box, creds_box, forge_box, gen_box, manga_box, lib_box, tag_box):
+        for box in (look_box, storage_box, network_box, creds_box, forge_box, gen_box, manga_box, lib_box, tag_box, self.about):
             cl.addWidget(box)
         cl.addStretch(1)
         holder = QWidget()

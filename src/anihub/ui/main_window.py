@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QAction, QCloseEvent
 from PySide6.QtWidgets import (
     QApplication, QLabel, QListWidget, QMainWindow, QMenu, QScrollArea, QStackedWidget, QSystemTrayIcon, QTabWidget,
@@ -76,7 +76,7 @@ class MainWindow(QMainWindow):
 
         self.anime_page = AnimePage(ctx)
         self.novels_page = NovelsPage(ctx)
-        self.settings = SettingsPage(ctx)
+        self.settings = SettingsPage(ctx, quit_app=self.quit_app)
         self.settings.saved.connect(self.library.reload)
 
         self.pages = QStackedWidget()
@@ -109,6 +109,17 @@ class MainWindow(QMainWindow):
         row.addWidget(content, 1)
         self.setCentralWidget(central)
 
+        self.update_btn = QToolButton()
+        self.update_btn.setObjectName("updateNotice")
+        self.update_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.update_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.update_btn.hide()
+        self._pending_release = None
+        self.update_btn.clicked.connect(self._show_update)
+        self.statusBar().insertPermanentWidget(0, self.update_btn)
+        self.settings.about.update_found.connect(self._update_found)
+        QTimer.singleShot(6000, self._auto_check_updates)          # after startup, in the background
+
         self.offline_btn = QToolButton()
         self.offline_btn.setObjectName("offlineToggle")
         self.offline_btn.setCheckable(True)
@@ -122,6 +133,25 @@ class MainWindow(QMainWindow):
 
         self._setup_tray()
         run_async(ctx.library.auto_purge, on_error=lambda exc: None)  # empty what sat in the trash past the grace period
+
+    def _auto_check_updates(self) -> None:
+        if self.ctx.cfg.get("network.offline", False):
+            return
+        run_async(self.ctx.updater.check, on_done=lambda r: r and self._update_found(r), on_error=lambda exc: None)
+
+    def _update_found(self, release) -> None:
+        self._pending_release = release
+        style.bind_icon(self.update_btn, "download", "accent", 16)
+        self.update_btn.setText(tr("update.notice", v=release.version))
+        self.update_btn.show()
+        if getattr(self, "tray", None) is not None and self.tray.isVisible():
+            self.tray.showMessage(APP_NAME, tr("update.notice", v=release.version), QSystemTrayIcon.MessageIcon.Information, 6000)
+
+    def _show_update(self) -> None:
+        if self._pending_release is not None:
+            from anihub.ui.update_dialog import UpdateDialog
+
+            UpdateDialog(self.ctx.updater, self._pending_release, self.quit_app, self).exec()
 
     def set_offline(self, value: bool) -> None:
         """Offline mode (ТЗ 5.10): the HTTP layer refuses non-local requests, and everything that needs the internet

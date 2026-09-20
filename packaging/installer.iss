@@ -22,6 +22,8 @@ ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
 WizardStyle=modern
+CloseApplications=yes
+RestartApplications=no
 LicenseFile=..\LICENSE
 
 [Languages]
