@@ -57,6 +57,29 @@ class RateLimiter:
             time.sleep(delay)
 
 
+class BandwidthLimiter:
+    """Shared download speed limit (ТЗ 3.13/14): every chunk written reserves its share of the bandwidth, so the total over
+    all parallel downloads stays at the limit. The clock and sleep are injectable for tests."""
+
+    def __init__(self, clock: Callable[[], float] = time.monotonic, sleep: Callable[[float], None] = time.sleep):
+        self._lock = threading.Lock()
+        self._next = 0.0
+        self._clock, self._sleep = clock, sleep
+
+    def consume(self, nbytes: int, bytes_per_second: float) -> float:
+        """Blocks as long as needed; returns how long it waited."""
+        if bytes_per_second <= 0 or nbytes <= 0:
+            return 0.0
+        with self._lock:
+            now = self._clock()
+            start = max(now, self._next)
+            self._next = start + nbytes / bytes_per_second
+            wait = start - now
+        if wait > 0:
+            self._sleep(wait)
+        return max(wait, 0.0)
+
+
 class HttpClient:
     def __init__(self, cfg: Config):
         self.cfg = cfg
@@ -64,6 +87,20 @@ class HttpClient:
         self._lock = threading.Lock()
         self._client: httpx.Client | None = None
         self._sem = threading.BoundedSemaphore(int(cfg.get("network.max_parallel", 6)))
+        self._bandwidth = BandwidthLimiter()
+        self._abort_generation = 0
+
+    def abort_downloads(self) -> None:
+        """Stops every download that is running right now (they raise HttpError 'cancelled'); later ones are unaffected."""
+        self._abort_generation += 1
+
+    @property
+    def speed_limit(self) -> float:
+        """Bytes per second, 0 = unlimited (setting: network.speed_limit_mb, MB/s)."""
+        try:
+            return max(float(self.cfg.get("network.speed_limit_mb", 0) or 0), 0.0) * 1_048_576
+        except (TypeError, ValueError):
+            return 0.0
 
     @property
     def offline(self) -> bool:
@@ -171,6 +208,7 @@ class HttpClient:
         self._check_online(url)
         dest.parent.mkdir(parents=True, exist_ok=True)
         part = dest.with_name(dest.name + ".part")
+        generation = self._abort_generation
         with self._sem:
             try:
                 with self.client.stream("GET", url, headers=headers) as resp:
@@ -180,8 +218,9 @@ class HttpClient:
                     done = 0
                     with part.open("wb") as fh:
                         for chunk in resp.iter_bytes(65536):
-                            if cancelled and cancelled():
+                            if (cancelled and cancelled()) or generation != self._abort_generation:
                                 raise HttpError(0, "cancelled")
+                            self._bandwidth.consume(len(chunk), self.speed_limit)
                             fh.write(chunk)
                             done += len(chunk)
                             if progress:

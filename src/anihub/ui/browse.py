@@ -180,19 +180,10 @@ class BrowseView(QWidget):
     def _save(self, posts: list[Post]) -> None:
         if not posts:
             return
-        self.save_btn.setEnabled(False)
-        self.status.setText(tr("status.loading"))
+        self.ctx.downloads.submit(posts)               # saved in the background, several at once (Downloads window)
+        self.status.setText(tr("dl.queued", n=len(posts)))
 
-        def done(counts: dict) -> None:
-            self.save_btn.setEnabled(bool(self.grid.selectedItems()))
-            text = tr("status.saved", saved=counts["saved"], dup=counts["duplicate"], failed=counts["failed"])
-            if counts.get("similar"):
-                text += "  ·  " + tr("status.similar", n=counts["similar"])
-            self.status.setText(text)
-            self.library_changed.emit()
-
-        def failed(exc: Exception) -> None:
-            self.save_btn.setEnabled(True)
-            self.status.setText(tr("status.error", msg=str(exc)))
-
-        run_async(self.ctx.library.save_posts, posts, on_done=done, on_error=failed)
+    def on_batch(self, text: str) -> None:
+        """A download batch finished (called by the main window)."""
+        self.status.setText(text)
+        self.library_changed.emit()

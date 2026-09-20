@@ -12,6 +12,7 @@ from anihub.context import AppContext
 from anihub.core.i18n import tr
 from anihub.ui.anime_page import AnimePage
 from anihub.ui.browse import BrowseView
+from anihub.ui.downloads_view import DownloadSignals, DownloadsButton, notify_text, summary_text
 from anihub.ui.forge_controller import ForgeController
 from anihub.ui.library_view import LibraryView
 from anihub.ui.manga_controller import MangaController
@@ -109,6 +110,13 @@ class MainWindow(QMainWindow):
         row.addWidget(content, 1)
         self.setCentralWidget(central)
 
+        self.download_signals = DownloadSignals(self)
+        ctx.downloads.on_change = self.download_signals.changed.emit
+        ctx.downloads.on_batch = self.download_signals.batch.emit
+        self.downloads_btn = DownloadsButton(ctx, self.download_signals)
+        self.statusBar().insertPermanentWidget(0, self.downloads_btn)
+        self.download_signals.batch.connect(self._batch_finished)
+
         self.update_btn = QToolButton()
         self.update_btn.setObjectName("updateNotice")
         self.update_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
@@ -133,6 +141,11 @@ class MainWindow(QMainWindow):
 
         self._setup_tray()
         run_async(ctx.library.auto_purge, on_error=lambda exc: None)  # empty what sat in the trash past the grace period
+
+    def _batch_finished(self, result) -> None:
+        self.browse.on_batch(tr("dl.batch_status", details=summary_text(result.counts)))
+        if result.total >= int(self.ctx.cfg.get("downloads.notify_min", 10)) and getattr(self, "tray", None) is not None:
+            self.tray.showMessage(APP_NAME, notify_text(result), QSystemTrayIcon.MessageIcon.Information, 6000)
 
     def _auto_check_updates(self) -> None:
         if self.ctx.cfg.get("network.offline", False):
@@ -224,6 +237,7 @@ class MainWindow(QMainWindow):
 
     def quit_app(self) -> None:
         self._quitting = True
+        self.ctx.downloads.shutdown()
         for controller in self.sd_controllers.values():
             controller.stop_blocking()  # free the VRAM; only stops a Forge that AniHUB itself started
         self.manga_ctrl.stop_blocking()
