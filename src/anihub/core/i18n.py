@@ -61,6 +61,13 @@ STRINGS: dict[str, dict[str, str]] = {
         "offline.online": "Online", "offline.offline": "Offline", "offline.tip": "Offline mode: nothing goes to the internet",
         "offline.banner": "Offline mode: sites, the manga catalogue, CivitAI and downloads are switched off. Your library, "
                           "saved chapters and local generation keep working. Forge picks the setting up on its next start.",
+        "mask.title": "Inpaint mask", "mask.button": "Mask (inpaint)…", "mask.edit": "Edit mask…", "mask.remove": "Remove mask",
+        "mask.brush": "Brush", "mask.eraser": "Eraser (E)", "mask.undo": "Undo", "mask.clear": "Clear", "mask.invert": "Invert",
+        "mask.use": "Use mask", "mask.hint": "Paint over what should be redrawn. Left button paints, right button does the opposite, "
+                                            "wheel changes the brush size, Ctrl+Z undoes.",
+        "mask.blur": "Mask blur", "mask.fill": "Masked content", "mask.fill.original": "Original", "mask.fill.fill": "Fill",
+        "mask.fill.noise": "Latent noise", "mask.fill.nothing": "Latent nothing", "mask.only_masked": "Only the masked area (full resolution)",
+        "mask.ready": "Mask set: only the painted area will be redrawn.",
         "viewer.unsupported": "Cannot display {name}. Open the page in a browser: {url}",
         "tagcat.artist": "Artist", "tagcat.copyright": "Copyright", "tagcat.character": "Characters",
         "tagcat.general": "Tags", "tagcat.meta": "Meta",
@@ -311,6 +318,13 @@ STRINGS: dict[str, dict[str, str]] = {
         "offline.online": "Онлайн", "offline.offline": "Офлайн", "offline.tip": "Офлайн-режим: ничего не уходит в интернет",
         "offline.banner": "Офлайн-режим: сайты, каталог манги, CivitAI и загрузки отключены. Библиотека, скачанные главы "
                           "и локальная генерация работают. Forge подхватит настройку при следующем запуске.",
+        "mask.title": "Маска для inpaint", "mask.button": "Маска (inpaint)…", "mask.edit": "Изменить маску…", "mask.remove": "Убрать маску",
+        "mask.brush": "Кисть", "mask.eraser": "Ластик (E)", "mask.undo": "Отменить", "mask.clear": "Очистить", "mask.invert": "Инвертировать",
+        "mask.use": "Использовать маску", "mask.hint": "Закрасьте то, что нужно перерисовать. Левая кнопка рисует, правая — обратное действие, "
+                                                       "колесо меняет размер кисти, Ctrl+Z отменяет.",
+        "mask.blur": "Размытие маски", "mask.fill": "Содержимое под маской", "mask.fill.original": "Оригинал", "mask.fill.fill": "Заливка",
+        "mask.fill.noise": "Латентный шум", "mask.fill.nothing": "Латентная пустота", "mask.only_masked": "Только область маски (полное разрешение)",
+        "mask.ready": "Маска задана: перерисуется только закрашенная область.",
         "viewer.unsupported": "Не удаётся показать {name}. Откройте страницу в браузере: {url}",
         "tagcat.artist": "Автор", "tagcat.copyright": "Тайтл", "tagcat.character": "Персонажи",
         "tagcat.general": "Теги", "tagcat.meta": "Мета",

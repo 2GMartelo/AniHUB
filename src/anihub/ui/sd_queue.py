@@ -322,7 +322,7 @@ class QueueView(QWidget):
         self.tree.clear()
         for n, row in enumerate(self.ctx.db.queue_list(), 1):
             p = params_from_dict(json.loads(row["params"]))
-            mode = "img2img" if p.init_image else ("hires" if p.enable_hr else "txt2img")
+            mode = ("inpaint" if p.mask_image else "img2img") if p.init_image else ("hires" if p.enable_hr else "txt2img")
             item = QTreeWidgetItem([str(n), tr(f"queue.st.{row['status']}"), row["label"] or p.summary(80),
                                     p.model.split(" [")[0], f"{mode} {p.width}×{p.height} · {p.steps}st ×{p.n_iter * p.batch_size}",
                                     row["backend"] or "", str(row["result_count"] or "")])

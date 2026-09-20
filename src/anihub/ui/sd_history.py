@@ -170,6 +170,7 @@ class HistoryView(QWidget):
         if ok and name:
             params = self._params(row)
             params.pop("init_image", None)  # a preset is about settings, not one particular source picture
+            params.pop("mask_image", None)
             params["seed"] = -1 if not params.get("keep_seed") else params["seed"]
             self.ctx.db.save_preset("preset", name, params)
             self.presets_changed.emit()

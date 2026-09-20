@@ -39,6 +39,10 @@ class GenParams:
     hr_denoise: float = 0.4
     init_image: str = ""           # path of the source picture: set -> img2img instead of txt2img
     denoising_strength: float = 0.6  # img2img strength
+    mask_image: str = ""           # inpaint: path of a mask (white = redraw); needs init_image
+    mask_blur: int = 4
+    inpaint_fill: int = 1          # what is under the mask at the start: 0 fill, 1 original, 2 latent noise, 3 latent nothing
+    inpaint_only_masked: bool = True  # redraw only the masked area at full resolution (needs less VRAM, keeps detail)
 
     def to_payload(self) -> dict:
         payload = {
@@ -56,6 +60,11 @@ class GenParams:
             payload["init_images"] = [base64.b64encode(Path(self.init_image).read_bytes()).decode()]
             payload["denoising_strength"] = self.denoising_strength
             payload["resize_mode"] = 0  # just resize: width/height above are what the user set
+            if self.mask_image:
+                payload.update(
+                    mask=base64.b64encode(Path(self.mask_image).read_bytes()).decode(), mask_blur=self.mask_blur,
+                    inpainting_fill=self.inpaint_fill, inpaint_full_res=int(self.inpaint_only_masked),
+                    inpaint_full_res_padding=32, inpainting_mask_invert=0)
         elif self.enable_hr:
             payload.update(enable_hr=True, hr_scale=self.hr_scale, hr_upscaler=self.hr_upscaler,
                            hr_second_pass_steps=self.hr_steps, denoising_strength=self.hr_denoise,
@@ -117,7 +126,7 @@ def run_generation(api: ForgeApi, params: GenParams, out_dir: Path) -> list[GenR
     """Blocking: call Forge (img2img when an init image is set), write every returned image under
     out_dir/<date>/ and return them."""
     payload = params.to_payload()
-    data = api.img2img(payload) if params.init_image else api.txt2img(payload)
+    data = api.img2img(payload) if params.init_image else api.txt2img(payload)  # img2img also covers inpaint (mask in payload)
     images = data.get("images") or []
     try:
         info = json.loads(data.get("info") or "{}")

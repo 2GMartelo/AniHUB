@@ -5,7 +5,7 @@ import weakref
 
 from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import QAbstractButton, QFrame, QLabel, QLayout, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QAbstractButton, QFrame, QLabel, QLayout, QPushButton, QVBoxLayout, QWidget
 
 from anihub.ui import icons, theme
 
@@ -47,7 +47,15 @@ def repolish(widget: QWidget) -> None:
     widget.update()
 
 
+def _no_default(button: QAbstractButton) -> None:
+    """In a dialog the first push button would otherwise become the 'default' one and be painted as the primary action."""
+    if isinstance(button, QPushButton):
+        button.setAutoDefault(False)
+
+
 def _variant(button: QAbstractButton, name: str, icon: str | None, mode: str) -> QAbstractButton:
+    if name != "primary":
+        _no_default(button)
     button.setProperty("variant", name)
     button.setCursor(Qt.CursorShape.PointingHandCursor)
     if icon:
@@ -62,6 +70,7 @@ def primary(button: QAbstractButton, icon: str | None = None) -> QAbstractButton
 
 
 def secondary(button: QAbstractButton, icon: str | None = None) -> QAbstractButton:
+    _no_default(button)
     button.setCursor(Qt.CursorShape.PointingHandCursor)
     if icon:
         bind_icon(button, icon)

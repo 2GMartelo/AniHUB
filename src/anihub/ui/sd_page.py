@@ -2,11 +2,12 @@
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import asdict
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer, Signal
-from PySide6.QtGui import QPixmap
+from PySide6.QtGui import QColor, QImage, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QDialog, QDoubleSpinBox, QFileDialog, QFormLayout, QGroupBox, QHBoxLayout, QInputDialog,
     QLabel, QMenu, QMessageBox, QPlainTextEdit, QProgressBar, QPushButton, QScrollArea, QSpinBox, QSplitter,
@@ -24,6 +25,7 @@ from anihub.ui import style
 from anihub.ui.forge_controller import ForgeController
 from anihub.ui.style import StatusChip
 from anihub.ui.grid import ThumbGrid, image_to_thumb
+from anihub.ui.mask_editor import MaskDialog
 from anihub.ui.library_view import LibraryView
 from anihub.ui.sd_civitai import CivitaiView
 from anihub.ui.sd_dialogs import InsertDialog
@@ -120,6 +122,24 @@ class GenerateView(QWidget):
         self.init_clear.setEnabled(False)
         self.denoise = QDoubleSpinBox(minimum=0.0, maximum=1.0, singleStep=0.05, decimals=2, value=float(val("denoising_strength")))
         self.denoise.setEnabled(False)
+        self.mask_path: Path | None = None
+        self.mask_btn = style.secondary(QPushButton(tr("mask.button")), "brush")
+        self.mask_btn.setEnabled(False)
+        self.mask_clear = style.ghost(QPushButton(tr("mask.remove")), "x")
+        self.mask_clear.hide()
+        self.mask_blur = QSpinBox(minimum=0, maximum=64, value=int(val("mask_blur")))
+        self.inpaint_fill = QComboBox()
+        for value, key in ((1, "original"), (0, "fill"), (2, "noise"), (3, "nothing")):
+            self.inpaint_fill.addItem(tr(f"mask.fill.{key}"), value)
+        self.inpaint_fill.setCurrentIndex(max(self.inpaint_fill.findData(int(val("inpaint_fill"))), 0))
+        self.inpaint_only_masked = QCheckBox(tr("mask.only_masked"), checked=bool(val("inpaint_only_masked")))
+        self.mask_box = QWidget()
+        mb = QFormLayout(self.mask_box)
+        mb.setContentsMargins(0, 0, 0, 0)
+        mb.addRow(tr("mask.blur"), self.mask_blur)
+        mb.addRow(tr("mask.fill"), self.inpaint_fill)
+        mb.addRow("", self.inpaint_only_masked)
+        self.mask_box.hide()
 
         # --- main parameters
         self.model = QComboBox()
@@ -224,6 +244,10 @@ class GenerateView(QWidget):
         btns.addWidget(self.init_choose)
         btns.addWidget(self.init_clear)
         init_col.addLayout(btns)
+        mask_row = QHBoxLayout()
+        mask_row.addWidget(self.mask_btn)
+        mask_row.addWidget(self.mask_clear)
+        init_col.addLayout(mask_row)
         dn = QHBoxLayout()
         dn.addWidget(QLabel(tr("sd.denoise")))
         dn.addWidget(self.denoise)
@@ -245,6 +269,7 @@ class GenerateView(QWidget):
         lay.addWidget(QLabel(tr("sd.negative")))
         lay.addWidget(self.negative)
         lay.addLayout(init_box)
+        lay.addWidget(self.mask_box)
         lay.addLayout(form)
         lay.addWidget(self.hr_box)
         lay.addWidget(self.var_box)
@@ -301,6 +326,8 @@ class GenerateView(QWidget):
         self.queue_btn.clicked.connect(self._add_to_queue)
         self.init_choose.clicked.connect(self._choose_init)
         self.init_clear.clicked.connect(lambda: self.set_init_image(None))
+        self.mask_btn.clicked.connect(self._edit_mask)
+        self.mask_clear.clicked.connect(lambda: self._set_mask(None))
         self.refresh_btn.clicked.connect(self.load_forge_data)
         self.add_btn.clicked.connect(self._add_selected)
         self.up_btn.clicked.connect(self._upscale_selected)
@@ -401,7 +428,9 @@ class GenerateView(QWidget):
             enable_hr=self.hr_box.isChecked(), hr_scale=self.hr_scale.value(),
             hr_upscaler=self.hr_upscaler.currentText() or "Latent", hr_steps=self.hr_steps.value(),
             hr_denoise=self.hr_denoise.value(),
-            init_image=str(self.init_path) if self.init_path else "", denoising_strength=self.denoise.value())
+            init_image=str(self.init_path) if self.init_path else "", denoising_strength=self.denoise.value(),
+            mask_image=str(self.mask_path) if self.mask_path and self.init_path else "", mask_blur=self.mask_blur.value(),
+            inpaint_fill=self.inpaint_fill.currentData(), inpaint_only_masked=self.inpaint_only_masked.isChecked())
 
     def apply_params(self, data: dict) -> None:
         """Fill the whole form from a preset / history entry / PNG info (missing keys keep their defaults)."""
@@ -432,6 +461,9 @@ class GenerateView(QWidget):
         if p.subseed_strength > 0:
             self.subseed_strength.setValue(p.subseed_strength)
         self.denoise.setValue(p.denoising_strength)
+        self.mask_blur.setValue(p.mask_blur)
+        self.inpaint_fill.setCurrentIndex(max(self.inpaint_fill.findData(p.inpaint_fill), 0))
+        self.inpaint_only_masked.setChecked(p.inpaint_only_masked)
 
     def _set_model(self, name: str) -> None:
         base = name.split(" [")[0].replace(".safetensors", "")
@@ -554,6 +586,8 @@ class GenerateView(QWidget):
         self.init_path = path
         self.init_clear.setEnabled(path is not None)
         self.denoise.setEnabled(path is not None)
+        self.mask_btn.setEnabled(path is not None)
+        self._set_mask(None)                       # a mask belongs to one particular picture
         self.generate_btn.setText(tr("sd.generate_img2img") if path else tr("sd.generate"))
         if path is None:
             self.init_thumb.setPixmap(QPixmap())
@@ -563,11 +597,57 @@ class GenerateView(QWidget):
         if pm.isNull():
             self.init_thumb.setText("?")
             return
-        self.init_thumb.setPixmap(pm.scaled(72, 72, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+        self._refresh_init_thumb()
         if resize:
             w, h = fit_size(pm.width(), pm.height())
             self.width_.setValue(w)
             self.height_.setValue(h)
+
+    # --- inpaint mask ---------------------------------------------------------------------------------------------
+
+    def _refresh_init_thumb(self) -> None:
+        """The 72px preview of the source picture, with the mask tinted over it."""
+        pm = QPixmap(str(self.init_path)) if self.init_path else QPixmap()
+        if pm.isNull():
+            return
+        thumb = pm.scaled(72, 72, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+        if self.mask_path and self.mask_path.exists():
+            mask = QImage(str(self.mask_path)).scaled(thumb.size(), Qt.AspectRatioMode.IgnoreAspectRatio)
+            tint = QImage(thumb.size(), QImage.Format.Format_ARGB32_Premultiplied)
+            tint.fill(QColor(255, 60, 90, 255))
+            tint.setAlphaChannel(mask.convertToFormat(QImage.Format.Format_Grayscale8))
+            painter = QPainter(thumb)
+            painter.setOpacity(0.55)
+            painter.drawImage(0, 0, tint)
+            painter.end()
+        self.init_thumb.setPixmap(thumb)
+
+    def _set_mask(self, path: Path | None) -> None:
+        self.mask_path = path
+        self.mask_clear.setVisible(path is not None)
+        self.mask_box.setVisible(path is not None)
+        self.mask_btn.setText(tr("mask.edit") if path else tr("mask.button"))
+        self._refresh_init_thumb()
+
+    def _edit_mask(self) -> None:
+        if not self.init_path:
+            return
+        source = QPixmap(str(self.init_path))
+        if source.isNull():
+            return
+        existing = QImage(str(self.mask_path)) if self.mask_path and self.mask_path.exists() else None
+        dlg = MaskDialog(source, existing, self)
+        if not dlg.exec():
+            return
+        if not dlg.has_mask():
+            self._set_mask(None)
+            return
+        folder = self.ctx.paths.sd / "masks"
+        folder.mkdir(parents=True, exist_ok=True)
+        path = folder / f"mask_{int(time.time() * 1000)}.png"
+        dlg.result_mask().save(str(path), "PNG")
+        self._set_mask(path)
+        self.message.setText(tr("mask.ready"))
 
     def use_as_init(self, path: Path, prompt: str = "", negative: str = "") -> None:
         """Entry point of the library -> img2img bridge (ТЗ 5.3)."""
