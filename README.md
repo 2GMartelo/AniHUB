@@ -8,7 +8,7 @@ front-end and a tagged media library. UI languages: Russian and English. The res
 
 ## Возможности
 
-- **Арты:** Danbooru, Gelbooru, yande.re, Konachan, Zerochan, Rule34, E-Hentai (галерея = один пост: обложка и первая страница); просмотрщик с видео/GIF, панелью тегов, слайдшоу
+- **Арты:** Danbooru, Gelbooru, yande.re, Konachan, Zerochan, Rule34, E-Hentai и nhentai (галерея = один пост: обложка и первая страница); просмотрщик с видео/GIF, панелью тегов, слайдшоу
   и кнопками для управления одной мышью.
 - **Манга:** каталог источников (расширения Tachiyomi/Keiyoushi), фильтры по жанрам и тегам, вход в аккаунт источника,
   читалка (страница / разворот / вебтун, справа налево), прогресс и уведомления о новых главах.
@@ -50,7 +50,7 @@ run.bat                      :: или: .venv\Scripts\python -m anihub
 
 - `core/` — конфиг, SQLite-индекс, пути библиотеки, i18n (RU/EN), логи
 - `net/` — общий HTTP-слой: прокси, лимит частоты запросов, ретраи, лимит параллельных загрузок
-- `sources/` — плагины источников (`base.Source`): Danbooru, Gelbooru*, yande.re, Konachan, Zerochan, Rule34, E-Hentai
+- `sources/` — плагины источников (`base.Source`): Danbooru, Gelbooru*, yande.re, Konachan, Zerochan, Rule34, E-Hentai, nhentai
   (общие движки Gelbooru/Moebooru в `engines.py`; *Gelbooru требует user_id + api_key)
 - `library/` — сохранение постов: файл на диск + запись в БД (теги, автор, ссылка), дедупликация
 - `services/` — проверка системы (Java, VRAM, диск); `forge.py` (запуск/остановка Forge + REST-клиент), `generation.py` (txt2img)
@@ -93,6 +93,12 @@ run.bat                      :: или: .venv\Scripts\python -m anihub
 браузер (или токен/код); Kitsu и подобные — логин и пароль в диалоге. В окне тайтла кнопка «Трекинг…»: найти запись в трекере
 и привязать; статус, прочитанные главы и оценку можно править. Когда вы дочитали главу или отметили главы прочитанными,
 прогресс сам уходит во все привязанные трекеры (отключается настройкой `manga.track_auto`).
+
+## nhentai
+
+Источник «nhentai» работает через новый API v2: как и E-Hentai, пост — галерея (обложка в ленте, первая страница при просмотре и
+сохранении; теги и художник подгружаются в момент сохранения). Поиск: теги (`big_breasts`, `-yaoi`), `artist:name`,
+`parody:name`, `language:english`; без запроса — свежие галереи. Контент 18+: источник ищет только при включённом рейтинге Explicit.
 
 ## Ранобэ
 
@@ -198,4 +204,4 @@ Forge внешний: путь к папке с `webui.bat` задаётся в 
 ## Статус
 
 Этапы 0-5 (кроме сравнения нескольких бэкендов на одной странице) и часть этапа 6 (календарь сезона, AniList). Просмотр аниме — позже. Локальные CBZ: положите файлы в `<библиотека>/manga/suwayomi/local` (источник «Local source»). 
-Не поддерживается: Joyreactor, Pixiv, Twitter/X, nHentai, ExHentai; Zerochan без рейтинга (всё считается general).
+Не поддерживается: Joyreactor, Pixiv, Twitter/X, ExHentai; Zerochan без рейтинга (всё считается general).
