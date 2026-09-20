@@ -20,6 +20,7 @@ from anihub.sources.base import RATINGS, VIDEO_EXTS, badge_for_ext
 from anihub.ui import icons, style, theme
 from anihub.ui.grid import PAYLOAD, ThumbGrid, image_to_thumb
 from anihub.ui.library_dialogs import DuplicatesDialog, ImportDialog, TagEditDialog, TagManagerDialog
+from anihub.ui.rules_dialog import RulesDialog
 from anihub.ui.tag_widgets import tag_line_edit
 from anihub.ui.tagquery import apply_tag
 from anihub.ui.viewer import ViewItem, Viewer
@@ -294,6 +295,7 @@ class LibraryView(QWidget):
         m = self.tools_menu
         m.clear()
         m.addAction(tr("tags.manager") + "...", self._tag_manager)
+        m.addAction(tr("rules.title") + "...", self._rules)
         if self.kind == "art":
             m.addAction(tr("dup.title") + "...", self._duplicates)
         m.addAction(tr("lib.autotag_all"), self._autotag_untagged)
@@ -303,6 +305,12 @@ class LibraryView(QWidget):
     def _tag_manager(self) -> None:
         dlg = TagManagerDialog(self.ctx, self)
         dlg.changed.connect(lambda: (self.refresh_sidebar(), self.reload()))
+        dlg.exec()
+        self.refresh_sidebar()
+
+    def _rules(self) -> None:
+        dlg = RulesDialog(self.ctx, self)
+        dlg.changed.connect(lambda: (self.refresh_sidebar(), self.reload(), self.changed.emit()))
         dlg.exec()
         self.refresh_sidebar()
 

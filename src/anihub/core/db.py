@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 from typing import Iterable
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 SD_TABLES = '''
 CREATE TABLE sd_presets (
@@ -22,6 +22,12 @@ CREATE TABLE sd_queue (
     id INTEGER PRIMARY KEY, position REAL NOT NULL, status TEXT NOT NULL DEFAULT 'pending', params TEXT NOT NULL,
     label TEXT, created_at REAL NOT NULL, finished_at REAL, error TEXT, backend TEXT,
     result_count INTEGER NOT NULL DEFAULT 0);              -- status: pending | running | done | failed | cancelled
+'''
+
+RULES_TABLE = '''
+CREATE TABLE auto_rules (
+    id INTEGER PRIMARY KEY, name TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1, position INTEGER NOT NULL DEFAULT 0,
+    conditions TEXT NOT NULL, actions TEXT NOT NULL);       -- both JSON, see library/rules.py
 '''
 
 # Each step upgrades from version N to N+1 (fresh databases run SCHEMA, then jump to SCHEMA_VERSION).
@@ -51,6 +57,7 @@ MIGRATIONS = {
         CREATE TABLE smart_tags (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE, tags TEXT NOT NULL);
     """,
     3: SD_TABLES,
+    4: RULES_TABLE,
 }
 
 SCHEMA = """
@@ -109,7 +116,7 @@ CREATE TABLE collection_items (
     added_at REAL NOT NULL, PRIMARY KEY (collection_id, item_id));
 CREATE INDEX idx_collection_items_item ON collection_items(item_id);
 CREATE TABLE smart_tags (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE, tags TEXT NOT NULL);
-""" + SD_TABLES
+""" + SD_TABLES + RULES_TABLE
 
 SORTS = {
     "added": "i.added_at",
@@ -277,6 +284,15 @@ class Database:
         with self.conn:
             self.conn.execute("INSERT OR IGNORE INTO tags(name, category) VALUES (?, ?)", (name, category))
         return self.tag_id(name)
+
+    def tag_family(self, name: str) -> set[str]:
+        """The tag's name plus the names of all its descendants (a parent tag stands for its children)."""
+        tag_id = self.tag_id(name)
+        if tag_id is None:
+            return {name}
+        ids = self.descendant_ids([tag_id])
+        rows = self.conn.execute(f"SELECT name FROM tags WHERE id IN ({','.join('?' * len(ids))})", list(ids)).fetchall()
+        return {r[0] for r in rows}
 
     def descendant_ids(self, tag_ids: Iterable[int]) -> set[int]:
         """The tags themselves plus every child, grandchild... (cycle-safe)."""
@@ -463,6 +479,43 @@ class Database:
             "SELECT ci.collection_id, COUNT(*) FROM collection_items ci JOIN items i ON i.id=ci.item_id "
             "WHERE i.kind=? AND i.trashed_at IS NULL GROUP BY ci.collection_id", (kind,)).fetchall()
         return {r[0]: r[1] for r in rows}
+
+    # --- automatic rules -------------------------------------------------------
+
+    def rules(self) -> list[dict]:
+        rows = self.conn.execute("SELECT * FROM auto_rules ORDER BY position, id").fetchall()
+        return [{"id": r["id"], "name": r["name"], "enabled": bool(r["enabled"]), "position": r["position"],
+                 "conditions": json.loads(r["conditions"]), "actions": json.loads(r["actions"])} for r in rows]
+
+    def save_rule(self, name: str, conditions: dict, actions: dict, enabled: bool = True, rule_id: int | None = None) -> int:
+        cond, act = json.dumps(conditions, ensure_ascii=False), json.dumps(actions, ensure_ascii=False)
+        with self.conn:
+            if rule_id is None:
+                pos = self.conn.execute("SELECT COALESCE(MAX(position), -1) + 1 FROM auto_rules").fetchone()[0]
+                return self.conn.execute(
+                    "INSERT INTO auto_rules(name, enabled, position, conditions, actions) VALUES (?, ?, ?, ?, ?)",
+                    (name, int(enabled), pos, cond, act)).lastrowid
+            self.conn.execute("UPDATE auto_rules SET name=?, enabled=?, conditions=?, actions=? WHERE id=?",
+                              (name, int(enabled), cond, act, rule_id))
+            return rule_id
+
+    def set_rule_enabled(self, rule_id: int, enabled: bool) -> None:
+        with self.conn:
+            self.conn.execute("UPDATE auto_rules SET enabled=? WHERE id=?", (int(enabled), rule_id))
+
+    def delete_rule(self, rule_id: int) -> None:
+        with self.conn:
+            self.conn.execute("DELETE FROM auto_rules WHERE id=?", (rule_id,))
+
+    def move_rule(self, rule_id: int, delta: int) -> None:
+        ids = [r["id"] for r in self.rules()]
+        if rule_id not in ids:
+            return
+        i, j = ids.index(rule_id), ids.index(rule_id) + delta
+        if 0 <= j < len(ids):
+            ids[i], ids[j] = ids[j], ids[i]
+            with self.conn:
+                self.conn.executemany("UPDATE auto_rules SET position=? WHERE id=?", [(p, r) for p, r in enumerate(ids)])
 
     # --- search ----------------------------------------------------------------
 

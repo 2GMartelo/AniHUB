@@ -18,6 +18,7 @@ from anihub.core.config import Config
 from anihub.core.db import Database
 from anihub.core.paths import LibraryPaths
 from anihub.library.phash import dhash, find_near, similar_groups
+from anihub.library.rules import RuleEngine
 from anihub.net.http import HttpClient
 from anihub.services.generation import prompt_tags
 from anihub.sources.base import Post, url_ext
@@ -68,6 +69,7 @@ class LibraryService:
         self.http = http
         self.cfg = cfg
         self.tagger = None  # an Autotagger when enabled and its model is installed (set by the app context)
+        self.rules = RuleEngine(db)
 
     # --- settings --------------------------------------------------------------
 
@@ -88,6 +90,16 @@ class LibraryService:
         default = self.db.default_category(kind)
         if default is not None:
             self.db.set_item_categories([item_id], add=[default])
+        self._apply_rules([item_id])
+
+    def _apply_rules(self, item_ids: list[int]) -> None:
+        """Automatic rules (ТЗ 6.4) run on every new item; a broken rule must never lose a download."""
+        if not self._opt("library.auto_rules", True):
+            return
+        try:
+            self.rules.apply(item_ids)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("auto rules failed for %s: %s", item_ids, exc)
 
     def _autotag(self, path: Path, ext: str):
         if self.tagger is None or ext.lower() in VIDEO_EXTS:
@@ -258,6 +270,7 @@ class LibraryService:
             source_post_id=sha[:16], source_url=str(src))
         if category_id is not None:
             self.db.set_item_categories([item_id], add=[category_id])
+            self._apply_rules([item_id])
         else:
             self._finish_new_item(item_id, "art")
         if similar:
@@ -282,6 +295,8 @@ class LibraryService:
                 done += 1
             if progress:
                 progress(i, len(rows))
+        if done:
+            self._apply_rules([r["id"] for r in rows])  # the new tags may satisfy a rule
         return done
 
     # --- trash -----------------------------------------------------------------

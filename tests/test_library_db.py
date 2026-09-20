@@ -206,13 +206,13 @@ def test_source_lookup_includes_trashed(db):
 def test_migration_3_to_4_adds_sd_tables(tmp_path):
     path = tmp_path / "v3.db"
     fresh = Database(path)
-    for table in ("sd_presets", "sd_history", "sd_queue"):
+    for table in ("auto_rules", "sd_presets", "sd_history", "sd_queue"):
         fresh.conn.execute(f"DROP TABLE {table}")
     fresh.conn.execute("PRAGMA user_version=3")
     fresh.conn.commit()
     fresh.close()
     db = Database(path)
-    assert db.conn.execute("PRAGMA user_version").fetchone()[0] == 4
+    assert db.conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
     db.save_preset("preset", "p", {"steps": 5})
     assert db.presets("preset")[0][1:] == ("p", {"steps": 5})
 
