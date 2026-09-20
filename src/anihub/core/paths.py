@@ -11,6 +11,7 @@ class LibraryPaths:
         self.manga = self.root / "manga"
         self.sd = self.root / "sd"
         self.novels = self.root / "novels"
+        self.anime = self.root / "anime"
         self.trash = self.root / "trash"
         self.cache = self.root / "cache"
         self.thumbs = self.cache / "thumbs"
@@ -18,7 +19,7 @@ class LibraryPaths:
         self.db_file = self.root / "db" / "anihub.db"
 
     def ensure(self) -> None:
-        for p in (self.arts, self.manga, self.sd, self.novels, self.novels / "covers", self.trash, self.thumbs, self.media, self.db_file.parent):
+        for p in (self.arts, self.manga, self.sd, self.novels, self.novels / "covers", self.anime, self.trash, self.thumbs, self.media, self.db_file.parent):
             p.mkdir(parents=True, exist_ok=True)
 
     def preview_file(self, item_id: int) -> Path:

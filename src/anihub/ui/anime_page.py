@@ -17,6 +17,7 @@ from anihub.services.anilist import (
     DEVELOPER_URL, PIN_REDIRECT, STATUSES, current_season, format_airing, shift_season,
 )
 from anihub.ui import style
+from anihub.ui.anime_watch import WatchTab
 from anihub.ui.grid import ThumbGrid, image_to_thumb
 from anihub.ui.workers import run_async
 
@@ -549,7 +550,7 @@ class AnimePage(QWidget):
         self.ctx = ctx
         self.season = SeasonTab(ctx)
         self.mylist = MyListTab(ctx)
-        self.watch = style.EmptyState("tv", tr("anime.watch_title"), tr("anime.watch_text"))
+        self.watch = WatchTab(ctx)
         self.tabs = QTabWidget()
         self.tabs.addTab(self.season, tr("anime.tab.season"))
         self.tabs.addTab(self.mylist, tr("anime.tab.list"))
@@ -567,6 +568,7 @@ class AnimePage(QWidget):
         self.season.open_media.connect(self.show_media)
         self.mylist.open_media.connect(self.show_media)
         self.season.list_changed.connect(self._list_changed)
+        self.watch.list_changed.connect(self._list_changed)
         self.mylist.list_changed.connect(self._push_in_background)
         self.account_btn.clicked.connect(self.open_account)
         self.tabs.currentChanged.connect(self._tab_changed)
@@ -576,6 +578,8 @@ class AnimePage(QWidget):
         widget = self.tabs.widget(index)
         if widget is self.season and not self.ctx.cfg.get("network.offline", False):
             self.season.ensure_loaded()
+        elif widget is self.watch:
+            self.watch.ensure_loaded()
         elif widget is self.mylist:
             self.mylist.reload()
 

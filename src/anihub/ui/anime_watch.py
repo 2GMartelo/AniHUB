@@ -1,0 +1,364 @@
+"""The Watch tab (ТЗ 10.1/10.2): pick a source, find a title, choose an episode, play it."""
+from __future__ import annotations
+
+from pathlib import Path
+
+from PySide6.QtCore import Qt, QUrl, Signal
+from PySide6.QtGui import QDesktopServices
+from PySide6.QtWidgets import (
+    QComboBox, QDialog, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem, QMenu, QPushButton, QSplitter,
+    QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,
+)
+
+from anihub.context import AppContext
+from anihub.core.i18n import tr
+from anihub.sources.anime.base import AnimeEntry, AnimeSource, Episode
+from anihub.ui import style
+from anihub.ui.anime_player import AnimePlayer, fmt
+from anihub.ui.grid import ThumbGrid, image_to_thumb
+from anihub.ui.novels_page import placeholder_cover
+from anihub.ui.workers import run_async
+
+
+def source_title(source: AnimeSource) -> str:
+    return tr("watch.local") if source.name == "local" else source.title
+
+
+class LinkDialog(QDialog):
+    """Choose which AniList show a title is, so watched episodes update your list."""
+
+    def __init__(self, ctx: AppContext, title: str, parent=None):
+        super().__init__(parent)
+        self.ctx, self.chosen = ctx, None
+        self.setWindowTitle(tr("watch.link_title"))
+        self.resize(560, 460)
+        self.query = QLineEdit(title)
+        self.go = style.primary(QPushButton(tr("search.button")), "search")
+        self.list = QListWidget()
+        self.ok = style.primary(QPushButton(tr("watch.link_ok")), "check")
+        self.ok.setEnabled(False)
+        self.message = QLabel()
+        style.role(self.message, "dim")
+        row = QHBoxLayout()
+        row.addWidget(self.query, 1)
+        row.addWidget(self.go)
+        layout = QVBoxLayout(self)
+        layout.addLayout(row)
+        layout.addWidget(self.list, 1)
+        layout.addWidget(self.message)
+        layout.addWidget(self.ok, 0, Qt.AlignmentFlag.AlignLeft)
+        self.go.clicked.connect(self._search)
+        self.query.returnPressed.connect(self._search)
+        self.list.itemSelectionChanged.connect(lambda: self.ok.setEnabled(bool(self.list.selectedItems())))
+        self.list.itemDoubleClicked.connect(lambda _i: self._accept())
+        self.ok.clicked.connect(self._accept)
+        self._search()
+
+    def _search(self) -> None:
+        text = self.query.text().strip()
+        if not text:
+            return
+        self.message.setText(tr("status.loading"))
+        adult = "explicit" in self.ctx.allowed_ratings()
+
+        def done(result) -> None:
+            self.list.clear()
+            for media in result[0]:
+                extra = " · ".join(x for x in (media["format"], str(media["year"] or ""),
+                                               tr("anime.episodes_n", n=media["episodes"]) if media["episodes"] else "") if x)
+                item = QListWidgetItem(f"{media['title']}   ({extra})" if extra else media["title"])
+                item.setData(Qt.ItemDataRole.UserRole, media)
+                self.list.addItem(item)
+            self.message.setText(tr("track.found", n=self.list.count()))
+
+        run_async(lambda: self.ctx.anilist.search(text, 1, adult), on_done=done,
+                  on_error=lambda exc: self.message.setText(tr("status.error", msg=str(exc))))
+
+    def _accept(self) -> None:
+        item = self.list.currentItem()
+        if item is not None:
+            self.chosen = item.data(Qt.ItemDataRole.UserRole)
+            self.accept()
+
+
+class WatchTab(QWidget):
+    list_changed = Signal()
+
+    def __init__(self, ctx: AppContext, parent=None):
+        super().__init__(parent)
+        self.ctx = ctx
+        self.entry: AnimeEntry | None = None
+        self.episodes: list[Episode] = []
+        self._gen, self._page, self._loading, self._exhausted = 0, 1, False, True
+        self._players: list[AnimePlayer] = []
+
+        self.source_box = QComboBox()
+        self.query = QLineEdit(placeholderText=tr("watch.search"))
+        self.query.setClearButtonEnabled(True)
+        self.go = style.primary(QPushButton(tr("search.button")), "search")
+        self.folder_btn = style.secondary(QPushButton(tr("watch.open_folder")), "folder")
+        self.grid = ThumbGrid(ctx.cfg.get("ui.thumb_size", 180) + 20)
+        self.status = QLabel()
+        style.role(self.status, "dim")
+        top = QHBoxLayout()
+        for w, s in ((self.source_box, 0), (self.query, 1), (self.go, 0), (self.folder_btn, 0)):
+            top.addWidget(w, s)
+        left = QWidget()
+        ll = QVBoxLayout(left)
+        ll.setContentsMargins(0, 0, 0, 0)
+        ll.addLayout(top)
+        ll.addWidget(self.grid, 1)
+        ll.addWidget(self.status)
+
+        self.title = QLabel()
+        self.title.setStyleSheet("font-size: 17px; font-weight: 600;")
+        self.title.setWordWrap(True)
+        self.link_label = QLabel()
+        style.role(self.link_label, "dim")
+        self.link_label.setWordWrap(True)
+        self.link_btn = style.secondary(QPushButton(tr("watch.link")), "external")
+        self.unlink_btn = style.ghost(QPushButton(tr("watch.unlink")), "x")
+        self.site_btn = style.ghost(QPushButton(tr("watch.site")), "external")
+        self.tree = QTreeWidget()
+        self.tree.setHeaderLabels([tr("watch.col.no"), tr("watch.col.title"), tr("watch.col.state")])
+        self.tree.setRootIsDecorated(False)
+        self.tree.setColumnWidth(0, 60)
+        self.tree.setColumnWidth(1, 260)
+        self.tree.setSelectionMode(QTreeWidget.SelectionMode.ExtendedSelection)
+        self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.play_btn = style.primary(QPushButton(tr("watch.play")), "play")
+        self.seen_btn = style.secondary(QPushButton(tr("watch.mark_seen")), "check")
+        self.unseen_btn = style.secondary(QPushButton(tr("watch.mark_unseen")), "x")
+        self.message = QLabel()
+        self.message.setWordWrap(True)
+        style.role(self.message, "dim")
+        self.hint = style.EmptyState("tv", tr("watch.pick_title"), tr("watch.pick_text"))
+        link_row = QHBoxLayout()
+        for w in (self.link_btn, self.unlink_btn, self.site_btn):
+            link_row.addWidget(w)
+        link_row.addStretch(1)
+        buttons = QHBoxLayout()
+        for w in (self.play_btn, self.seen_btn, self.unseen_btn):
+            buttons.addWidget(w)
+        buttons.addStretch(1)
+        self.details = QWidget()
+        dl = QVBoxLayout(self.details)
+        for item in (self.title, self.link_label):
+            dl.addWidget(item)
+        dl.addLayout(link_row)
+        dl.addWidget(self.tree, 1)
+        dl.addLayout(buttons)
+        dl.addWidget(self.message)
+        self.details.hide()
+        right = QWidget()
+        rl = QVBoxLayout(right)
+        rl.setContentsMargins(0, 0, 0, 0)
+        rl.addWidget(self.hint, 1)
+        rl.addWidget(self.details, 1)
+        split = QSplitter()
+        split.addWidget(left)
+        split.addWidget(right)
+        split.setStretchFactor(0, 3)
+        split.setStretchFactor(1, 2)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(split)
+
+        self.reload_sources()
+        self.source_box.activated.connect(lambda _i: self.search())
+        self.go.clicked.connect(self.search)
+        self.query.returnPressed.connect(self.search)
+        self.folder_btn.clicked.connect(self._open_folder)
+        self.grid.need_more.connect(self._load_page)
+        self.grid.itemDoubleClicked.connect(lambda it: self.select_entry(it.data(Qt.ItemDataRole.UserRole)))
+        self.link_btn.clicked.connect(self._link)
+        self.unlink_btn.clicked.connect(self._unlink)
+        self.site_btn.clicked.connect(lambda: self.entry and self.entry.url.startswith("http") and QDesktopServices.openUrl(QUrl(self.entry.url)))
+        self.play_btn.clicked.connect(self.play)
+        self.seen_btn.clicked.connect(lambda: self._mark(True))
+        self.unseen_btn.clicked.connect(lambda: self._mark(False))
+        self.tree.itemDoubleClicked.connect(lambda item: self.play(self.tree.indexOfTopLevelItem(item)))
+        self.tree.customContextMenuRequested.connect(self._menu)
+        self._loaded_once = False
+
+    # --- sources / search --------------------------------------------------------------------------------
+
+    def reload_sources(self) -> None:
+        self.source_box.clear()
+        for name, source in self.ctx.anime_sources.items():
+            self.source_box.addItem(source_title(source), name)
+
+    def source(self) -> AnimeSource | None:
+        return self.ctx.anime_sources.get(self.source_box.currentData())
+
+    def ensure_loaded(self) -> None:
+        if not self._loaded_once:
+            self.search()
+
+    def _open_folder(self) -> None:
+        import os
+
+        folder = self.ctx.paths.anime
+        folder.mkdir(parents=True, exist_ok=True)
+        os.startfile(folder)
+
+    def search(self) -> None:
+        if self.source() is None:
+            return
+        self._loaded_once = True
+        self._gen += 1
+        self.grid.clear_items()
+        self._page, self._loading, self._exhausted = 1, False, False
+        self.folder_btn.setVisible(self.source().name == "local")
+        self._load_page()
+
+    def _load_page(self) -> None:
+        source = self.source()
+        if self._loading or self._exhausted or source is None:
+            return
+        self._loading = True
+        self.status.setText(tr("status.loading"))
+        gen, page, text = self._gen, self._page, self.query.text().strip()
+
+        def done(result) -> None:
+            if gen != self._gen:
+                return
+            entries, more = result
+            self._loading, self._exhausted = False, not more
+            self._page += 1
+            for entry in entries:
+                self._add(source, entry)
+            empty = self.grid.count() == 0
+            self.status.setText(tr("watch.local_empty") if empty and source.name == "local" else
+                                tr("status.count", n=self.grid.count()) + ("" if more else "  ·  " + tr("status.end")))
+            if more and entries:
+                self.grid.request_fill()
+
+        def failed(exc: Exception) -> None:
+            if gen == self._gen:
+                self._loading, self._exhausted = False, True
+                self.status.setText(tr("status.error", msg=str(exc)))
+
+        run_async(lambda: source.search(text, page), on_done=done, on_error=failed)
+
+    def _add(self, source: AnimeSource, entry: AnimeEntry) -> None:
+        size = self.grid.thumb_size
+
+        def load():
+            cover = entry.cover
+            try:
+                if cover.startswith("http"):
+                    return image_to_thumb(self.ctx.media.get(cover).read_bytes(), size)
+                if cover and Path(cover).is_file():
+                    return image_to_thumb(Path(cover).read_bytes(), size)
+            except Exception:  # noqa: BLE001 - a missing cover is not an error
+                pass
+            return placeholder_cover(entry.title, size)
+
+        self.grid.add_entry(entry, entry.title, load)
+
+    # --- one title ------------------------------------------------------------------------------------------
+
+    def select_entry(self, entry: AnimeEntry) -> None:
+        source = self.source()
+        if source is None:
+            return
+        self.entry = entry
+        self.hint.hide()
+        self.details.show()
+        self.title.setText(entry.title)
+        self.tree.clear()
+        self.episodes = []
+        self.message.setText(tr("status.loading"))
+        self._show_link()
+        self.site_btn.setVisible(entry.url.startswith("http"))
+
+        def done(episodes: list[Episode]) -> None:
+            if self.entry is not entry:
+                return
+            self.episodes = episodes
+            self.message.setText(tr("watch.episodes_n", n=len(episodes)) if episodes else tr("watch.no_episodes"))
+            self._fill_tree()
+
+        run_async(lambda: source.episodes(entry), on_done=done,
+                  on_error=lambda exc: self.message.setText(tr("status.error", msg=str(exc))))
+
+    def _show_link(self) -> None:
+        media = self.ctx.watch.linked_media(self.source().name, self.entry.id) if self.entry else None
+        self.link_label.setText(tr("watch.linked_to", title=media["title"]) if media else tr("watch.not_linked"))
+        self.unlink_btn.setVisible(media is not None)
+        self.link_btn.setText(tr("watch.relink") if media else tr("watch.link"))
+
+    def _fill_tree(self) -> None:
+        source, entry = self.source(), self.entry
+        if source is None or entry is None:
+            return
+        positions = self.ctx.watch.positions(source.name, entry.id)
+        selected = {self.tree.indexOfTopLevelItem(i) for i in self.tree.selectedItems()}
+        self.tree.clear()
+        for i, ep in enumerate(self.episodes):
+            pos = positions.get(ep.id)
+            if pos and pos["watched"]:
+                state = "✓ " + tr("watch.watched")
+            elif pos and pos["position_ms"] > 15_000:
+                state = tr("watch.resume_at", t=fmt(pos["position_ms"]))
+            else:
+                state = ""
+            item = QTreeWidgetItem([f"{ep.number:g}", ep.title if ep.title and ep.title != f"{ep.number:g}" else "", state])
+            self.tree.addTopLevelItem(item)
+            item.setSelected(i in selected)
+
+    def _link(self) -> None:
+        if self.entry is None:
+            return
+        dlg = LinkDialog(self.ctx, self.entry.title, self)
+        if dlg.exec() and dlg.chosen:
+            self.ctx.watch.link(self.source().name, self.entry.id, dlg.chosen)
+            self._show_link()
+            self.message.setText(tr("watch.link_saved"))
+
+    def _unlink(self) -> None:
+        if self.entry is not None:
+            self.ctx.watch.link(self.source().name, self.entry.id, None)
+            self._show_link()
+
+    # --- playing --------------------------------------------------------------------------------------------
+
+    def play(self, index: int | None = None) -> None:
+        source, entry = self.source(), self.entry
+        if source is None or entry is None or not self.episodes:
+            return
+        if not isinstance(index, int) or index < 0:
+            selected = self.tree.selectedItems()
+            if selected:
+                index = self.tree.indexOfTopLevelItem(selected[0])
+            else:
+                nxt = self.ctx.watch.next_episode(source.name, entry.id, self.episodes)
+                index = self.episodes.index(nxt) if nxt else 0
+        player = AnimePlayer(self.ctx, source, entry, self.episodes, index, self)
+        player.progress_changed.connect(self._fill_tree)
+        player.progress_changed.connect(self.list_changed)
+        player.destroyed.connect(lambda: self._players.remove(player) if player in self._players else None)
+        self._players.append(player)
+        player.show()
+
+    def _selected_episodes(self) -> list[Episode]:
+        return [self.episodes[self.tree.indexOfTopLevelItem(i)] for i in self.tree.selectedItems()]
+
+    def _mark(self, watched: bool) -> None:
+        source, entry = self.source(), self.entry
+        if source is None or entry is None:
+            return
+        for ep in self._selected_episodes():
+            self.ctx.watch.mark(source.name, entry.id, ep, watched)
+        self._fill_tree()
+        self.list_changed.emit()
+
+    def _menu(self, pos) -> None:
+        if not self.tree.selectedItems():
+            return
+        menu = QMenu(self)
+        menu.addAction(tr("watch.play"), self.play)
+        menu.addAction(tr("watch.mark_seen"), lambda: self._mark(True))
+        menu.addAction(tr("watch.mark_unseen"), lambda: self._mark(False))
+        menu.exec(self.tree.viewport().mapToGlobal(pos))

@@ -12,11 +12,14 @@ from anihub.library.novel_store import NovelShelf
 from anihub.library.service import LibraryService
 from anihub.net.http import HttpClient
 from anihub.services.anilist import AniList
+from anihub.services.anime_watch import WatchService
 from anihub.services.autotag import Autotagger, model_dir_default
 from anihub.services.backends import build_backends
 from anihub.services.forge import ForgeManager
 from anihub.services.suwayomi import SuwayomiManager
 from anihub.sources import build_sources
+from anihub.sources.anime import build_anime_sources
+from anihub.sources.anime.base import AnimeSource
 from anihub.sources.base import Source
 
 
@@ -35,6 +38,8 @@ class AppContext:
     autotagger: Autotagger
     anilist: AniList
     novels: NovelShelf
+    anime_sources: dict[str, AnimeSource]
+    watch: WatchService
 
     @classmethod
     def build(cls, cfg: Config) -> "AppContext":
@@ -48,7 +53,9 @@ class AppContext:
         ctx = cls(cfg, paths, db, http, build_sources(http, cfg), LibraryService(db, paths, http, cfg), media,
                   backends[0], backends,
                   SuwayomiManager(cfg, config_dir() / "suwayomi", paths.manga / "suwayomi", config_dir() / "logs"),
-                  Autotagger(model_dir_default(config_dir())), AniList(http, cfg, db), NovelShelf(db, paths))
+                  Autotagger(model_dir_default(config_dir())), AniList(http, cfg, db), NovelShelf(db, paths),
+                  build_anime_sources(http, cfg, paths.anime, config_dir() / "plugins" / "anime"), None)
+        ctx.watch = WatchService(db, ctx.anilist)
         ctx.refresh_tagger()
         return ctx
 

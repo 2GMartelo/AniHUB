@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 from typing import Iterable
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 SD_TABLES = '''
 CREATE TABLE sd_presets (
@@ -56,6 +56,16 @@ CREATE TABLE novels (
     finished INTEGER NOT NULL DEFAULT 0);
 '''
 
+WATCH_TABLES = '''
+CREATE TABLE anime_links (                        -- which AniList show a title of an anime source is
+    source TEXT NOT NULL, entry_id TEXT NOT NULL, media_id INTEGER NOT NULL, media TEXT NOT NULL,   -- media: JSON (normalize_media)
+    PRIMARY KEY (source, entry_id));
+CREATE TABLE anime_positions (                    -- where you stopped in each episode
+    source TEXT NOT NULL, entry_id TEXT NOT NULL, episode_id TEXT NOT NULL, number REAL,
+    position_ms INTEGER NOT NULL DEFAULT 0, duration_ms INTEGER NOT NULL DEFAULT 0, watched INTEGER NOT NULL DEFAULT 0,
+    updated_at REAL NOT NULL, PRIMARY KEY (source, entry_id, episode_id));
+'''
+
 # Each step upgrades from version N to N+1 (fresh databases run SCHEMA, then jump to SCHEMA_VERSION).
 MIGRATIONS = {
     1: "ALTER TABLE items ADD COLUMN meta TEXT",  # JSON: generation parameters for SD items
@@ -86,6 +96,7 @@ MIGRATIONS = {
     4: RULES_TABLE,
     5: ANIME_TABLE,
     6: NOVEL_TABLE,
+    7: WATCH_TABLES,
 }
 
 SCHEMA = """
@@ -144,7 +155,7 @@ CREATE TABLE collection_items (
     added_at REAL NOT NULL, PRIMARY KEY (collection_id, item_id));
 CREATE INDEX idx_collection_items_item ON collection_items(item_id);
 CREATE TABLE smart_tags (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE, tags TEXT NOT NULL);
-""" + SD_TABLES + RULES_TABLE + ANIME_TABLE + NOVEL_TABLE
+""" + SD_TABLES + RULES_TABLE + ANIME_TABLE + NOVEL_TABLE + WATCH_TABLES
 
 SORTS = {
     "added": "i.added_at",
@@ -507,6 +518,40 @@ class Database:
             "SELECT ci.collection_id, COUNT(*) FROM collection_items ci JOIN items i ON i.id=ci.item_id "
             "WHERE i.kind=? AND i.trashed_at IS NULL GROUP BY ci.collection_id", (kind,)).fetchall()
         return {r[0]: r[1] for r in rows}
+
+    # --- watching anime -------------------------------------------------------------
+
+    def watch_link(self, source: str, entry_id: str) -> dict | None:
+        row = self.conn.execute("SELECT media_id, media FROM anime_links WHERE source=? AND entry_id=?", (source, entry_id)).fetchone()
+        return {"media_id": row["media_id"], "media": json.loads(row["media"])} if row else None
+
+    def watch_set_link(self, source: str, entry_id: str, media: dict | None) -> None:
+        with self.conn:
+            if media is None:
+                self.conn.execute("DELETE FROM anime_links WHERE source=? AND entry_id=?", (source, entry_id))
+            else:
+                self.conn.execute("INSERT OR REPLACE INTO anime_links VALUES (?, ?, ?, ?)",
+                                  (source, entry_id, media["id"], json.dumps(media, ensure_ascii=False)))
+
+    def watch_positions(self, source: str, entry_id: str) -> dict[str, sqlite3.Row]:
+        rows = self.conn.execute("SELECT * FROM anime_positions WHERE source=? AND entry_id=?", (source, entry_id)).fetchall()
+        return {r["episode_id"]: r for r in rows}
+
+    def watch_save(self, source: str, entry_id: str, episode_id: str, *, number: float | None = None,
+                   position_ms: int | None = None, duration_ms: int | None = None, watched: bool | None = None) -> None:
+        with self.conn:
+            row = self.conn.execute("SELECT * FROM anime_positions WHERE source=? AND entry_id=? AND episode_id=?",
+                                    (source, entry_id, episode_id)).fetchone()
+            if row is None:
+                self.conn.execute("INSERT INTO anime_positions VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                                  (source, entry_id, episode_id, number, position_ms or 0, duration_ms or 0, int(bool(watched)), time.time()))
+                return
+            values = {"number": number, "position_ms": position_ms, "duration_ms": duration_ms,
+                      "watched": None if watched is None else int(watched)}
+            values = {k: v for k, v in values.items() if v is not None}
+            values["updated_at"] = time.time()
+            self.conn.execute(f"UPDATE anime_positions SET {', '.join(f'{k}=?' for k in values)} "
+                              "WHERE source=? AND entry_id=? AND episode_id=?", [*values.values(), source, entry_id, episode_id])
 
     # --- light novels ------------------------------------------------------------
 
