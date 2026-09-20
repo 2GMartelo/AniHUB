@@ -93,7 +93,8 @@ seasonal = [win.anime_page.season.grid.item(i).data(0x100) for i in range(6)]
 for n, st in enumerate(["CURRENT", "CURRENT", "PLANNING", "COMPLETED", "PLANNING", "DROPPED"]):
     ctx.anilist.track(seasonal[n], st, progress=n * 2, score=70 + n * 5)
 win.anime_page.tabs.setCurrentIndex(1); shot("anime_list")
-win.nav.setCurrentRow(4); shot("settings")
+win.nav.setCurrentRow(4); shot("novels")
+win.nav.setCurrentRow(5); shot("settings")
 win.nav.setCurrentRow(0); win.set_offline(True); shot("offline")
 from anihub.ui.rules_dialog import RulesDialog
 from PySide6.QtCore import Qt

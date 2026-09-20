@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 from typing import Iterable
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 SD_TABLES = '''
 CREATE TABLE sd_presets (
@@ -46,6 +46,16 @@ CREATE TABLE anime_list (
 CREATE INDEX idx_anime_status ON anime_list(status, updated_at);
 '''
 
+NOVEL_TABLE = '''
+CREATE TABLE novels (
+    id INTEGER PRIMARY KEY, title TEXT NOT NULL, author TEXT,
+    path TEXT NOT NULL,                           -- relative to the library root
+    ext TEXT NOT NULL, sha256 TEXT NOT NULL UNIQUE, cover TEXT,   -- cover: relative path of a jpg, if the book has one
+    chapters INTEGER NOT NULL DEFAULT 0, added_at REAL NOT NULL, last_read_at REAL,
+    chapter_index INTEGER NOT NULL DEFAULT 0, scroll REAL NOT NULL DEFAULT 0,   -- where the reader stopped
+    finished INTEGER NOT NULL DEFAULT 0);
+'''
+
 # Each step upgrades from version N to N+1 (fresh databases run SCHEMA, then jump to SCHEMA_VERSION).
 MIGRATIONS = {
     1: "ALTER TABLE items ADD COLUMN meta TEXT",  # JSON: generation parameters for SD items
@@ -75,6 +85,7 @@ MIGRATIONS = {
     3: SD_TABLES,
     4: RULES_TABLE,
     5: ANIME_TABLE,
+    6: NOVEL_TABLE,
 }
 
 SCHEMA = """
@@ -133,7 +144,7 @@ CREATE TABLE collection_items (
     added_at REAL NOT NULL, PRIMARY KEY (collection_id, item_id));
 CREATE INDEX idx_collection_items_item ON collection_items(item_id);
 CREATE TABLE smart_tags (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE, tags TEXT NOT NULL);
-""" + SD_TABLES + RULES_TABLE + ANIME_TABLE
+""" + SD_TABLES + RULES_TABLE + ANIME_TABLE + NOVEL_TABLE
 
 SORTS = {
     "added": "i.added_at",
@@ -496,6 +507,41 @@ class Database:
             "SELECT ci.collection_id, COUNT(*) FROM collection_items ci JOIN items i ON i.id=ci.item_id "
             "WHERE i.kind=? AND i.trashed_at IS NULL GROUP BY ci.collection_id", (kind,)).fetchall()
         return {r[0]: r[1] for r in rows}
+
+    # --- light novels ------------------------------------------------------------
+
+    def novels(self, query: str = "", unfinished: bool = False) -> list[sqlite3.Row]:
+        sql, args = "SELECT * FROM novels WHERE 1", []
+        if query:
+            sql += " AND (title LIKE ? ESCAPE '\\' OR author LIKE ? ESCAPE '\\')"
+            args += [f"%{_like_escape(query)}%"] * 2
+        if unfinished:
+            sql += " AND finished=0"
+        return self.conn.execute(sql + " ORDER BY COALESCE(last_read_at, added_at) DESC", args).fetchall()
+
+    def novel_get(self, novel_id: int) -> sqlite3.Row | None:
+        return self.conn.execute("SELECT * FROM novels WHERE id=?", (novel_id,)).fetchone()
+
+    def novel_by_hash(self, sha256: str) -> sqlite3.Row | None:
+        return self.conn.execute("SELECT * FROM novels WHERE sha256=?", (sha256,)).fetchone()
+
+    def novel_add(self, **fields) -> int:
+        fields.setdefault("added_at", time.time())
+        with self.conn:
+            return self.conn.execute(f"INSERT INTO novels ({', '.join(fields)}) VALUES ({', '.join('?' * len(fields))})",
+                                     list(fields.values())).lastrowid
+
+    def novel_update(self, novel_id: int, **fields) -> None:
+        allowed = {"title", "author", "cover", "chapters", "last_read_at", "chapter_index", "scroll", "finished"}
+        if set(fields) - allowed:
+            raise ValueError(f"cannot update {sorted(set(fields) - allowed)}")
+        if fields:
+            with self.conn:
+                self.conn.execute(f"UPDATE novels SET {', '.join(f'{k}=?' for k in fields)} WHERE id=?", [*fields.values(), novel_id])
+
+    def novel_delete(self, novel_id: int) -> None:
+        with self.conn:
+            self.conn.execute("DELETE FROM novels WHERE id=?", (novel_id,))
 
     # --- anime list (own tracking, optionally mirrored to AniList) -----------------
 

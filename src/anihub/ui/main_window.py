@@ -16,6 +16,7 @@ from anihub.ui.forge_controller import ForgeController
 from anihub.ui.library_view import LibraryView
 from anihub.ui.manga_controller import MangaController
 from anihub.ui.manga_page import MangaPage
+from anihub.ui.novels_page import NovelsPage
 from anihub.ui.sd_page import SDPage
 from anihub.ui.settings import SettingsPage
 from anihub.ui.navrail import NavRail
@@ -74,16 +75,18 @@ class MainWindow(QMainWindow):
         self.manga_ctrl.autostart_if_enabled()
 
         self.anime_page = AnimePage(ctx)
+        self.novels_page = NovelsPage(ctx)
         self.settings = SettingsPage(ctx)
         self.settings.saved.connect(self.library.reload)
 
         self.pages = QStackedWidget()
         sections = [
             (tr("nav.arts"), arts), (tr("nav.manga"), self.manga_page), (tr("nav.sd"), self.sd_page),
-            (tr("nav.anime"), self.anime_page), (tr("nav.settings"), self.settings),
+            (tr("nav.anime"), self.anime_page), (tr("nav.novels"), self.novels_page),
+            (tr("nav.settings"), self.settings),
         ]
         self.nav = NavRail()
-        nav_icons = ["image", "book", "sparkles", "tv", "sliders"]
+        nav_icons = ["image", "book", "sparkles", "tv", "file-text", "sliders"]
         for i, ((title, page), icon_name) in enumerate(zip(sections, nav_icons)):
             self.nav.add_item(title, icon_name, bottom=(i == len(sections) - 1))  # settings sit at the bottom
             self.pages.addWidget(page)
