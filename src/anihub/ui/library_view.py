@@ -20,6 +20,7 @@ from anihub.sources.base import RATINGS, VIDEO_EXTS, badge_for_ext
 from anihub.ui import icons, style, theme
 from anihub.ui.grid import PAYLOAD, ThumbGrid, image_to_thumb
 from anihub.ui.library_dialogs import DuplicatesDialog, ImportDialog, TagEditDialog, TagManagerDialog
+from anihub.ui.compare import CompareDialog
 from anihub.ui.rules_dialog import RulesDialog
 from anihub.ui.tag_widgets import tag_line_edit
 from anihub.ui.tagquery import apply_tag
@@ -499,11 +500,19 @@ class LibraryView(QWidget):
         menu.addAction(tr("lib.unfavorite") if all_fav else tr("lib.favorite"),
                        lambda: (db.set_field(ids, "favorite", 0 if all_fav else 1),
                                 self._after(self.mode[0] == "favorites", ids)))
+        if len(rows) == 2 and all(r["ext"] not in ("mp4", "webm", "mkv", "mov") for r in rows):
+            menu.addAction(tr("compare.action"), lambda: self._compare(rows))
         if len(rows) == 1:
             menu.addAction(tr("lib.to_img2img"), lambda: self.send_to_img2img.emit(dict(rows[0])))
             menu.addAction(tr("lib.show_folder"), lambda: os.startfile(self._file_of(rows[0]).parent))
         menu.addSeparator()
         menu.addAction(tr("lib.trash_action"), lambda: self._trash(ids))
+
+    def _compare(self, rows: list[sqlite3.Row]) -> None:
+        first, second = sorted(rows, key=lambda r: (r["added_at"], r["id"]))  # the older one is the "before"
+        dlg = CompareDialog((self._file_of(first), first["path"].rsplit("/", 1)[-1]),
+                            (self._file_of(second), second["path"].rsplit("/", 1)[-1]), self)
+        dlg.exec()
 
     def _after(self, affects_filter: bool, ids: list[int] | None = None) -> None:
         """Refresh after a change: in place (keeps the scroll position) unless it can alter what is listed."""
