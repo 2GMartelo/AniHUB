@@ -13,7 +13,9 @@ from PySide6.QtWidgets import (
 from anihub.context import AppContext
 from anihub.core.i18n import tr
 from anihub.ui.manga_controller import MangaController
+from anihub.ui import style
 from anihub.ui.manga_reader import Reader
+from anihub.ui.manga_tracking import TrackDialog
 from anihub.ui.workers import run_async
 
 ID_ROLE = Qt.ItemDataRole.UserRole
@@ -52,9 +54,10 @@ class MangaDetail(QWidget):
         self.category = QComboBox()
         self.refresh_btn = QPushButton(tr("manga.refresh"))
         self.read_btn = QPushButton(tr("manga.read"))
+        self.track_btn = style.secondary(QPushButton(tr("track.button")), "clock")
         self.read_btn.setStyleSheet("font-weight: bold; padding: 8px;")
         left = QVBoxLayout()
-        for w in (self.cover, self.library_btn, self.category, self.refresh_btn, self.read_btn):
+        for w in (self.cover, self.library_btn, self.category, self.refresh_btn, self.track_btn, self.read_btn):
             left.addWidget(w)
         left.addStretch(1)
 
@@ -96,6 +99,7 @@ class MangaDetail(QWidget):
         self.category.activated.connect(self._category_chosen)
         self.refresh_btn.clicked.connect(lambda: self.load(refresh=True))
         self.read_btn.clicked.connect(self._continue)
+        self.track_btn.clicked.connect(self._tracking)
         self.tree.itemDoubleClicked.connect(lambda item: self._open_reader(item.data(1, ID_ROLE)))
         self.tree.customContextMenuRequested.connect(self._menu)
         self.btn_read.clicked.connect(lambda: self._mark(True))
@@ -252,12 +256,21 @@ class MangaDetail(QWidget):
     def _selected_ids(self) -> list[int]:
         return [it.data(1, ID_ROLE) for it in self.tree.selectedItems()]
 
+    def _tracking(self) -> None:
+        if self.manga:
+            TrackDialog(self.api, self.manga, self).exec()
+
     def _mark(self, read: bool) -> None:
         ids = self._selected_ids()
         if not ids:
             return
-        run_async(lambda: self.api.update_chapters(ids, is_read=read, last_page_read=0 if not read else None),
-                  on_done=lambda _: (self.load_quiet(), self.changed.emit()),
+        mid = self.manga_id
+
+        def work() -> None:
+            self.api.update_chapters(ids, is_read=read, last_page_read=0 if not read else None)
+            self.api.sync_tracking(mid)
+
+        run_async(work, on_done=lambda _: (self.load_quiet(), self.changed.emit()),
                   on_error=lambda exc: self.status.setText(tr("status.error", msg=str(exc))))
 
     def _download(self) -> None:

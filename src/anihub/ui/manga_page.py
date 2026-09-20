@@ -11,6 +11,7 @@ from anihub.core.i18n import tr
 from anihub.services.procservice import ServiceState
 from anihub.ui.manga_controller import MangaController
 from anihub.ui.manga_detail import MangaDetail
+from anihub.ui.manga_tracking import TrackerAccountsDialog
 from anihub.ui.manga_views import MangaBrowseTab, MangaExtensionsTab, MangaLibraryTab, MangaUpdatesTab
 from anihub.ui import style
 from anihub.ui.sd_page import ForgeLogDialog
@@ -30,13 +31,15 @@ class MangaPage(QWidget):
         self.start_btn = style.primary(QPushButton(tr("manga.start")), "play")
         self.stop_btn = style.secondary(QPushButton(tr("manga.stop")), "stop")
         self.log_btn = style.ghost(QPushButton(tr("sd.log")), "list")
+        self.trackers_btn = style.secondary(QPushButton(tr("track.accounts")), "user")
+        self.trackers_btn.setVisible(False)
         self.autostart = QCheckBox(tr("manga.autostart"), checked=bool(ctx.cfg.get("manga.autostart")))
         self.error = QLabel()
         style.role(self.error, "error")
         self.error.setWordWrap(True)
         bar = QHBoxLayout()
         bar.setSpacing(8)
-        for w in (self.chip, self.start_btn, self.stop_btn, self.log_btn, self.autostart):
+        for w in (self.chip, self.start_btn, self.stop_btn, self.log_btn, self.trackers_btn, self.autostart):
             bar.addWidget(w)
         bar.addStretch(1)
 
@@ -88,6 +91,7 @@ class MangaPage(QWidget):
         self.start_btn.clicked.connect(self._start)
         self.stop_btn.clicked.connect(ctrl.stop)
         self.log_btn.clicked.connect(lambda: ForgeLogDialog(ctrl, self).show())
+        self.trackers_btn.clicked.connect(lambda: TrackerAccountsDialog(ctx.suwayomi.api, self).exec())
         self.autostart.toggled.connect(lambda v: ctx.cfg.set("manga.autostart", v))
         self.install_btn.clicked.connect(self._install)
         self.cancel_btn.clicked.connect(ctrl.cancel_install)
@@ -116,6 +120,7 @@ class MangaPage(QWidget):
         self.stop_btn.setToolTip(tr("forge.external_hint") if s == ServiceState.EXTERNAL else "")
         self.banner.setVisible(not s.ready)
         self.tabs.setVisible(s.ready)
+        self.trackers_btn.setVisible(s.ready)
         if s == ServiceState.FAILED:
             self.error.setText(tr("forge.failed_hint"))
         elif s.ready:

@@ -465,7 +465,14 @@ class Reader(QWidget):
         self._marked_read = True
         cid = self.chapter["id"]
         self.chapter["isRead"] = True
-        run_async(lambda: self.api.update_chapters([cid], is_read=True), on_done=lambda _: self._notify())
+        manga_id = self.manga.get("id")
+
+        def work() -> None:
+            self.api.update_chapters([cid], is_read=True)
+            if manga_id is not None:
+                self.api.sync_tracking(manga_id)          # MyAnimeList / AniList / Kitsu, when the title is bound
+
+        run_async(work, on_done=lambda _: self._notify())
 
     def _save_progress(self) -> None:
         if not self.pages:

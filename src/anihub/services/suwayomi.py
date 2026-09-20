@@ -115,6 +115,20 @@ EXTENSION_FIELDS = ("pkgName name lang versionName isInstalled hasUpdate isObsol
                     "source { nodes { id displayName lang } }")
 SOURCE_FIELDS = "id displayName lang name supportsLatest iconUrl isConfigurable extension { pkgName contentWarning }"
 CATEGORY_FIELDS = "id name order default"
+TRACKER_FIELDS = "id name isLoggedIn isTokenExpired authUrl icon scores statuses { name value } supportsTrackDeletion"
+TRACK_FIELDS = ("id trackerId remoteId title status lastChapterRead totalChapters score displayScore remoteUrl "
+                "tracker { name scores statuses { name value } }")
+
+
+def oauth_callback(tracker_name: str, pasted: str) -> str:
+    """What the tracker login expects: the full URL the browser was redirected to. A bare token/code is wrapped into
+    that shape (AniList returns `#access_token=...`, MyAnimeList `?code=...`)."""
+    text = pasted.strip()
+    if not text or "=" in text or "://" in text:
+        return text
+    if "anilist" in tracker_name.lower():
+        return f"https://anihub.invalid/#access_token={text}"
+    return f"https://anihub.invalid/?code={text}"
 
 # Every filter/preference type reports its value under `default` / `currentValue` with a different GraphQL type,
 # so each one needs its own alias.
@@ -339,6 +353,61 @@ class SuwayomiApi:
         if patch and ids:
             self.gql("mutation($ids:[Int!]!,$p:UpdateChapterPatchInput!){ updateChapters(input:{ids:$ids, patch:$p})"
                      "{ clientMutationId } }", {"ids": ids, "p": patch})
+
+    # -- trackers (MyAnimeList, AniList, Kitsu...: Suwayomi keeps the accounts and syncs reading progress)
+
+    def trackers(self) -> list[dict]:
+        return self.gql("{ trackers { nodes { %s } } }" % TRACKER_FIELDS)["trackers"]["nodes"]
+
+    def tracker_login_oauth(self, tracker_id: int, callback_url: str) -> bool:
+        return self.gql("mutation($t:Int!,$c:String!){ loginTrackerOAuth(input:{trackerId:$t,callbackUrl:$c}){ isLoggedIn } }",
+                        {"t": tracker_id, "c": callback_url})["loginTrackerOAuth"]["isLoggedIn"]
+
+    def tracker_login_credentials(self, tracker_id: int, username: str, password: str) -> bool:
+        return self.gql("mutation($t:Int!,$u:String!,$p:String!){ loginTrackerCredentials(input:{trackerId:$t,username:$u,"
+                        "password:$p}){ isLoggedIn } }", {"t": tracker_id, "u": username, "p": password})[
+            "loginTrackerCredentials"]["isLoggedIn"]
+
+    def tracker_logout(self, tracker_id: int) -> None:
+        self.gql("mutation($t:Int!){ logoutTracker(input:{trackerId:$t}){ isLoggedIn } }", {"t": tracker_id})
+
+    def track_search(self, tracker_id: int, query: str) -> list[dict]:
+        return self.gql("query($i:SearchTrackerInput!){ searchTracker(input:$i){ trackSearches{ remoteId title coverUrl summary "
+                        "publishingStatus publishingType totalChapters trackingUrl } } }",
+                        {"i": {"trackerId": tracker_id, "query": query}}, timeout=60)["searchTracker"]["trackSearches"]
+
+    def track_records(self, manga_id: int) -> list[dict]:
+        return self.gql("query($id:Int!){ manga(id:$id){ trackRecords { nodes { %s } } } }" % TRACK_FIELDS,
+                        {"id": manga_id})["manga"]["trackRecords"]["nodes"]
+
+    def track_bind(self, manga_id: int, tracker_id: int, remote_id: str) -> dict:
+        return self.gql("mutation($i:BindTrackInput!){ bindTrack(input:$i){ trackRecord { %s } } }" % TRACK_FIELDS,
+                        {"i": {"mangaId": manga_id, "trackerId": tracker_id, "remoteId": str(remote_id)}},
+                        timeout=60)["bindTrack"]["trackRecord"]
+
+    def track_update(self, record_id: int, *, status: int | None = None, last_chapter_read: float | None = None,
+                     score: str | None = None) -> dict | None:
+        patch = {k: v for k, v in (("status", status), ("lastChapterRead", last_chapter_read), ("scoreString", score))
+                 if v is not None}
+        return self.gql("mutation($i:UpdateTrackInput!){ updateTrack(input:$i){ trackRecord { %s } } }" % TRACK_FIELDS,
+                        {"i": {"recordId": record_id, **patch}}, timeout=60)["updateTrack"]["trackRecord"]
+
+    def track_unbind(self, record_id: int, delete_remote: bool = False) -> None:
+        self.gql("mutation($i:UnbindTrackInput!){ unbindTrack(input:$i){ clientMutationId } }",
+                 {"i": {"recordId": record_id, "deleteRemoteTrack": delete_remote}})
+
+    def track_progress(self, manga_id: int) -> None:
+        """Push the chapters read so far to every tracker this title is bound to."""
+        self.gql("mutation($id:Int!){ trackProgress(input:{mangaId:$id}){ clientMutationId } }", {"id": manga_id}, timeout=60)
+
+    def sync_tracking(self, manga_id: int) -> None:
+        """track_progress() for the automatic case: never raises (no tracker bound, server hiccup, offline...)."""
+        if not self.cfg.get("manga.track_auto", True):
+            return
+        try:
+            self.track_progress(manga_id)
+        except Exception as exc:  # noqa: BLE001 - reading must never fail because a tracker did
+            log.info("tracker sync skipped for manga %s: %s", manga_id, exc)
 
     # -- library / categories
 
