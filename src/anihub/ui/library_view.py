@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QBrush, QColor, QIcon, QImage, QPixmap
@@ -236,6 +237,7 @@ class LibraryView(QWidget):
             menu.addAction(tr("lib.delete"), lambda: self._delete_named("category", value))
         elif kind_ == "collection":
             menu.addAction(tr("lib.rename"), lambda: self._rename_named("collection", value))
+            menu.addAction(tr("export.collection"), lambda: self._export_collection(value))
             menu.addAction(tr("lib.delete"), lambda: self._delete_named("collection", value))
         elif kind_ == "smart":
             menu.addAction(tr("tags.manager") + "...", self._tag_manager)
@@ -304,6 +306,7 @@ class LibraryView(QWidget):
         m.addAction(tr("lib.autotag_all"), self._autotag_untagged)
         m.addAction(tr("integrity.title") + "...", self._integrity)
         m.addAction(tr("stats.title") + "...", self._stats)
+        m.addAction(tr("export.import_pack"), self._import_pack)
         m.addSeparator()
         m.addAction(tr("lib.empty_trash"), self._empty_trash)
 
@@ -312,6 +315,48 @@ class LibraryView(QWidget):
         dlg.changed.connect(lambda: (self.refresh_sidebar(), self.reload()))
         dlg.exec()
         self.refresh_sidebar()
+
+    # --- export / share (п. 6.16, 6.18) ---------------------------------------------------------------------
+
+    def _export_collection(self, collection_id: int) -> None:
+        rows = self.ctx.db.search_items(kind=self.kind, collection_id=collection_id, limit=100000)
+        name = next((c["name"] for c in self.ctx.db.collections(self.kind) if c["id"] == collection_id), "collection")
+        self._export([r["id"] for r in rows], "pack", name)
+
+    def _export(self, ids: list[int], how: str, name: str = "") -> None:
+        from PySide6.QtWidgets import QFileDialog
+
+        from anihub.services import export
+
+        title = name or tr("export.default_name")
+        path, _ = QFileDialog.getSaveFileName(self, tr("export.menu"), f"{title}.zip", "ZIP (*.zip)")
+        if not path:
+            return
+        db, paths = self.ctx.db, self.ctx.paths
+        fn = export.export_pack if how == "pack" else export.export_html
+        self.status.setText(tr("status.loading"))
+        run_async(lambda: fn(db, paths, ids, Path(path), title),
+                  on_done=lambda n: self.status.setText(tr("export.done", n=n, path=path)),
+                  on_error=lambda exc: self.status.setText(tr("status.error", msg=str(exc))))
+
+    def _import_pack(self) -> None:
+        from PySide6.QtWidgets import QFileDialog
+
+        from anihub.services import export
+
+        path, _ = QFileDialog.getOpenFileName(self, tr("export.import_pack"), "", "ZIP (*.zip)")
+        if not path:
+            return
+        self.status.setText(tr("status.loading"))
+
+        def done(result: dict) -> None:
+            self.status.setText(tr("export.imported", name=result["name"], saved=result["saved"], dup=result["duplicate"], failed=result["failed"]))
+            self.refresh_sidebar()
+            self.reload()
+            self.changed.emit()
+
+        run_async(lambda: export.import_pack(self.ctx.db, self.ctx.library, Path(path)), on_done=done,
+                  on_error=lambda exc: self.status.setText(tr("status.error", msg=str(exc))))
 
     def _stats(self) -> None:
         StatsDialog(self.ctx, self).exec()
@@ -514,6 +559,9 @@ class LibraryView(QWidget):
                                 self._after(self.mode[0] == "favorites", ids)))
         if len(rows) == 2 and all(r["ext"] not in ("mp4", "webm", "mkv", "mov") for r in rows):
             menu.addAction(tr("compare.action"), lambda: self._compare(rows))
+        export = menu.addMenu(tr("export.menu"))
+        export.addAction(tr("export.pack"), lambda: self._export(ids, "pack"))
+        export.addAction(tr("export.html"), lambda: self._export(ids, "html"))
         if len(rows) == 1:
             menu.addAction(tr("lib.to_img2img"), lambda: self.send_to_img2img.emit(dict(rows[0])))
             menu.addAction(tr("lib.show_folder"), lambda: os.startfile(self._file_of(rows[0]).parent))
