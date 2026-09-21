@@ -198,7 +198,10 @@ class FilterPanel(QFrame):
         while self.content_layout.count():
             item = self.content_layout.takeAt(0)
             widget = item.widget()
-            if widget is not None:
+            if widget is self.empty:
+                widget.hide()               # kept for reuse: it must not be deleted with the other widgets
+                widget.setParent(None)
+            elif widget is not None:
                 widget.hide()               # deleteLater() alone leaves it painted (and overlapping) until the next event loop turn
                 widget.setParent(None)
                 widget.deleteLater()

@@ -286,3 +286,20 @@ def test_add_from_viewer_keeps_it_open_and_extends_the_query():
     from anihub.ui.tagquery import apply_tag
 
     assert apply_tag("cat", "dog", "add") == "cat dog" and apply_tag("cat dog", "dog", "exclude") == "cat -dog"
+
+
+def test_filter_panel_can_be_emptied_repeatedly(qapp, nodes):
+    """Switching sources without filters used to delete the "no filters" label and crash on the next switch."""
+    from PySide6.QtCore import QCoreApplication, QEvent
+
+    from anihub.ui.manga_filters import FilterPanel
+
+    panel = FilterPanel()
+    for _ in range(3):
+        panel.set_filters([])
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    panel.set_filters(nodes)
+    panel.set_filters([])
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    panel.set_filters([])
+    assert not panel.empty.isHidden() and panel.content_layout.indexOf(panel.empty) >= 0
