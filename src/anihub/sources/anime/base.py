@@ -46,6 +46,9 @@ class AnimeSource(ABC):
     name: str                      # registry key
     title: str                     # shown in the UI
     needs_network: bool = True     # False = works in offline mode
+    lang: str = "multi"            # ISO 639-1 code of the audio/subtitles the site offers ("en", "ru", "ja"...) or "multi"
+    nsfw: bool = False             # adult site: hidden unless the 18+ age mode is on
+    version: str = "1"
 
     def __init__(self, http: HttpClient, cfg: Config):
         self.http, self.cfg = http, cfg

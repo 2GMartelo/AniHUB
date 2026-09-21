@@ -173,6 +173,9 @@ QToolButton#offlineToggle { border-radius: 10px; padding: 3px 10px; color: $dim;
 QToolButton#offlineToggle:checked { background: $soft; color: $text; }
 QToolButton[tagbtn="true"] { background: $surface2; border: 0; border-radius: 7px; padding: 0; color: $dim; font-weight: 700; }
 QToolButton[tagbtn="true"]:hover { background: $soft; border-color: $accent; color: $accent_text; }
+QToolButton[chipbtn="true"] { background: $surface2; border: 1px solid transparent; border-radius: 10px; padding: 7px 26px 7px 14px; color: $text; }
+QToolButton[chipbtn="true"]:hover { background: $surface3; }
+QToolButton[chipbtn="true"]::menu-indicator { image: url("$chevron_down"); subcontrol-position: right center; subcontrol-origin: padding; right: 8px; width: 12px; height: 12px; }
 QToolButton[section="true"] { background: transparent; border: 0; padding: 4px 2px; font-weight: 600; color: $text; text-align: left; }
 QToolButton[section="true"]:hover { color: $accent_text; }
 QPushButton[chip="true"] { border-radius: 14px; padding: 4px 12px; min-height: 0; background: $surface2; border: 1px solid transparent; color: $dim; }

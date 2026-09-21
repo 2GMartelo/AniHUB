@@ -96,6 +96,44 @@ class NovelShelf:
             book.close()
         return "saved"
 
+    # --- online novels ---------------------------------------------------------------------------------------
+
+    @staticmethod
+    def is_online(row) -> bool:
+        return row["source"] is not None
+
+    def add_online(self, source: str, entry, chapters, cover: bytes | None = None) -> int:
+        """Puts an online title on the shelf (once); returns its id. The chapter list is kept, so it opens without the network."""
+        from anihub.library.online_novels import remote_json
+
+        row = self.db.novel_by_remote(source, entry.id)
+        if row is not None:
+            self.db.novel_update(row["id"], remote=remote_json(entry, chapters), chapters=len(chapters))
+            return row["id"]
+        novel_id = self.db.novel_add(title=entry.title, author=entry.author or None, path="", ext="online",
+                                     sha256=f"online:{source}:{entry.id}", chapters=len(chapters), source=source,
+                                     remote_id=entry.id, remote=remote_json(entry, chapters))
+        jpeg = cover_jpeg(cover)
+        if jpeg:
+            file = self.paths.novels / "covers" / f"{novel_id}.jpg"
+            file.parent.mkdir(parents=True, exist_ok=True)
+            file.write_bytes(jpeg)
+            self.db.novel_update(novel_id, cover=file.relative_to(self.paths.root).as_posix())
+        return novel_id
+
+    def replace_with_file(self, online_row, epub: Path) -> int | None:
+        """A downloaded EPUB takes the place of the online entry (progress moves with it). Returns the new id."""
+        sha = _sha256(epub)
+        if self.import_one(epub) not in ("saved", "duplicate"):
+            return None
+        new = self.db.novel_by_hash(sha)
+        if new is None:
+            return None
+        self.db.novel_update(new["id"], chapter_index=online_row["chapter_index"], scroll=online_row["scroll"],
+                             last_read_at=online_row["last_read_at"], finished=online_row["finished"])
+        self.delete(online_row["id"])
+        return new["id"]
+
     def file_of(self, row) -> Path:
         return self.paths.root / row["path"]
 

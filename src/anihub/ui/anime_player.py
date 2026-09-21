@@ -28,10 +28,14 @@ def fmt(ms: int) -> str:
     return f"{s // 3600}:{s % 3600 // 60:02d}:{s % 60:02d}" if s >= 3600 else f"{s // 60}:{s % 60:02d}"
 
 
-def stream_url(stream: Stream) -> QUrl:
-    """Local paths become file URLs, everything else is used as is."""
+def stream_url(stream: Stream, http=None) -> QUrl:
+    """Local paths become file URLs; streams that need headers go through the local proxy (the player cannot send headers)."""
     if "://" not in stream.url:
         return QUrl.fromLocalFile(str(Path(stream.url)))
+    if stream.headers and http is not None:
+        from anihub.net.streamproxy import proxy_for
+
+        return QUrl(proxy_for(http).url_for(stream.url, stream.headers))
     return QUrl(stream.url)
 
 
@@ -196,10 +200,8 @@ class AnimePlayer(QWidget):
 
     def play_stream(self, stream: Stream) -> None:
         self.message.clear()
-        if stream.headers and not self.ctx.cfg.get("anime.external_player", ""):
-            self.message.setText(tr("watch.needs_headers"))
         self._seek_to = self.watch.resume_ms(self.source.name, self.entry.id, self.episode)
-        self.player.setSource(stream_url(stream))
+        self.player.setSource(stream_url(stream, self.ctx.http))
         self.player.setPlaybackRate(self.speed.currentData())
         self.player.play()
 
@@ -207,7 +209,7 @@ class AnimePlayer(QWidget):
         stream = self.quality.currentData()
         if stream is not None:
             self._seek_to = self.player.position()
-            self.player.setSource(stream_url(stream))
+            self.player.setSource(stream_url(stream, self.ctx.http))
             self.player.play()
 
     def open_external(self) -> None:

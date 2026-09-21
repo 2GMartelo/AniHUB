@@ -75,9 +75,9 @@ def test_plugins_are_loaded_and_broken_ones_are_skipped(tmp_path):
     (folder / "noclass.py").write_text("X = 1", encoding="utf-8")
     assert [c.name for c in load_plugins(folder)] == ["demo"]
     sources = build_anime_sources(None, None, tmp_path / "anime", folder)
-    assert list(sources) == ["local", "demo"] and sources["demo"].search("x")[0][0].title == "Demo x"
+    assert list(sources) == ["local", "anilibria", "demo"] and sources["demo"].search("x")[0][0].title == "Demo x"
     (folder / "clash.py").write_text(PLUGIN.replace("Demo", "Demo2"), encoding="utf-8")          # same name "demo": ignored
-    assert list(build_anime_sources(None, None, tmp_path / "anime", folder)) == ["local", "demo"]
+    assert list(build_anime_sources(None, None, tmp_path / "anime", folder)) == ["local", "anilibria", "demo"]
     assert load_plugins(tmp_path / "missing") == []
 
 

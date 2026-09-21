@@ -22,7 +22,10 @@ from anihub.services.subscriptions import SubscriptionService
 from anihub.services.updater import Updater
 from anihub.services.suwayomi import SuwayomiManager
 from anihub.sources import build_sources
+from anihub.services.extensions import ExtensionManager
 from anihub.sources.anime import build_anime_sources
+from anihub.sources.novels import build_novel_sources
+from anihub.sources.novels.base import NovelSource
 from anihub.sources.anime.base import AnimeSource
 from anihub.sources.base import Source
 
@@ -47,6 +50,8 @@ class AppContext:
     updater: Updater
     downloads: DownloadManager
     subscriptions: SubscriptionService
+    novel_sources: dict[str, NovelSource]
+    extensions: ExtensionManager
 
     @classmethod
     def build(cls, cfg: Config) -> "AppContext":
@@ -62,13 +67,23 @@ class AppContext:
                   SuwayomiManager(cfg, config_dir() / "suwayomi", paths.manga / "suwayomi", config_dir() / "logs"),
                   Autotagger(model_dir_default(config_dir())), AniList(http, cfg, db), NovelShelf(db, paths),
                   build_anime_sources(http, cfg, paths.anime, config_dir() / "plugins" / "anime"), None,
-                  Updater(http, cfg), None, None)
+                  Updater(http, cfg), None, None, build_novel_sources(http, cfg, config_dir() / "plugins" / "novels"),
+                  ExtensionManager(http, cfg, config_dir() / "plugins"))
         ctx.watch = WatchService(db, ctx.anilist)
         ctx.downloads = DownloadManager(ctx.library, http, cfg)
         ctx.subscriptions = SubscriptionService(db, ctx.sources, ctx.downloads, cfg)
         ctx.refresh_tagger()
         ctx.refresh_filter()
         return ctx
+
+    def reload_extensions(self) -> None:
+        """Re-read the plugin folders (after an extension was installed, updated or removed)."""
+        fresh = build_anime_sources(self.http, self.cfg, self.paths.anime, config_dir() / "plugins" / "anime")
+        self.anime_sources.clear()
+        self.anime_sources.update(fresh)
+        novels = build_novel_sources(self.http, self.cfg, config_dir() / "plugins" / "novels")
+        self.novel_sources.clear()
+        self.novel_sources.update(novels)
 
     def refresh_filter(self) -> None:
         """Apply the age mode and the user's tag filter (call after either changed)."""

@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 from typing import Iterable
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 
 SD_TABLES = '''
 CREATE TABLE sd_presets (
@@ -46,7 +46,8 @@ CREATE TABLE anime_list (
 CREATE INDEX idx_anime_status ON anime_list(status, updated_at);
 '''
 
-NOVEL_TABLE = '''
+# the shape migration 6 created; migration 9 adds the online columns
+NOVEL_TABLE_V6 = '''
 CREATE TABLE novels (
     id INTEGER PRIMARY KEY, title TEXT NOT NULL, author TEXT,
     path TEXT NOT NULL,                           -- relative to the library root
@@ -54,6 +55,17 @@ CREATE TABLE novels (
     chapters INTEGER NOT NULL DEFAULT 0, added_at REAL NOT NULL, last_read_at REAL,
     chapter_index INTEGER NOT NULL DEFAULT 0, scroll REAL NOT NULL DEFAULT 0,   -- where the reader stopped
     finished INTEGER NOT NULL DEFAULT 0);
+'''
+
+NOVEL_TABLE = '''
+CREATE TABLE novels (
+    id INTEGER PRIMARY KEY, title TEXT NOT NULL, author TEXT,
+    path TEXT NOT NULL,                           -- relative to the library root
+    ext TEXT NOT NULL, sha256 TEXT NOT NULL UNIQUE, cover TEXT,   -- cover: relative path of a jpg, if the book has one
+    chapters INTEGER NOT NULL DEFAULT 0, added_at REAL NOT NULL, last_read_at REAL,
+    chapter_index INTEGER NOT NULL DEFAULT 0, scroll REAL NOT NULL DEFAULT 0,   -- where the reader stopped
+    finished INTEGER NOT NULL DEFAULT 0,
+    source TEXT, remote_id TEXT, remote TEXT);        -- online novels (path is empty, sha256 is "online:<source>:<id>")
 '''
 
 WATCH_TABLES = '''
@@ -104,9 +116,14 @@ MIGRATIONS = {
     3: SD_TABLES,
     4: RULES_TABLE,
     5: ANIME_TABLE,
-    6: NOVEL_TABLE,
+    6: NOVEL_TABLE_V6,
     7: WATCH_TABLES,
     8: SUBSCRIPTION_TABLE,
+    9: """
+        ALTER TABLE novels ADD COLUMN source TEXT;        -- online novels: the source plugin and the title's id there
+        ALTER TABLE novels ADD COLUMN remote_id TEXT;
+        ALTER TABLE novels ADD COLUMN remote TEXT;        -- JSON: {"entry": ..., "chapters": [...]} (opens without the network)
+    """,
 }
 
 SCHEMA = """
@@ -607,6 +624,9 @@ class Database:
     def novel_by_hash(self, sha256: str) -> sqlite3.Row | None:
         return self.conn.execute("SELECT * FROM novels WHERE sha256=?", (sha256,)).fetchone()
 
+    def novel_by_remote(self, source: str, remote_id: str) -> sqlite3.Row | None:
+        return self.conn.execute("SELECT * FROM novels WHERE source=? AND remote_id=?", (source, remote_id)).fetchone()
+
     def novel_add(self, **fields) -> int:
         fields.setdefault("added_at", time.time())
         with self.conn:
@@ -614,7 +634,7 @@ class Database:
                                      list(fields.values())).lastrowid
 
     def novel_update(self, novel_id: int, **fields) -> None:
-        allowed = {"title", "author", "cover", "chapters", "last_read_at", "chapter_index", "scroll", "finished"}
+        allowed = {"title", "author", "cover", "chapters", "last_read_at", "chapter_index", "scroll", "finished", "remote"}
         if set(fields) - allowed:
             raise ValueError(f"cannot update {sorted(set(fields) - allowed)}")
         if fields:

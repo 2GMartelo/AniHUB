@@ -96,6 +96,15 @@ def apply_mode(cfg: Config, mode: str, save: bool = True) -> None:
         cfg.save()
 
 
+def max_age(cfg: Config) -> int:
+    """The highest site age mark (6+, 12+, 16+, 18+) that the current mode lets through."""
+    return int(mode_of(cfg))
+
+
+def age_ok(cfg: Config, age: int) -> bool:
+    return int(age or 0) <= max_age(cfg)
+
+
 def custom_tags(cfg: Config) -> list[str]:
     return parse_tags(" ".join(cfg.get("filter.custom_tags", []) or []))
 

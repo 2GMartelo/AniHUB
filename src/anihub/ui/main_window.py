@@ -19,7 +19,7 @@ from anihub.ui.forge_controller import ForgeController
 from anihub.ui.library_view import LibraryView
 from anihub.ui.manga_controller import MangaController
 from anihub.ui.manga_page import MangaPage
-from anihub.ui.novels_page import NovelsPage
+from anihub.ui.novels_online import NovelsHub
 from anihub.ui.subscriptions_view import SubscriptionsView
 from anihub.ui.sd_page import SDPage
 from anihub.ui.settings import SettingsPage
@@ -83,14 +83,15 @@ class MainWindow(QMainWindow):
         self.manga_ctrl.autostart_if_enabled()
 
         self.anime_page = AnimePage(ctx)
-        self.novels_page = NovelsPage(ctx)
+        self.novels_hub = NovelsHub(ctx)
+        self.novels_page = self.novels_hub.shelf
         self.settings = SettingsPage(ctx, quit_app=self.quit_app)
         self.settings.saved.connect(self.library.reload)
 
         self.pages = QStackedWidget()
         sections = [
             (tr("nav.arts"), arts), (tr("nav.manga"), self.manga_page), (tr("nav.sd"), self.sd_page),
-            (tr("nav.anime"), self.anime_page), (tr("nav.novels"), self.novels_page),
+            (tr("nav.anime"), self.anime_page), (tr("nav.novels"), self.novels_hub),
             (tr("nav.settings"), self.settings),
         ]
         self.nav = NavRail()

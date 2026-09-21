@@ -12,9 +12,11 @@ from PySide6.QtWidgets import (
 )
 
 from anihub.context import AppContext
+from anihub.core import agemode
 from anihub.core.i18n import tr
 from anihub.library.novel_store import collect_books
 from anihub.library.novels import BOOK_EXTS, Book, BookError, open_book
+from anihub.library.online_novels import download_epub, open_online
 from anihub.ui import style, theme
 from anihub.ui.grid import ThumbGrid, image_to_thumb
 from anihub.ui.workers import run_async
@@ -92,7 +94,8 @@ class NovelReader(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.resize(1000, 820)
-        self.book = open_book(ctx.novels.file_of(row))
+        self._loading = False                  # an online chapter is on its way: nothing to save yet
+        self.book = open_online(ctx.novel_sources, ctx.http, row) if ctx.novels.is_online(row) else open_book(ctx.novels.file_of(row))
         self.chapters = len(self.book)
         self.index = min(int(row["chapter_index"]), self.chapters - 1)
         self._pending_scroll = float(row["scroll"])
@@ -229,11 +232,17 @@ class NovelReader(QWidget):
         index = max(0, min(index, self.chapters - 1))
         self.index = index
         self.browser.reset_cache()
-        try:
-            body = self.book.chapter_html(index)
-        except (KeyError, BookError, OSError) as exc:
-            body = f"<p>{exc}</p>"
-        self.browser.setHtml(f"<html><body>{body}</body></html>")
+        if getattr(self.book, "remote", False) and not self.book.cached(index):
+            self._loading = True
+            self.browser.setHtml(f"<html><body><p>{tr('status.loading')}</p></body></html>")
+            self._fetch(index, scroll)
+        else:
+            try:
+                body = self.book.chapter_html(index)
+            except (KeyError, BookError, OSError) as exc:
+                body = f"<p>{exc}</p>"
+            self.browser.setHtml(f"<html><body>{body}</body></html>")
+            self._prefetch(index + 1)
         self.slider.blockSignals(True)
         self.slider.setValue(index)
         self.slider.blockSignals(False)
@@ -243,6 +252,28 @@ class NovelReader(QWidget):
         QTimer.singleShot(0, lambda: self._scroll_to(scroll))
         self._update_status()
         self.save_timer.start(1500)
+
+    def _fetch(self, index: int, scroll: float) -> None:
+        """Online books: the chapter is downloaded in a worker, then shown (if the reader is still on it)."""
+        def done(_result) -> None:
+            if index != self.index:
+                return
+            self._loading = False
+            self.browser.reset_cache()
+            self.browser.setHtml(f"<html><body>{self.book.chapter_html(index)}</body></html>")
+            QTimer.singleShot(0, lambda: self._scroll_to(scroll))
+            self._prefetch(index + 1)
+
+        def failed(exc: Exception) -> None:
+            if index == self.index:
+                self._loading = False
+                self.browser.setHtml(f"<html><body><p>{tr('status.error', msg=str(exc))}</p></body></html>")
+
+        run_async(lambda: self.book.fetch(index), on_done=done, on_error=failed)
+
+    def _prefetch(self, index: int) -> None:
+        if getattr(self.book, "remote", False) and 0 <= index < self.chapters and not self.book.cached(index):
+            run_async(lambda: self.book.fetch(index), on_done=lambda _r: None, on_error=lambda _e: None)
 
     def _scroll_to(self, ratio: float) -> None:
         bar = self.browser.verticalScrollBar()
@@ -261,6 +292,8 @@ class NovelReader(QWidget):
         self.status.setText(tr("novels.status", n=self.index + 1, total=self.chapters, pct=int(self._ratio() * 100)))
 
     def save(self) -> None:
+        if self._loading:
+            return
         self.ctx.novels.save_progress(self.novel_id, self.index, self._ratio(), self.chapters)
 
     # --- input ---------------------------------------------------------------------------------------
@@ -319,10 +352,13 @@ class NovelReader(QWidget):
 
 
 class NovelsPage(QWidget):
+    _download_progress = Signal(int, int)             # from the download worker thread
+
     def __init__(self, ctx: AppContext, parent=None):
         super().__init__(parent)
         self.ctx = ctx
         self._readers: list[NovelReader] = []
+        self._download_progress.connect(lambda done, total: self.status.setText(tr("novels.downloading", done=done, total=total)))
         self.import_btn = style.primary(QPushButton(tr("novels.import")), "plus")
         self.folder_btn = style.secondary(QPushButton(tr("novels.import_folder")), "folder")
         self.filter = QLineEdit(placeholderText=tr("novels.filter"))
@@ -352,8 +388,8 @@ class NovelsPage(QWidget):
     # --- shelf -----------------------------------------------------------------------------------------
 
     def reload(self) -> None:
-        rows = self.ctx.db.novels(self.filter.text().strip(), self.unfinished.isChecked())
-        total = len(self.ctx.db.novels())
+        rows = [r for r in self.ctx.db.novels(self.filter.text().strip(), self.unfinished.isChecked()) if self._visible(r)]
+        total = len([r for r in self.ctx.db.novels() if self._visible(r)])
         self.grid.clear_items()
         size = self.grid.thumb_size
         for row in rows:
@@ -370,6 +406,18 @@ class NovelsPage(QWidget):
         self.grid.setVisible(total > 0)
         self.empty.setVisible(total == 0)
         self.status.setText(tr("novels.count", n=len(rows)) if total else "")
+
+    def _visible(self, row) -> bool:
+        """Online titles follow the age mode and the tag filter of the moment (the mode may have been lowered since)."""
+        if not self.ctx.novels.is_online(row):
+            return True
+        try:
+            from anihub.library.online_novels import parse_remote
+
+            entry, _ = parse_remote(row["remote"])
+        except (ValueError, KeyError, TypeError):
+            return True
+        return agemode.age_ok(self.ctx.cfg, entry.age) and not self.ctx.blocker.blocked_in(entry.tags)
 
     def _import_files(self) -> None:
         exts = " ".join(f"*.{e}" for e in sorted(BOOK_EXTS))
@@ -423,10 +471,36 @@ class NovelsPage(QWidget):
         menu.addAction(tr("anime.open"), lambda: self.open_book(payload))
         menu.addAction(tr("novels.mark_unfinished") if row["finished"] else tr("novels.mark_finished"),
                        lambda: self._set_finished(row["id"], not row["finished"]))
-        menu.addAction(tr("lib.show_folder"), lambda: os.startfile(self.ctx.novels.file_of(row).parent))
+        if self.ctx.novels.is_online(row):
+            menu.addAction(tr("novels.download"), lambda: self._download(row))
+        else:
+            menu.addAction(tr("lib.show_folder"), lambda: os.startfile(self.ctx.novels.file_of(row).parent))
         menu.addSeparator()
         menu.addAction(tr("lib.delete"), lambda: self._delete(row))
         menu.exec(self.grid.viewport().mapToGlobal(pos))
+
+    def _download(self, row) -> None:
+        """An online title -> an EPUB on the shelf (read offline from now on; the reading place is kept)."""
+        import tempfile
+
+        book = open_online(self.ctx.novel_sources, self.ctx.http, row)
+        self.status.setText(tr("status.loading"))
+
+        def work():
+            with tempfile.TemporaryDirectory() as tmp:
+                epub = download_epub(book, Path(tmp) / f"{row['id']}.epub", lambda d, t: self._download_progress.emit(d, t))
+                return self.ctx.novels.replace_with_file(row, epub)
+
+        def done(new_id) -> None:
+            book.close()
+            self.reload()
+            self.status.setText(tr("novels.downloaded") if new_id else tr("status.error", msg="?"))
+
+        def failed(exc: Exception) -> None:
+            book.close()
+            self.status.setText(tr("status.error", msg=str(exc)))
+
+        run_async(work, on_done=done, on_error=failed)
 
     def _set_finished(self, novel_id: int, finished: bool) -> None:
         self.ctx.db.novel_update(novel_id, finished=int(finished))

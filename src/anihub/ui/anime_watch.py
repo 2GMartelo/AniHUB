@@ -15,13 +15,17 @@ from anihub.core.i18n import tr
 from anihub.sources.anime.base import AnimeEntry, AnimeSource, Episode
 from anihub.ui import style
 from anihub.ui.anime_player import AnimePlayer, fmt
+from anihub.ui.extensions_dialog import ExtensionsDialog
 from anihub.ui.grid import ThumbGrid, image_to_thumb
+from anihub.ui.lang_filter import LangFilter, lang_name
 from anihub.ui.novels_page import placeholder_cover
 from anihub.ui.workers import run_async
 
 
 def source_title(source: AnimeSource) -> str:
-    return tr("watch.local") if source.name == "local" else source.title
+    if source.name == "local":
+        return tr("watch.local")
+    return source.title if source.lang == "multi" else f"{source.title} · {lang_name(source.lang)}"
 
 
 class LinkDialog(QDialog):
@@ -97,11 +101,13 @@ class WatchTab(QWidget):
         self.query.setClearButtonEnabled(True)
         self.go = style.primary(QPushButton(tr("search.button")), "search")
         self.folder_btn = style.secondary(QPushButton(tr("watch.open_folder")), "folder")
+        self.lang_filter = LangFilter(ctx.cfg, "anime.langs")
+        self.ext_btn = style.secondary(QPushButton(tr("ext.button")), "layers")
         self.grid = ThumbGrid(ctx.cfg.get("ui.thumb_size", 180) + 20)
         self.status = QLabel()
         style.role(self.status, "dim")
         top = QHBoxLayout()
-        for w, s in ((self.source_box, 0), (self.query, 1), (self.go, 0), (self.folder_btn, 0)):
+        for w, s in ((self.source_box, 0), (self.lang_filter, 0), (self.query, 1), (self.go, 0), (self.ext_btn, 0), (self.folder_btn, 0)):
             top.addWidget(w, s)
         left = QWidget()
         ll = QVBoxLayout(left)
@@ -166,6 +172,8 @@ class WatchTab(QWidget):
 
         self.reload_sources()
         self.source_box.activated.connect(lambda _i: self.search())
+        self.lang_filter.changed.connect(lambda: (self.reload_sources(), self.search()))
+        self.ext_btn.clicked.connect(self._extensions)
         self.go.clicked.connect(self.search)
         self.query.returnPressed.connect(self.search)
         self.folder_btn.clicked.connect(self._open_folder)
@@ -184,9 +192,23 @@ class WatchTab(QWidget):
     # --- sources / search --------------------------------------------------------------------------------
 
     def reload_sources(self) -> None:
+        """The source list: adult sources only in the 18+ mode, online ones filtered by the chosen languages."""
+        adult = "explicit" in self.ctx.allowed_ratings()
+        sources = {n: s for n, s in self.ctx.anime_sources.items() if adult or not s.nsfw}
+        self.lang_filter.set_languages({s.lang for n, s in sources.items() if n != "local"})
+        current = self.source_box.currentData()
         self.source_box.clear()
-        for name, source in self.ctx.anime_sources.items():
-            self.source_box.addItem(source_title(source), name)
+        for name, source in sources.items():
+            if name == "local" or self.lang_filter.accepts(source.lang):
+                self.source_box.addItem(source_title(source), name)
+        if current is not None:
+            self.source_box.setCurrentIndex(max(self.source_box.findData(current), 0))
+
+    def _extensions(self) -> None:
+        dlg = ExtensionsDialog(self.ctx, self.ctx.extensions, ("anime",), lambda: self.ctx.anime_sources, self)
+        dlg.exec()
+        if dlg.changed:
+            self.reload_sources()
 
     def source(self) -> AnimeSource | None:
         return self.ctx.anime_sources.get(self.source_box.currentData())
