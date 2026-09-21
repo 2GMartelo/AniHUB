@@ -57,9 +57,9 @@ def test_unseen_errors_are_reported_once():
 
 
 def test_issue_url_is_prefilled_and_bounded():
-    url = bugreport.issue_url("2GAlice/AniHUB", "Crash & burn", "body\nwith lines")
+    url = bugreport.issue_url("2GMartelo/AniHUB", "Crash & burn", "body\nwith lines")
     parts = urlsplit(url)
-    assert parts.path == "/2GAlice/AniHUB/issues/new"
+    assert parts.path == "/2GMartelo/AniHUB/issues/new"
     query = parse_qs(parts.query)
     assert query["title"] == ["Crash & burn"] and query["body"] == ["body\nwith lines"]
     long = bugreport.issue_url("a/b", "t", "x" * 20000)
@@ -109,5 +109,5 @@ def test_dialog_builds_edits_and_copies(qapp, monkeypatch):
     dlg.copy()
     assert "Something broke" in QGuiApplication.clipboard().text()
     dlg.open_issue()
-    assert opened and opened[0].startswith("https://github.com/2GAlice/AniHUB/issues/new?title=Something%20broke")
+    assert opened and opened[0].startswith("https://github.com/2GMartelo/AniHUB/issues/new?title=Something%20broke")
     dlg.close()
