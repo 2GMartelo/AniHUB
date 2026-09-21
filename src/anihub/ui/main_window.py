@@ -128,6 +128,18 @@ class MainWindow(QMainWindow):
         self.settings.about.update_found.connect(self._update_found)
         QTimer.singleShot(6000, self._auto_check_updates)          # after startup, in the background
         QTimer.singleShot(20000, self._auto_backup)
+        self.error_btn = QToolButton()
+        self.error_btn.setObjectName("updateNotice")
+        self.error_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.error_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.error_btn.setText(tr("bug.notice"))
+        style.bind_icon(self.error_btn, "zap", "danger", 16)
+        self.error_btn.hide()
+        self.error_btn.clicked.connect(self._report_error)
+        self.statusBar().insertPermanentWidget(0, self.error_btn)
+        self._error_timer = QTimer(self)
+        self._error_timer.timeout.connect(self._check_errors)
+        self._error_timer.start(2000)
         if ctx.cfg.get("backup.restored_notice", False):
             ctx.cfg.set("backup.restored_notice", False)
             QTimer.singleShot(1500, lambda: self.statusBar().showMessage(tr("backup.restored"), 15000))
@@ -150,6 +162,18 @@ class MainWindow(QMainWindow):
         self.browse.on_batch(tr("dl.batch_status", details=summary_text(result.counts)))
         if result.total >= int(self.ctx.cfg.get("downloads.notify_min", 10)) and getattr(self, "tray", None) is not None:
             self.tray.showMessage(APP_NAME, notify_text(result), QSystemTrayIcon.MessageIcon.Information, 6000)
+
+    def _check_errors(self) -> None:
+        from anihub.services import bugreport
+
+        if bugreport.take_unseen_error():
+            self.error_btn.show()
+
+    def _report_error(self) -> None:
+        from anihub.ui.bugreport_dialog import BugReportDialog
+
+        self.error_btn.hide()
+        BugReportDialog(self.ctx.cfg, self).exec()
 
     def _auto_backup(self) -> None:
         from anihub.services import backup

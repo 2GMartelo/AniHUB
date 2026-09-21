@@ -18,6 +18,9 @@ def setup_logging() -> None:
 
     def excepthook(exc_type, exc, tb):
         logging.getLogger("anihub").critical("Unhandled exception", exc_info=(exc_type, exc, tb))
+        from anihub.services.bugreport import record_exception
+
+        record_exception(exc_type, exc, tb)              # the main window then offers to report it
         sys.__excepthook__(exc_type, exc, tb)
 
     sys.excepthook = excepthook

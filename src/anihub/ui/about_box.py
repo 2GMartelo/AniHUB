@@ -12,6 +12,7 @@ from anihub.core.config import config_dir
 from anihub.core.i18n import tr
 from anihub.services.updater import Release
 from anihub.ui import style
+from anihub.ui.bugreport_dialog import BugReportDialog
 from anihub.ui.update_dialog import UpdateDialog, VersionsDialog
 from anihub.ui.workers import run_async
 
@@ -27,11 +28,12 @@ class AboutBox(QGroupBox):
         self.check_btn = style.secondary(QPushButton(tr("about.check")), "refresh")
         self.versions_btn = style.secondary(QPushButton(tr("update.versions")), "list")
         self.logs_btn = style.ghost(QPushButton(tr("about.logs")), "folder")
+        self.report_btn = style.secondary(QPushButton(tr("bug.button")), "external")
         self.status = QLabel()
         style.role(self.status, "dim")
         self.status.setWordWrap(True)
         row = QHBoxLayout()
-        for w in (self.check_btn, self.versions_btn, self.logs_btn):
+        for w in (self.check_btn, self.versions_btn, self.report_btn, self.logs_btn):
             row.addWidget(w)
         row.addStretch(1)
         layout = QVBoxLayout(self)
@@ -41,6 +43,7 @@ class AboutBox(QGroupBox):
         layout.addWidget(self.status)
         self.auto.toggled.connect(lambda v: ctx.cfg.set("update.auto", v))
         self.check_btn.clicked.connect(self.check_now)
+        self.report_btn.clicked.connect(lambda: BugReportDialog(ctx.cfg, self).exec())
         self.versions_btn.clicked.connect(lambda: VersionsDialog(ctx.updater, quit_app, self).exec())
         self.logs_btn.clicked.connect(lambda: os.startfile(config_dir() / "logs") if (config_dir() / "logs").exists() else None)
 
