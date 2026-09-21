@@ -122,6 +122,7 @@ class Viewer(QWidget):
 
         # tag panel
         self.tags = QListWidget()
+        self.tags.setObjectName("tagList")
         self.tags.setFixedWidth(310)
         self.tags.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tags.customContextMenuRequested.connect(self._tag_menu)
@@ -389,7 +390,7 @@ class Viewer(QWidget):
             for name in names:
                 item = QListWidgetItem()
                 item.setData(Qt.ItemDataRole.UserRole, name)
-                item.setSizeHint(QSize(0, 28))
+                item.setSizeHint(QSize(0, 30))
                 self.tags.addItem(item)
                 self.tags.setItemWidget(item, TagRow(name, CATEGORY_COLORS.get(category),
                                                      lambda mode, n=name: self.tag_action.emit(n, mode)))

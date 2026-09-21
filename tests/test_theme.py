@@ -89,3 +89,65 @@ def test_status_chip_and_state_colours(qapp):
     assert chip.text.text() == "Forge · работает"
     assert style.state_color("running") == theme.DARK.success and style.state_color("failed") == theme.DARK.danger
     assert style.state_color("unknown") == theme.DARK.muted
+
+
+def over(fg: str, bg: str) -> str:
+    """Composite an rgba(r, g, b, a) stylesheet colour over a flat #rrggbb one."""
+    r, g, b, a = (float(x) for x in re.match(r"rgba\((\d+),\s*(\d+),\s*(\d+),\s*([\d.]+)\)", fg).groups())
+    base = [int(bg[i:i + 2], 16) for i in (1, 3, 5)]
+    return "#" + "".join(f"{round(c * a + o * (1 - a)):02x}" for c, o in zip((r, g, b), base))
+
+
+@pytest.mark.parametrize("tokens", [theme.DARK, theme.LIGHT], ids=["dark", "light"])
+def test_translucent_stylesheet_surfaces_keep_text_readable(tokens):
+    """The panels are translucent in the stylesheet: text must stay readable on them, alone and inside a panel."""
+    floor = tokens.bg
+    for name in ("surface", "surface2", "surface3"):
+        once = over(tokens.qss[name], floor)
+        in_card = over(tokens.qss[name], over(tokens.qss["surface"], floor))          # a control inside a panel
+        for surface in (once, in_card):
+            assert contrast(tokens.text, surface) >= 7, (name, "main text")
+            assert contrast(tokens.dim, surface) >= 4.5, (name, "secondary text")
+            assert contrast(tokens.accent_text, surface) >= 4.5, (name, "accent text")
+
+
+@pytest.mark.parametrize("tokens", [theme.DARK, theme.LIGHT], ids=["dark", "light"])
+def test_primary_button_gradient_is_readable_at_both_ends(tokens):
+    assert contrast(tokens.on_accent, tokens.accent) >= 4.5 and contrast(tokens.on_accent, tokens.accent_end) >= 4.5
+
+
+def test_glass_switch_changes_the_window_background_and_palette(qapp):
+    from PySide6.QtGui import QPalette
+
+    theme.apply_theme(qapp, "dark", glass=False)
+    assert not theme.is_glass() and "qlineargradient" in qapp.styleSheet().split("QMainWindow {")[1].split("}")[0]
+    theme.apply_theme(qapp, "dark", glass=True)
+    if theme.glass_supported():
+        assert theme.is_glass()
+        assert "QMainWindow { background: transparent; }" in qapp.styleSheet()
+        assert qapp.palette().color(QPalette.ColorRole.Window).alpha() == 0
+    else:
+        assert not theme.is_glass()                                              # older Windows / other systems: stays opaque
+    theme.apply_theme(qapp, "dark")                                              # omitted: keeps the last choice
+    assert theme.is_glass() == theme.glass_supported()
+    theme.apply_theme(qapp, "dark", glass=False)
+
+
+def test_main_window_can_be_toggled_between_glass_and_opaque(qapp, tmp_path):
+    from PySide6.QtCore import Qt
+
+    from anihub.context import AppContext
+    from anihub.core.config import Config
+    from anihub.ui.main_window import MainWindow
+
+    cfg = Config.load(tmp_path / "c.json")
+    cfg.set("library_path", str(tmp_path / "lib"), save=False)
+    cfg.set("first_run_done", True, save=False)
+    theme.apply_theme(qapp, "dark", glass=False)
+    win = MainWindow(AppContext.build(cfg))
+    assert not win.testAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+    theme.apply_theme(qapp, "dark", glass=True)
+    assert win.testAttribute(Qt.WidgetAttribute.WA_TranslucentBackground) == theme.is_glass()
+    theme.apply_theme(qapp, "dark", glass=False)
+    assert not win.testAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+    win.close()

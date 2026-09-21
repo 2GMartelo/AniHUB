@@ -30,7 +30,7 @@ def main() -> int:
         wizard = SetupWizard(cfg)
         if not wizard.exec():
             return 0
-        apply_theme(app, cfg.get("theme"))
+    apply_theme(app, cfg.get("theme"), glass=bool(cfg.get("ui.glass", True)))     # the wizard is opaque; the main window may be glass
 
     from pathlib import Path
 

@@ -3,13 +3,12 @@ from __future__ import annotations
 
 import weakref
 
-import re
-
 from PySide6.QtCore import QRectF, QSize, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QIcon, QPainter
 from PySide6.QtWidgets import QAbstractButton, QButtonGroup, QLabel, QVBoxLayout, QWidget
 
 from anihub.ui import icons, theme
+from anihub.ui.theme import css_color as _css_color
 from anihub.ui.theme import make_app_icon
 
 _rails: "weakref.WeakSet[NavRail]" = weakref.WeakSet()
@@ -18,14 +17,6 @@ _rails: "weakref.WeakSet[NavRail]" = weakref.WeakSet()
 def refresh_rails() -> None:
     for rail in list(_rails):
         rail.refresh_icons()
-
-
-def _css_color(value: str) -> QColor:
-    """Tokens hold CSS colours; QColor does not understand rgba(r, g, b, a)."""
-    m = re.match(r"rgba\((\d+),\s*(\d+),\s*(\d+),\s*([\d.]+)\)", value)
-    if m:
-        return QColor(int(m[1]), int(m[2]), int(m[3]), round(float(m[4]) * 255))
-    return QColor(value)
 
 
 class NavButton(QAbstractButton):

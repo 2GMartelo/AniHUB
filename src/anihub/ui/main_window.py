@@ -26,7 +26,7 @@ from anihub.ui.settings import SettingsPage
 from anihub.ui.navrail import NavRail
 from anihub.ui import style
 from anihub.ui.style import EmptyState, state_color
-from anihub.ui.theme import make_app_icon
+from anihub.ui.theme import apply_backdrop, is_glass, make_app_icon, paint_glass
 from anihub.ui.workers import run_async
 
 
@@ -117,6 +117,7 @@ class MainWindow(QMainWindow):
         row.addWidget(content, 1)
         self.setCentralWidget(central)
 
+        apply_backdrop(self)                                       # Windows 11 Mica behind the translucent window, if enabled
         self.download_signals = DownloadSignals(self)
         ctx.downloads.on_change = self.download_signals.changed.emit
         ctx.downloads.on_batch = self.download_signals.batch.emit
@@ -319,6 +320,12 @@ class MainWindow(QMainWindow):
         self.manga_ctrl.stop_blocking()
         self.tray.hide()
         QApplication.quit()
+
+    def paintEvent(self, event) -> None:  # noqa: N802
+        if is_glass():
+            paint_glass(self)                                      # translucent gradient over Mica
+        else:
+            super().paintEvent(event)                              # the stylesheet's opaque gradient
 
     def closeEvent(self, event: QCloseEvent) -> None:
         # Closing the window minimises to the tray so background work is not interrupted (ТЗ раздел 7).
