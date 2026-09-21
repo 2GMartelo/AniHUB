@@ -27,6 +27,7 @@ from anihub.ui.navrail import NavRail
 from anihub.ui import style
 from anihub.ui.style import EmptyState, state_color
 from anihub.ui.theme import apply_backdrop, is_glass, make_app_icon, paint_glass
+from anihub.ui.close_dialog import CloseDialog
 from anihub.ui.tutorial import Step, TutorialOverlay
 from anihub.ui.workers import run_async
 
@@ -377,24 +378,9 @@ class MainWindow(QMainWindow):
 
     def _ask_close(self) -> tuple[str, bool] | None:
         """The first time the window is closed: quit for good or keep running in the tray? -> (action, remember) or None (cancel)."""
-        box = QMessageBox(self)
-        box.setWindowTitle(APP_NAME)
-        box.setIcon(QMessageBox.Icon.Question)
-        box.setText(tr("close.ask"))
-        box.setInformativeText(tr("close.info"))
-        tray_btn = box.addButton(tr("close.tray"), QMessageBox.ButtonRole.AcceptRole)
-        quit_btn = box.addButton(tr("close.quit"), QMessageBox.ButtonRole.DestructiveRole)
-        box.addButton(tr("close.cancel"), QMessageBox.ButtonRole.RejectRole)
-        remember = QCheckBox(tr("close.remember"))
-        box.setCheckBox(remember)
-        box.setDefaultButton(tray_btn)
-        box.exec()
-        clicked = box.clickedButton()
-        if clicked is tray_btn:
-            return "tray", remember.isChecked()
-        if clicked is quit_btn:
-            return "quit", remember.isChecked()
-        return None
+        dlg = CloseDialog(self)
+        dlg.exec()
+        return (dlg.choice, dlg.remember) if dlg.choice else None
 
     def closeEvent(self, event: QCloseEvent) -> None:
         # The first time the user chooses between quitting and the tray (and may remember it); the tray keeps background

@@ -409,3 +409,25 @@ def test_ranobelib_registers_referer_for_covers_and_pictures(tmp_path):
 
     RanobeLib(Http(), Config.load(tmp_path / "c.json"))
     assert set(hosts) >= {"cdnlibs.org", "ranobelib.me"} and hosts["cdnlibs.org"]()["Referer"] == "https://ranobelib.me/"
+
+
+def test_close_dialog_buttons_show_their_whole_text(qapp):
+    from anihub.core.i18n import set_language
+    from anihub.ui import theme
+    from anihub.ui.close_dialog import CloseDialog
+
+    theme.apply_theme(qapp, "dark")
+    for lang in ("ru", "en"):
+        set_language(lang)
+        dlg = CloseDialog()
+        dlg.show()
+        pump(qapp, 0.1)
+        for b in (dlg.tray_btn, dlg.quit_btn, dlg.cancel_btn):
+            need = b.fontMetrics().horizontalAdvance(b.text()) + (b.iconSize().width() if not b.icon().isNull() else 0)
+            assert b.width() >= need + 24, (lang, b.text(), b.width(), need)               # text plus icon plus some padding
+        assert dlg.choice is None and not dlg.remember
+        dlg.remember_box.setChecked(True)
+        dlg.quit_btn.click()
+        assert dlg.choice == "quit" and dlg.remember
+        dlg.close()
+    set_language("ru")
