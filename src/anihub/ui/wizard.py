@@ -199,5 +199,6 @@ class SetupWizard(QWizard):
 
     def accept(self) -> None:
         self.cfg.set("first_run_done", True, save=False)
+        self.cfg.set("tutorial.pending", True, save=False)          # the main window shows the tutorial once
         self.cfg.save()
         super().accept()

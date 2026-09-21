@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sys
 
-from PySide6.QtCore import QThreadPool
+from PySide6.QtCore import QThreadPool, QTimer
 from PySide6.QtWidgets import QApplication
 
 from anihub import APP_NAME
@@ -42,6 +42,8 @@ def main() -> int:
     ctx = AppContext.build(cfg)
     window = MainWindow(ctx)
     window.show()
+    if cfg.get("tutorial.pending"):                                 # set by the setup wizard: show the tour once
+        QTimer.singleShot(900, window.start_tutorial)
     code = app.exec()
     QThreadPool.globalInstance().waitForDone(3000)  # let running workers finish before Qt objects go away
     return code

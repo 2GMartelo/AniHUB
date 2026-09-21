@@ -19,6 +19,7 @@ from anihub.ui.workers import run_async
 
 class AboutBox(QGroupBox):
     update_found = Signal(object)          # a Release: the main window shows its notice too
+    tutorial_requested = Signal()
 
     def __init__(self, ctx: AppContext, quit_app, parent=None):
         super().__init__(tr("about.title"), parent)
@@ -29,11 +30,12 @@ class AboutBox(QGroupBox):
         self.versions_btn = style.secondary(QPushButton(tr("update.versions")), "list")
         self.logs_btn = style.ghost(QPushButton(tr("about.logs")), "folder")
         self.report_btn = style.secondary(QPushButton(tr("bug.button")), "external")
+        self.tutorial_btn = style.secondary(QPushButton(tr("tutorial.replay")), "play")
         self.status = QLabel()
         style.role(self.status, "dim")
         self.status.setWordWrap(True)
         row = QHBoxLayout()
-        for w in (self.check_btn, self.versions_btn, self.report_btn, self.logs_btn):
+        for w in (self.check_btn, self.versions_btn, self.report_btn, self.tutorial_btn, self.logs_btn):
             row.addWidget(w)
         row.addStretch(1)
         layout = QVBoxLayout(self)
@@ -43,6 +45,7 @@ class AboutBox(QGroupBox):
         layout.addWidget(self.status)
         self.auto.toggled.connect(lambda v: ctx.cfg.set("update.auto", v))
         self.check_btn.clicked.connect(self.check_now)
+        self.tutorial_btn.clicked.connect(self.tutorial_requested.emit)
         self.report_btn.clicked.connect(lambda: BugReportDialog(ctx.cfg, self).exec())
         self.versions_btn.clicked.connect(lambda: VersionsDialog(ctx.updater, quit_app, self).exec())
         self.logs_btn.clicked.connect(lambda: os.startfile(config_dir() / "logs") if (config_dir() / "logs").exists() else None)

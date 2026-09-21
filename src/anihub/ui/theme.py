@@ -166,6 +166,7 @@ QToolButton[viewer="true"] { background: $surface2; border: 0; border-radius: 14
 QToolButton[viewer="true"]:hover { background: $surface3; }
 QToolButton[viewer="true"]:checked { background: $soft; border-color: $accent; }
 QToolButton[viewer="true"]:disabled { background: transparent; border-color: transparent; }
+QFrame#coach { background: $popup; border: 1px solid $border_hover; border-radius: 18px; }
 QDialog#palette { background: $popup; border: 1px solid $border_hover; border-radius: 16px; }
 QLabel#offlineBanner { background: $soft; border: 1px solid $warning; border-radius: 8px; padding: 8px 12px; color: $text; }
 QToolButton#updateNotice { border-radius: 10px; padding: 3px 10px; color: $accent_text; font-weight: 600; }

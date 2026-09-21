@@ -67,6 +67,7 @@ def actions(win) -> list[Entry]:
         Entry(tr("palette.downloads"), lambda: (win.downloads_btn.show(), win.downloads_btn.open_window()), a, "downloads queue"),
         Entry(tr("palette.offline"), win.offline_btn.toggle, a, "offline online network"),
         Entry(tr("palette.theme"), toggle_theme, a, "theme dark light"),
+        Entry(tr("tutorial.replay"), win.start_tutorial, a, "tutorial tour help guide"),
         Entry(tr("rules.title"), library_tool("_rules"), a, "rules auto"),
         Entry(tr("integrity.title"), library_tool("_integrity"), a, "integrity check"),
         Entry(tr("tags.manager"), library_tool("_tag_manager"), a, "tags"),

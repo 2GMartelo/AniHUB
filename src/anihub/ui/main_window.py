@@ -27,6 +27,7 @@ from anihub.ui.navrail import NavRail
 from anihub.ui import style
 from anihub.ui.style import EmptyState, state_color
 from anihub.ui.theme import apply_backdrop, is_glass, make_app_icon, paint_glass
+from anihub.ui.tutorial import Step, TutorialOverlay
 from anihub.ui.workers import run_async
 
 
@@ -135,6 +136,8 @@ class MainWindow(QMainWindow):
         self.update_btn.clicked.connect(self._show_update)
         self.statusBar().insertPermanentWidget(0, self.update_btn)
         self.settings.about.update_found.connect(self._update_found)
+        self.settings.about.tutorial_requested.connect(self.start_tutorial)
+        self._tutorial: TutorialOverlay | None = None
         QTimer.singleShot(6000, self._auto_check_updates)          # after startup, in the background
         QTimer.singleShot(20000, self._auto_backup)
         self._subs_timer = QTimer(self)
@@ -321,6 +324,50 @@ class MainWindow(QMainWindow):
         self.manga_ctrl.stop_blocking()
         self.tray.hide()
         QApplication.quit()
+
+    # --- first-run tutorial ---------------------------------------------------------------------------------
+
+    def tutorial_steps(self) -> list[Step]:
+        def section(row: int, tab: int | None = None):
+            def go() -> None:
+                self.nav.setCurrentRow(row)
+                if tab is not None:
+                    self.arts.setCurrentIndex(tab)
+            return go
+
+        rail = lambda i: (lambda: self.nav._buttons[i])
+        return [
+            Step("welcome", None, section(0, 0)),
+            Step("nav_arts", rail(0), section(0, 0)),
+            Step("tabs", self.arts.tabBar, section(0, 0)),
+            Step("source", lambda: self.browse.source, section(0, 0)),
+            Step("search", lambda: self.browse.query, section(0, 0)),
+            Step("save", lambda: self.browse.save_btn, section(0, 0)),
+            Step("subscribe", lambda: self.browse.subscribe_btn, section(0, 0)),
+            Step("nav_manga", rail(1), section(1)),
+            Step("nav_sd", rail(2), section(2)),
+            Step("nav_anime", rail(3), section(3)),
+            Step("anime_tabs", self.anime_page.tabs.tabBar, section(3)),
+            Step("nav_novels", rail(4), section(4)),
+            Step("novels_tabs", self.novels_hub.tabBar, section(4)),
+            Step("age", lambda: self.settings.age_mode, section(5)),
+            Step("offline", lambda: self.offline_btn, section(5)),
+            Step("finish", None, section(0, 0)),
+        ]
+
+    def start_tutorial(self) -> None:
+        """The guided tour (after the first run, or from Settings / the command palette)."""
+        if self._tutorial is not None:
+            return
+        overlay = self._tutorial = TutorialOverlay(self, self.tutorial_steps())
+        overlay.finished.connect(self._tutorial_done)
+        overlay.start()
+
+    def _tutorial_done(self, _completed: bool) -> None:
+        self._tutorial = None
+        self.ctx.cfg.set("tutorial.pending", False)
+        self.nav.setCurrentRow(0)
+        self.arts.setCurrentIndex(0)
 
     def paintEvent(self, event) -> None:  # noqa: N802
         if is_glass():
