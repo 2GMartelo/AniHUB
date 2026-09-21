@@ -92,8 +92,8 @@ class NavRail(QWidget):
         self._group = QButtonGroup(self)
         self._group.setExclusive(True)
         self._group.idClicked.connect(self._clicked)
-        logo = QLabel(alignment=Qt.AlignmentFlag.AlignCenter)
-        logo.setPixmap(make_app_icon().pixmap(38, 38))
+        self.logo = logo = QLabel(alignment=Qt.AlignmentFlag.AlignCenter)
+        logo.setPixmap(make_app_icon(theme.logo_colors()).pixmap(38, 38))
         self._top = QVBoxLayout()
         self._top.setSpacing(4)
         self._bottom = QVBoxLayout()
@@ -118,6 +118,7 @@ class NavRail(QWidget):
         return index
 
     def refresh_icons(self) -> None:
+        self.logo.setPixmap(make_app_icon(theme.logo_colors()).pixmap(38, 38))
         for button in self._buttons:
             button.refresh_icon()
 

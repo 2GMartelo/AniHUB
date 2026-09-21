@@ -11,7 +11,8 @@ from anihub.core.config import Config
 from anihub.core.i18n import set_language
 from anihub.core.logging_setup import setup_logging
 from anihub.ui.main_window import MainWindow
-from anihub.ui.theme import apply_theme, make_app_icon
+from anihub.ui import smoothscroll
+from anihub.ui.theme import apply_theme, make_app_icon, set_custom_colors
 from anihub.ui.wizard import SetupWizard
 
 
@@ -24,6 +25,8 @@ def main() -> int:
 
     cfg = Config.load()
     set_language(cfg.get("language"))
+    set_custom_colors(cfg.get("theme_custom"))
+    smoothscroll.install(app, bool(cfg.get("ui.smooth_scroll", True)))
     apply_theme(app, cfg.get("theme"))
 
     if not cfg.get("first_run_done") or not cfg.get("library_path"):

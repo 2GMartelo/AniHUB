@@ -23,7 +23,7 @@ from anihub.ui.workers import run_async
 
 THEMES = {  # reading themes: (background, text, link)
     "dark": ("#15181e", "#d8dce4", "#a996ff"),
-    "light": ("#fbfbf9", "#1e2230", "#5b3de6"),
+    "light": ("#fbfbf9", "#1e2230", "#a8285f"),
     "sepia": ("#f4ecd8", "#3b2f22", "#8a4b12"),
 }
 COLUMN = 780                              # widest text column, px

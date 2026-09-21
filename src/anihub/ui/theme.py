@@ -49,10 +49,11 @@ class Tokens:
     dialog: str = ""              # dialogs are separate windows, always opaque
     popup: str = ""               # menus, drop-downs, tooltips: opaque too
     qss: dict = field(default_factory=dict, compare=False, hash=False, repr=False)
+    mode_dark: bool | None = None  # custom themes say themselves whether they are dark (built-in ones go by name)
 
     @property
     def dark(self) -> bool:
-        return self.name == "dark"
+        return self.name == "dark" if self.mode_dark is None else self.mode_dark
 
 
 DARK = Tokens(
@@ -70,18 +71,131 @@ DARK = Tokens(
              scroll="rgba(255, 255, 255, 0.2)"))
 
 LIGHT = Tokens(
-    "light", bg="#f4f2fb", rail="#f6f4fd", surface="#fbfaff", surface2="#efedf9", surface3="#e4e1f3", card="#ffffff",
-    border="#e0dcef", border_hover="#c2bddc", text="#1c1a2e", dim="#544f6b", muted="#8a869e",
-    accent="#6a4cf5", accent_hover="#5b3de6", accent_press="#4f32d4", accent_text="#5b3de6",
-    soft="rgba(106, 76, 245, 0.13)", on_accent="#ffffff", success="#15a26b", warning="#d99100", danger="#dc4a4a",
-    danger_soft="rgba(220, 74, 74, 0.10)", scroll="#c9c5de", accent_end="#5230d6",
-    window="qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #e9e4fb, stop:0.5 #f4f2fb, stop:1 #f8f7fd)",
-    window_glass=((0.0, "rgba(222, 213, 250, 0.84)"), (0.5, "rgba(244, 242, 251, 0.88)"), (1.0, "rgba(250, 249, 255, 0.92)")),   # mostly opaque: the backdrop follows the system theme, not ours
-    dialog="qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #e8e3fa, stop:1 #f6f5fc)",
+    "light", bg="#fdf2f7", rail="#fceaf2", surface="#fff7fa", surface2="#f8e4ee", surface3="#f0d6e4", card="#ffffff",
+    border="#f0d3e2", border_hover="#dcaac4", text="#2a1822", dim="#6b4a5a", muted="#9a7888",
+    accent="#c93d7b", accent_hover="#bb3472", accent_press="#a02c66", accent_text="#a8285f",
+    soft="rgba(201, 61, 123, 0.13)", on_accent="#ffffff", success="#15a26b", warning="#d99100", danger="#dc4a4a",
+    danger_soft="rgba(220, 74, 74, 0.10)", scroll="#e2bcd1", accent_end="#a92f68",
+    window="qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #fbdcea, stop:0.5 #fdf2f7, stop:1 #fff8fb)",
+    window_glass=((0.0, "rgba(250, 214, 230, 0.84)"), (0.5, "rgba(253, 242, 247, 0.88)"), (1.0, "rgba(255, 248, 251, 0.92)")),   # mostly opaque: the backdrop follows the system theme, not ours
+    dialog="qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #fcdfeb, stop:1 #fff5f9)",
     popup="#ffffff",
-    qss=dict(rail="rgba(255, 255, 255, 0.35)", surface="rgba(255, 255, 255, 0.62)", surface2="rgba(90, 70, 190, 0.07)",
-             surface3="rgba(90, 70, 190, 0.13)", border="rgba(70, 55, 150, 0.12)", border_hover="rgba(70, 55, 150, 0.3)",
-             scroll="rgba(70, 55, 150, 0.25)"))
+    qss=dict(rail="rgba(255, 255, 255, 0.4)", surface="rgba(255, 255, 255, 0.68)", surface2="rgba(201, 61, 123, 0.07)",
+             surface3="rgba(201, 61, 123, 0.13)", border="rgba(160, 50, 100, 0.14)", border_hover="rgba(160, 50, 100, 0.32)",
+             scroll="rgba(160, 50, 100, 0.28)"))
+
+# --- the custom theme: four colours chosen by the user, everything else derived and kept readable ---------------------------
+
+DEFAULT_CUSTOM = {"bg": "#0f1a1f", "panel": "#182830", "text": "#e6f1f4", "accent": "#2fb8a6"}
+
+
+def _norm_hex(value, fallback: str) -> str:
+    text = str(value or "").strip()
+    return text.lower() if re.fullmatch(r"#[0-9a-fA-F]{6}", text) else fallback
+
+
+def _rgb(hex_color: str) -> tuple[int, int, int]:
+    return int(hex_color[1:3], 16), int(hex_color[3:5], 16), int(hex_color[5:7], 16)
+
+
+def _hex(rgb) -> str:
+    return "#" + "".join(f"{max(0, min(255, round(c))):02x}" for c in rgb)
+
+
+def mix(a: str, b: str, t: float) -> str:
+    """t = 0 gives a, t = 1 gives b."""
+    return _hex(tuple(x * (1 - t) + y * t for x, y in zip(_rgb(a), _rgb(b))))
+
+
+def _luminance(hex_color: str) -> float:
+    lin = [c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4 for c in (v / 255 for v in _rgb(hex_color))]
+    return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2]
+
+
+def contrast(a: str, b: str) -> float:
+    hi, lo = sorted((_luminance(a), _luminance(b)), reverse=True)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+def _rgba(hex_color: str, alpha: float) -> str:
+    r, g, b = _rgb(hex_color)
+    return f"rgba({r}, {g}, {b}, {alpha})"
+
+
+def readable(color: str, backgrounds: list[str], minimum: float) -> str:
+    """`color`, moved towards white (on dark backgrounds) or black (on light ones) until it reads on all of `backgrounds`."""
+    dark_bg = sum(_luminance(b) for b in backgrounds) / len(backgrounds) < 0.18
+    target = "#ffffff" if dark_bg else "#000000"
+    for step in range(0, 21):
+        candidate = mix(color, target, step / 20)
+        if all(contrast(candidate, b) >= minimum for b in backgrounds):
+            return candidate
+    return target
+
+
+def build_custom(colors: dict | None) -> Tokens:
+    """Tokens from four colours (bg, panel, text, accent). Text, secondary text, accent text and the text on buttons are corrected
+    so that they stay readable whatever the user picks."""
+    c = {k: _norm_hex((colors or {}).get(k), v) for k, v in DEFAULT_CUSTOM.items()}
+    bg, panel, accent = c["bg"], c["panel"], c["accent"]
+    dark = _luminance(bg) < 0.18
+    surface = mix(bg, panel, 0.85)
+    surface2, surface3 = mix(surface, c["text"], 0.07), mix(surface, c["text"], 0.12)
+    floor = [bg, surface, surface3]
+    text = readable(c["text"], floor, 7.2)
+    dim = readable(mix(text, bg, 0.35), floor, 4.7)
+    muted = mix(text, bg, 0.55)
+    on_accent = "#ffffff" if contrast("#ffffff", accent) >= contrast("#000000", accent) else "#000000"
+    for _ in range(20):                                            # a pale accent under white text (or the opposite): shift it
+        if contrast(on_accent, accent) >= 4.6:
+            break
+        accent = mix(accent, "#000000" if on_accent == "#ffffff" else "#ffffff", 0.06)
+    sign = -1 if on_accent == "#ffffff" else 1                     # towards the side that keeps the text on it readable
+    shade = lambda t: mix(accent, "#000000" if sign < 0 else "#ffffff", abs(t))
+    accent_text = readable(accent, [bg, surface], 4.6)
+    if dark:
+        window = f"qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 {mix(bg, accent, 0.2)}, stop:0.5 {bg}, stop:1 {mix(bg, '#000000', 0.25)})"
+        glass = ((0.0, _rgba(mix(bg, accent, 0.35), 0.4)), (0.5, _rgba(bg, 0.45)), (1.0, _rgba(mix(bg, "#000000", 0.3), 0.6)))
+        popup = mix(bg, text, 0.08)
+    else:
+        window = f"qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 {mix(bg, accent, 0.14)}, stop:0.5 {bg}, stop:1 {mix(bg, '#ffffff', 0.5)})"
+        glass = ((0.0, _rgba(mix(bg, accent, 0.14), 0.84)), (0.5, _rgba(bg, 0.88)), (1.0, _rgba(mix(bg, "#ffffff", 0.5), 0.92)))
+        popup = mix(bg, "#ffffff", 0.7)
+    return Tokens(
+        "custom", bg=bg, rail=mix(bg, panel, 0.5), surface=surface, surface2=surface2, surface3=surface3, card=panel,
+        border=mix(bg, text, 0.13), border_hover=mix(bg, text, 0.3), text=text, dim=dim, muted=muted,
+        accent=accent, accent_hover=shade(0.08), accent_press=shade(0.16), accent_text=accent_text,
+        soft=_rgba(accent, 0.22 if dark else 0.14), on_accent=on_accent, success="#34d399" if dark else "#15a26b",
+        warning="#fbbf24" if dark else "#d99100", danger=readable("#f87171" if dark else "#dc4a4a", [bg], 3.2),
+        danger_soft="rgba(248, 113, 113, 0.14)" if dark else "rgba(220, 74, 74, 0.10)", scroll=mix(bg, text, 0.22),
+        accent_end=shade(0.2), window=window, window_glass=glass,
+        dialog=f"qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 {mix(bg, accent, 0.12)}, stop:1 {bg})", popup=popup,
+        qss=dict(rail=_rgba(panel, 0.45), surface=_rgba(panel, 0.85), surface2=_rgba(text, 0.07), surface3=_rgba(text, 0.12),
+                 border=_rgba(text, 0.1), border_hover=_rgba(text, 0.26), scroll=_rgba(text, 0.22)),
+        mode_dark=dark)
+
+
+_custom_colors: dict = dict(DEFAULT_CUSTOM)
+
+
+def set_custom_colors(colors: dict | None) -> None:
+    _custom_colors.clear()
+    _custom_colors.update({k: _norm_hex((colors or {}).get(k), v) for k, v in DEFAULT_CUSTOM.items()})
+
+
+def custom_colors() -> dict:
+    return dict(_custom_colors)
+
+
+def logo_colors() -> tuple[str, str]:
+    """The two ends of the logo's gradient in the current theme."""
+    t = _current
+    if t.name == "light":
+        return "#f59bc0", "#c93d7b"
+    if t.name == "custom":
+        return mix(t.accent, "#ffffff", 0.25), t.accent
+    return "#9b7bff", "#5a3ee8"
+
 
 _current: Tokens = DARK
 _glass: bool = False
@@ -294,6 +408,8 @@ def _palette(t: Tokens) -> QPalette:
 def resolve(mode: str, app: QApplication) -> Tokens:
     if mode == "system":
         mode = "dark" if app.styleHints().colorScheme() == Qt.ColorScheme.Dark else "light"
+    if mode == "custom":
+        return build_custom(_custom_colors)
     return DARK if mode == "dark" else LIGHT
 
 
@@ -434,7 +550,7 @@ class TitleBarFilter(QObject):
         return False
 
 
-def make_app_icon() -> QIcon:
+def make_app_icon(colors: tuple[str, str] | None = None) -> QIcon:
     icon = QIcon()
     for size in (16, 24, 32, 48, 64, 128, 256):
         pm = QPixmap(size, size)
@@ -442,8 +558,8 @@ def make_app_icon() -> QIcon:
         painter = QPainter(pm)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         gradient = QLinearGradient(0, 0, size, size)
-        gradient.setColorAt(0, QColor("#9b7bff"))
-        gradient.setColorAt(1, QColor("#5a3ee8"))
+        gradient.setColorAt(0, QColor((colors or ("#9b7bff", "#5a3ee8"))[0]))
+        gradient.setColorAt(1, QColor((colors or ("#9b7bff", "#5a3ee8"))[1]))
         painter.setBrush(gradient)
         painter.setPen(Qt.PenStyle.NoPen)
         radius = size * 0.24

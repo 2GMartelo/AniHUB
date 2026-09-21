@@ -18,6 +18,9 @@ from anihub.ui.workers import run_async
 from anihub.ui import style
 from anihub.ui.about_box import AboutBox
 from anihub.ui.backup_box import BackupBox
+from anihub.ui import smoothscroll
+from anihub.ui import theme as theme_module
+from anihub.ui.color_button import ColorButton
 from anihub.ui.theme import apply_theme, glass_supported
 
 
@@ -39,9 +42,29 @@ class SettingsPage(QWidget):
         self.lang.addItem("English", "en")
         self.lang.setCurrentIndex(self.lang.findData(cfg.get("language")))
         self.theme = QComboBox()
-        for key in ("system", "light", "dark"):
+        for key in ("system", "light", "dark", "custom"):
             self.theme.addItem(tr(f"settings.theme.{key}"), key)
         self.theme.setCurrentIndex(self.theme.findData(cfg.get("theme")))
+        # the custom theme: four colours, the rest is derived and kept readable
+        theme_module.set_custom_colors(cfg.get("theme_custom"))
+        self.custom_buttons: dict[str, ColorButton] = {}
+        self.custom_row = QWidget()
+        custom_layout = QHBoxLayout(self.custom_row)
+        custom_layout.setContentsMargins(0, 0, 0, 0)
+        for key in ("bg", "panel", "text", "accent"):
+            button = ColorButton(tr(f"settings.custom.{key}"), theme_module.custom_colors()[key])
+            button.changed.connect(self._custom_changed)
+            self.custom_buttons[key] = button
+            custom_layout.addWidget(button)
+        self.custom_reset = style.ghost(QPushButton(tr("settings.custom.reset")), "refresh")
+        self.custom_reset.clicked.connect(self._custom_reset)
+        custom_layout.addWidget(self.custom_reset)
+        custom_layout.addStretch(1)
+        self.theme.currentIndexChanged.connect(self._theme_changed)
+        self.custom_row.setVisible(self.theme.currentData() == "custom")
+        self.smooth = QCheckBox(tr("settings.smooth"))
+        self.smooth.setChecked(bool(cfg.get("ui.smooth_scroll", True)))
+        self.smooth.toggled.connect(smoothscroll.set_enabled)
         self.close_action = QComboBox()
         for key in ("", "tray", "quit"):
             self.close_action.addItem(tr(f"settings.close.{key or 'ask'}"), key)
@@ -182,8 +205,8 @@ class SettingsPage(QWidget):
             box.setLayout(form)
             return box
 
-        look_box = form_box(tr("settings.g_appearance"), (tr("settings.language"), self.lang), (tr("settings.theme"), self.theme),
-                            ("", self.glass), (tr("settings.close"), self.close_action))
+        look_box = form_box(tr("settings.g_appearance"), (tr("settings.language"), self.lang), (tr("settings.theme"), self.theme), ("", self.custom_row),
+                            ("", self.glass), ("", self.smooth), (tr("settings.close"), self.close_action))
         storage_box = form_box(tr("settings.g_storage"), (tr("settings.library"), library_row),
                                (tr("settings.cache_limit"), self.cache_limit))
         age_box = form_box(tr("age.title"), (tr("age.mode"), self.age_mode), (tr("age.locked"), self.locked_tags),
@@ -305,6 +328,23 @@ class SettingsPage(QWidget):
         self.tag_bar.setRange(0, max(total, 1))
         self.tag_bar.setValue(done)
 
+    def _custom_values(self) -> dict:
+        return {key: button.color for key, button in self.custom_buttons.items()}
+
+    def _theme_changed(self) -> None:
+        self.custom_row.setVisible(self.theme.currentData() == "custom")
+
+    def _custom_changed(self, _color: str = "") -> None:
+        """A colour was picked: show the result at once when the custom theme is the chosen one."""
+        theme_module.set_custom_colors(self._custom_values())
+        if self.theme.currentData() == "custom":
+            apply_theme(QApplication.instance(), "custom")
+
+    def _custom_reset(self) -> None:
+        for key, value in theme_module.DEFAULT_CUSTOM.items():
+            self.custom_buttons[key].set_color(value)
+        self._custom_changed()
+
     def _show_locked(self) -> None:
         tags = agemode.locked_tags(self.age_mode.currentData())
         self.locked_tags.setPlainText(", ".join(tags) if tags else tr("age.locked.none"))
@@ -322,6 +362,9 @@ class SettingsPage(QWidget):
         cfg.set("language", self.lang.currentData(), save=False)
         cfg.set("theme", self.theme.currentData(), save=False)
         cfg.set("ui.glass", self.glass.isChecked(), save=False)
+        cfg.set("ui.smooth_scroll", self.smooth.isChecked(), save=False)
+        cfg.set("theme_custom", self._custom_values(), save=False)
+        theme_module.set_custom_colors(self._custom_values())
         cfg.set("ui.close_action", self.close_action.currentData(), save=False)
         mode = self.age_mode.currentData()
         if mode == "18" and agemode.mode_of(cfg) != "18" and not self._confirm_adult():
