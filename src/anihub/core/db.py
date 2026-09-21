@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 from typing import Iterable
 
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 
 SD_TABLES = '''
 CREATE TABLE sd_presets (
@@ -68,6 +68,19 @@ CREATE TABLE novels (
     source TEXT, remote_id TEXT, remote TEXT);        -- online novels (path is empty, sha256 is "online:<source>:<id>")
 '''
 
+PROMPTBOOK_TABLES = '''
+CREATE TABLE pb_nodes (                            -- prompt builder: categories of the tag catalogue (a slot = one paragraph of the prompt)
+    id INTEGER PRIMARY KEY, parent_id INTEGER REFERENCES pb_nodes(id) ON DELETE CASCADE,
+    slot TEXT NOT NULL, name TEXT NOT NULL, name_ru TEXT NOT NULL DEFAULT '',
+    exclusive INTEGER NOT NULL DEFAULT 0,          -- only one tag of it at a time (hair colour, count...)
+    position INTEGER NOT NULL DEFAULT 0, hidden INTEGER NOT NULL DEFAULT 0, key TEXT UNIQUE);   -- key: built-in rows
+CREATE TABLE pb_tags (
+    id INTEGER PRIMARY KEY, node_id INTEGER NOT NULL REFERENCES pb_nodes(id) ON DELETE CASCADE,
+    text TEXT NOT NULL, label TEXT NOT NULL DEFAULT '', image TEXT NOT NULL DEFAULT '',   -- image: relative path of a jpg
+    position INTEGER NOT NULL DEFAULT 0, hidden INTEGER NOT NULL DEFAULT 0, key TEXT UNIQUE);
+CREATE INDEX idx_pb_tags_node ON pb_tags(node_id);
+'''
+
 WATCH_TABLES = '''
 CREATE TABLE anime_links (                        -- which AniList show a title of an anime source is
     source TEXT NOT NULL, entry_id TEXT NOT NULL, media_id INTEGER NOT NULL, media TEXT NOT NULL,   -- media: JSON (normalize_media)
@@ -124,6 +137,7 @@ MIGRATIONS = {
         ALTER TABLE novels ADD COLUMN remote_id TEXT;
         ALTER TABLE novels ADD COLUMN remote TEXT;        -- JSON: {"entry": ..., "chapters": [...]} (opens without the network)
     """,
+    10: PROMPTBOOK_TABLES,
 }
 
 SCHEMA = """
@@ -182,7 +196,7 @@ CREATE TABLE collection_items (
     added_at REAL NOT NULL, PRIMARY KEY (collection_id, item_id));
 CREATE INDEX idx_collection_items_item ON collection_items(item_id);
 CREATE TABLE smart_tags (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE, tags TEXT NOT NULL);
-""" + SD_TABLES + RULES_TABLE + ANIME_TABLE + NOVEL_TABLE + WATCH_TABLES + SUBSCRIPTION_TABLE
+""" + SD_TABLES + RULES_TABLE + ANIME_TABLE + NOVEL_TABLE + WATCH_TABLES + SUBSCRIPTION_TABLE + PROMPTBOOK_TABLES
 
 SORTS = {
     "added": "i.added_at",

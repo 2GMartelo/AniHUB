@@ -26,6 +26,7 @@ from anihub.ui.forge_controller import ForgeController
 from anihub.ui.style import StatusChip
 from anihub.ui.grid import ThumbGrid, image_to_thumb
 from anihub.ui.mask_editor import MaskDialog
+from anihub.ui.prompt_builder import PromptBuilder
 from anihub.ui.xy_dialog import XYDialog
 from anihub.ui.library_view import LibraryView
 from anihub.ui.sd_civitai import CivitaiView
@@ -655,6 +656,11 @@ class GenerateView(QWidget):
         self._set_mask(path)
         self.message.setText(tr("mask.ready"))
 
+    def set_prompts(self, prompt: str, negative: str) -> None:
+        """The prompt builder writes its result here (the whole text: the builder keeps the paragraph order)."""
+        self.prompt.setPlainText(prompt)
+        self.negative.setPlainText(negative)
+
     def use_as_init(self, path: Path, prompt: str = "", negative: str = "") -> None:
         """Entry point of the library -> img2img bridge (ТЗ 5.3)."""
         self.set_init_image(path, resize=True)
@@ -860,8 +866,14 @@ class SDPage(QWidget):
         self.history = HistoryView(ctx)
         self.civitai = CivitaiView(ctx)
         self.saved = LibraryView(ctx, kind="sd")
+        self.builder = PromptBuilder(ctx, form={
+            "get": lambda: (self.generate.prompt.toPlainText(), self.generate.negative.toPlainText()),
+            "set": self.generate.set_prompts,
+            "api": lambda: self.controller.manager.api if self.controller.state.ready else None,
+        })
         self.tabs = tabs = QTabWidget()
         tabs.addTab(self.generate, tr("sd.tab.generate"))
+        tabs.addTab(self.builder, tr("sd.tab.builder"))
         tabs.addTab(self.queue_view, tr("sd.tab.queue"))
         tabs.addTab(self.history, tr("sd.tab.history"))
         tabs.addTab(self.civitai, "CivitAI")
