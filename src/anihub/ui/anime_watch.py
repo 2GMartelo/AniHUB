@@ -171,7 +171,7 @@ class WatchTab(QWidget):
         layout.addWidget(split)
 
         self.reload_sources()
-        self.source_box.activated.connect(lambda _i: self.search())
+        self.source_box.activated.connect(lambda _i: (self.ctx.cfg.set("anime.last_source", self.source_box.currentData()), self.search()))
         self.lang_filter.changed.connect(lambda: (self.reload_sources(), self.search()))
         self.ext_btn.clicked.connect(self._extensions)
         self.go.clicked.connect(self.search)
@@ -196,7 +196,7 @@ class WatchTab(QWidget):
         adult = "explicit" in self.ctx.allowed_ratings()
         sources = {n: s for n, s in self.ctx.anime_sources.items() if adult or not s.nsfw}
         self.lang_filter.set_languages({s.lang for n, s in sources.items() if n != "local"})
-        current = self.source_box.currentData()
+        current = self.source_box.currentData() or self.ctx.cfg.get("anime.last_source")
         self.source_box.clear()
         for name, source in sources.items():
             if name == "local" or self.lang_filter.accepts(source.lang):

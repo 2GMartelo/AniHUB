@@ -143,7 +143,7 @@ class OnlineNovelsTab(QWidget):
         layout.addWidget(self.grid, 1)
         layout.addWidget(self.status)
         self.reload_sources()
-        self.source_box.activated.connect(lambda _i: self.search())
+        self.source_box.activated.connect(lambda _i: (self.ctx.cfg.set("novels.last_source", self.source_box.currentData()), self.search()))
         self.lang_filter.changed.connect(lambda: (self.reload_sources(), self.search()))
         self.go.clicked.connect(self.search)
         self.query.returnPressed.connect(self.search)
@@ -157,7 +157,7 @@ class OnlineNovelsTab(QWidget):
         adult = "explicit" in self.ctx.allowed_ratings()
         sources = {n: s for n, s in self.ctx.novel_sources.items() if adult or not s.nsfw}
         self.lang_filter.set_languages({s.lang for s in sources.values()})
-        current = self.source_box.currentData()
+        current = self.source_box.currentData() or self.ctx.cfg.get("novels.last_source")
         self.source_box.clear()
         for name, source in sources.items():
             if self.lang_filter.accepts(source.lang):

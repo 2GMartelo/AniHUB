@@ -145,7 +145,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "watch.col.no": "№", "watch.col.title": "Title", "watch.col.state": "State", "watch.play": "Watch",
         "watch.mark_seen": "Mark watched", "watch.mark_unseen": "Mark unwatched", "watch.pick_title": "Pick a title",
         "watch.pick_text": "Double-click a title to see its episodes. Local files: put a folder per show (with the episode files inside) "
-                           "into the anime folder. More sites: add a plugin (see the README).",
+                           "into the anime folder. More sites and languages: the Extensions button.",
         "watch.local_empty": "No shows yet: press «Open the anime folder» and put a folder per show there.",
         "watch.episodes_n": "Episodes: {n}", "watch.no_episodes": "No episodes found.",
         "watch.linked_to": "Linked to AniList: {title}. Watched episodes update your list.",
@@ -648,7 +648,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "watch.col.no": "№", "watch.col.title": "Название", "watch.col.state": "Состояние", "watch.play": "Смотреть",
         "watch.mark_seen": "Отметить просмотренным", "watch.mark_unseen": "Снять отметку", "watch.pick_title": "Выберите тайтл",
         "watch.pick_text": "Двойной клик по тайтлу покажет серии. Локальные файлы: положите в папку аниме по папке на каждый сериал "
-                           "(серии внутри). Другие сайты — плагины (см. README).",
+                           "(серии внутри). Больше сайтов и языков — кнопка «Расширения».",
         "watch.local_empty": "Сериалов пока нет: нажмите «Открыть папку аниме» и положите туда по папке на сериал.",
         "watch.episodes_n": "Серий: {n}", "watch.no_episodes": "Серий не найдено.",
         "watch.linked_to": "Связано с AniList: {title}. Просмотренные серии обновляют ваш список.",
