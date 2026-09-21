@@ -504,11 +504,9 @@ class MyListTab(QWidget):
         row = self.ctx.db.anime_get(item.data(0, Qt.ItemDataRole.UserRole))
         if row is None:
             return
-        self.open_media.emit({"id": row["media_id"], "title": row["title"], "native": row["title_native"] or "",
-                              "cover": row["cover_url"] or "", "format": row["format"] or "", "episodes": row["episodes"],
-                              "status": row["airing_status"] or "", "next_episode": row["next_episode"],
-                              "next_airing": row["next_airing"], "genres": [], "description": "", "studio": "", "season": "",
-                              "year": None, "score": None, "url": f"https://anilist.co/anime/{row['media_id']}"})
+        from anihub.ui.palette_providers import media_from_row
+
+        self.open_media.emit(media_from_row(row))
 
     def _menu(self, pos) -> None:
         if not self.tree.selectedItems():

@@ -138,7 +138,7 @@ def test_shelf_imports_dedups_and_keeps_covers(qapp, tmp_path):
     assert shelf.file_of(row).exists() and shelf.cover_of(row).exists() and row["chapters"] == 2
     assert QImage(str(shelf.cover_of(row))).height() <= 480
     assert not list((paths.novels).glob("*bad*"))                             # a broken file is never copied in
-    assert [r["title"] for r in shelf.db.novels("петров")] == []              # author search is on the author column only
+    assert [r["title"] for r in shelf.db.novels("ПЕТРОВ")] == ["Тестовая книга"]           # case-insensitive for Cyrillic too (author column)
     assert [r["title"] for r in shelf.db.novels("roe")] == ["Test Novel"] and len(shelf.db.novels("книга")) == 1
 
 

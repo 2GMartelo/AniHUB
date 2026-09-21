@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QAction, QCloseEvent
+from PySide6.QtGui import QAction, QCloseEvent, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication, QLabel, QListWidget, QMainWindow, QMenu, QScrollArea, QStackedWidget, QSystemTrayIcon, QTabWidget,
     QToolButton, QWidget, QHBoxLayout, QVBoxLayout,
@@ -128,6 +128,7 @@ class MainWindow(QMainWindow):
         self.settings.about.update_found.connect(self._update_found)
         QTimer.singleShot(6000, self._auto_check_updates)          # after startup, in the background
         QTimer.singleShot(20000, self._auto_backup)
+        QShortcut(QKeySequence("Ctrl+K"), self, activated=self.open_palette)
         self.error_btn = QToolButton()
         self.error_btn.setObjectName("updateNotice")
         self.error_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
@@ -162,6 +163,15 @@ class MainWindow(QMainWindow):
         self.browse.on_batch(tr("dl.batch_status", details=summary_text(result.counts)))
         if result.total >= int(self.ctx.cfg.get("downloads.notify_min", 10)) and getattr(self, "tray", None) is not None:
             self.tray.showMessage(APP_NAME, notify_text(result), QSystemTrayIcon.MessageIcon.Information, 6000)
+
+    def open_palette(self) -> None:
+        """Ctrl+K: jump to a section, run an action, find a tag / book / show."""
+        from anihub.ui.command_palette import CommandPalette
+        from anihub.ui.palette_providers import build_providers
+
+        dlg = CommandPalette(build_providers(self), self)
+        dlg.move(self.geometry().center().x() - dlg.width() // 2, self.geometry().top() + 120)
+        dlg.exec()
 
     def _check_errors(self) -> None:
         from anihub.services import bugreport

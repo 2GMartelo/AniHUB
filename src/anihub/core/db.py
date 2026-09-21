@@ -188,6 +188,7 @@ class Database:
             conn.row_factory = sqlite3.Row
             conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("PRAGMA foreign_keys=ON")
+            conn.create_function("py_lower", 1, lambda v: v.lower() if isinstance(v, str) else v, deterministic=True)  # SQLite lower() is ASCII-only
             self._local.conn = conn
         return conn
 
@@ -558,8 +559,8 @@ class Database:
     def novels(self, query: str = "", unfinished: bool = False) -> list[sqlite3.Row]:
         sql, args = "SELECT * FROM novels WHERE 1", []
         if query:
-            sql += " AND (title LIKE ? ESCAPE '\\' OR author LIKE ? ESCAPE '\\')"
-            args += [f"%{_like_escape(query)}%"] * 2
+            sql += " AND (py_lower(title) LIKE ? ESCAPE '\\' OR py_lower(author) LIKE ? ESCAPE '\\')"
+            args += [f"%{_like_escape(query.lower())}%"] * 2
         if unfinished:
             sql += " AND finished=0"
         return self.conn.execute(sql + " ORDER BY COALESCE(last_read_at, added_at) DESC", args).fetchall()
