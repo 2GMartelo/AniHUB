@@ -17,6 +17,9 @@ GALLERY2 = {"gid": 102, "token": "bbbbbbbbbb", "title": "Second", "category": "N
 
 
 class FakeHttp:
+    def add_host_headers(self, suffix, headers):
+        pass
+
     def __init__(self, html=SEARCH_HTML, gdata=None):
         self.html, self.calls = html, []
         self.gdata = gdata if gdata is not None else {"gmetadata": [GALLERY, GALLERY2, {"gid": 103, "error": "Key missing"}]}

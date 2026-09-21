@@ -39,6 +39,8 @@ class BrowseView(QWidget):
         idx = self.source.findData(last)
         self.source.setCurrentIndex(max(idx, 0))
         self.query = QLineEdit(placeholderText=tr("search.placeholder"))
+        self.source.currentIndexChanged.connect(self._update_hint)
+        self._update_hint()
         self.search_btn = QPushButton(tr("search.button"))
         self.save_btn = QPushButton(tr("action.save"))
         self.save_btn.setEnabled(False)
@@ -72,6 +74,10 @@ class BrowseView(QWidget):
         self.grid.need_more.connect(self._load_page)
         self.grid.itemDoubleClicked.connect(self._open_viewer)
         self.grid.itemSelectionChanged.connect(lambda: self.save_btn.setEnabled(bool(self.grid.selectedItems())))
+
+    def _update_hint(self) -> None:
+        source = self.ctx.sources.get(self.source.currentData())
+        self.query.setPlaceholderText(tr(source.hint_key) if source and source.hint_key else tr("search.placeholder"))
 
     # --- searching ---------------------------------------------------------------
 

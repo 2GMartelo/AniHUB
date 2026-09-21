@@ -35,6 +35,7 @@ rape molestation sexual_assault non-consensual bondage bdsm shibari bdsm_gear co
 tentacles tentacle_sex bestiality zoophilia incest 
 guro gore dismemberment decapitation snuff necrophilia scat urine watersports vore
 loli lolicon shota shotacon toddlercon child_porn
+r-18 r-18g r18 エロ 全裸 乳首 おまんこ ちんこ セックス 中出し ふたなり ロリ ショタ 触手 拘束 グロ 淫紋 裸 R18 성인
 """.split()
 
 # Hidden at 12+ only: allowed from 16+ (the user's tier: "16+ gives access to breasts").
@@ -45,6 +46,7 @@ bikini micro_bikini string_bikini sling_bikini swimsuit lingerie underwear panti
 cameltoe wet_clothes see-through see-through_silhouette wet_shirt sexually_suggestive seductive_smile bedroom_eyes
 ass huge_ass butt_crack thighs_together shirtless naked_shirt naked_towel towel_only 
 pole_dance stripper heart_pasties pasties
+水着 下着 おっぱい 巨乳 爆乳 貧乳 乳 胸 谷間 パンチラ お尻 尻 ブラ ビキニ
 """.split()
 
 

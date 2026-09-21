@@ -89,6 +89,22 @@ class HttpClient:
         self._sem = threading.BoundedSemaphore(int(cfg.get("network.max_parallel", 6)))
         self._bandwidth = BandwidthLimiter()
         self._abort_generation = 0
+        self._host_headers: dict[str, Callable[[], dict[str, str]]] = {}
+
+    def add_host_headers(self, suffix: str, headers: Callable[[], dict[str, str]]) -> None:
+        """Headers sent with every request to *suffix (e.g. a Referer that an image CDN insists on, or a login cookie).
+        `headers` is called per request, so a setting changed in the UI applies at once."""
+        self._host_headers[suffix.lower()] = headers
+
+    def _merged_headers(self, url: str, headers: dict | None) -> dict | None:
+        if not self._host_headers:
+            return headers
+        host = urlsplit(url).hostname or ""
+        extra: dict[str, str] = {}
+        for suffix, make in self._host_headers.items():
+            if host == suffix or host.endswith("." + suffix):
+                extra.update(make())
+        return {**extra, **(headers or {})} if extra else headers
 
     def abort_downloads(self) -> None:
         """Stops every download that is running right now (they raise HttpError 'cancelled'); later ones are unaffected."""
@@ -144,7 +160,7 @@ class HttpClient:
             if throttle:
                 self._limiter.wait(host, interval)
             try:
-                resp = self.client.get(url, params=params, auth=auth, headers=headers)
+                resp = self.client.get(url, params=params, auth=auth, headers=self._merged_headers(url, headers))
             except httpx.TransportError as exc:
                 last = exc
                 time.sleep(1 + attempt)
@@ -181,7 +197,7 @@ class HttpClient:
         for attempt in range(3):
             self._limiter.wait(urlsplit(url).netloc, interval)
             try:
-                resp = self.client.post(url, json=payload, headers=headers)
+                resp = self.client.post(url, json=payload, headers=self._merged_headers(url, headers))
             except httpx.TransportError as exc:
                 last = exc
                 time.sleep(1 + attempt)
@@ -211,7 +227,7 @@ class HttpClient:
         generation = self._abort_generation
         with self._sem:
             try:
-                with self.client.stream("GET", url, headers=headers) as resp:
+                with self.client.stream("GET", url, headers=self._merged_headers(url, headers)) as resp:
                     if resp.status_code >= 400:
                         raise HttpError(resp.status_code)
                     total = int(resp.headers.get("Content-Length") or 0)

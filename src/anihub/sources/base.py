@@ -77,6 +77,8 @@ class Source(ABC):
     credentials: list[tuple[str, str]] = []
     # Minimum delay between API calls for this site (the global setting is a lower bound)
     interval_ms: int = 0
+    # i18n key of a one-line hint about this site's query syntax (shown as the search box placeholder), or ""
+    hint_key: str = ""
 
     def __init__(self, http: HttpClient, cfg: Config):
         self.http = http

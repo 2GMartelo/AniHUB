@@ -9,10 +9,12 @@ from anihub.sources.ehentai import EHentai
 from anihub.sources.gelbooru import Gelbooru
 from anihub.sources.moebooru_sites import Konachan, Yandere
 from anihub.sources.nhentai import NHentai
+from anihub.sources.pinterest import Pinterest
+from anihub.sources.pixiv import Pixiv
 from anihub.sources.rule34 import Rule34
 from anihub.sources.zerochan import Zerochan
 
-BUILTIN: list[type[Source]] = [Danbooru, Gelbooru, Yandere, Konachan, Zerochan, Rule34, EHentai, NHentai]
+BUILTIN: list[type[Source]] = [Danbooru, Gelbooru, Yandere, Konachan, Zerochan, Rule34, EHentai, NHentai, Pixiv, Pinterest]
 
 
 def build_sources(http: HttpClient, cfg: Config) -> dict[str, Source]:

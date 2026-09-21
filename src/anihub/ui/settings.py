@@ -189,6 +189,11 @@ class SettingsPage(QWidget):
         for src in ctx.sources.values():
             for key, label in src.credentials:
                 creds.addRow(f"{src.title}: {label}", self.cred_fields[f"sources.{src.name}.{key}"])
+            help_text = tr(f"cred.{src.name}.help")
+            if help_text != f"cred.{src.name}.help":                # a source may explain where its credential comes from
+                hint = style.role(QLabel(help_text), "dim")
+                hint.setWordWrap(True)
+                creds.addRow("", hint)
         creds_box = QGroupBox(tr("settings.creds"))
         creds_box.setLayout(creds)
         for group in (forge_box, manga_box, gen_box, lib_box, tag_box):

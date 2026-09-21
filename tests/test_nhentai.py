@@ -17,6 +17,9 @@ DETAIL = {"id": 11, "title": {"english": "First (full)"}, "pages": [{"number": 1
 
 
 class FakeHttp:
+    def add_host_headers(self, suffix, headers):
+        pass
+
     def __init__(self, listing=LISTING, detail=DETAIL):
         self.calls, self.listing, self.detail = [], listing, detail
 
