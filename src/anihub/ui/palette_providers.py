@@ -39,7 +39,7 @@ def sections(win) -> list[Entry]:
             Entry(f"{tr('nav.anime')} · {tr('anime.tab.season')}", go(3, win.anime_page.tabs, win.anime_page.season), s, "season calendar"),
             Entry(f"{tr('nav.anime')} · {tr('anime.tab.list')}", go(3, win.anime_page.tabs, win.anime_page.mylist), s, "list tracker"),
             Entry(f"{tr('nav.anime')} · {tr('anime.tab.watch')}", go(3, win.anime_page.tabs, win.anime_page.watch), s, "watch player"),
-            Entry(f"{tr('nav.anime')} · {tr('anime.tab.music')}", go(3, win.anime_page.tabs, win.anime_page.music), s, "music ost soundtrack"),
+            Entry(f"{tr('nav.anime')} · {tr('anime.tab.music')}", go(3, win.anime_page.tabs, win.anime_page.music_hub), s, "music ost soundtrack"),
             Entry(tr("nav.novels"), go(4), s, "novels books ranobe"),
             Entry(tr("nav.settings"), go(5), s, "settings")]
     return out

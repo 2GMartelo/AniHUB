@@ -122,4 +122,5 @@ def test_the_wizard_asks_for_the_tour_and_the_main_window_marks_it_done(qapp, tm
         overlay.next()
     pump(qapp, 0.1)
     assert win._tutorial is None and cfg.get("tutorial.pending") is False
+    win._quitting = True
     win.close()

@@ -14,6 +14,7 @@ from anihub.sources.novels.base import NovelChapter, NovelEntry, NovelSource, No
 API = "https://api2.mangalib.me/api"
 SITE = "https://ranobelib.me"
 SITE_ID = 3
+UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"
 HEADERS = {"Site-Id": str(SITE_ID), "Referer": SITE + "/", "Origin": SITE, "Accept": "application/json"}
 
 
@@ -28,6 +29,13 @@ class RanobeLib(NovelSource):
     name = "ranobelib"
     title = "RanobeLib"
     lang = "ru"
+
+    def __init__(self, http, cfg):
+        super().__init__(http, cfg)
+        register = getattr(http, "add_host_headers", None)
+        if register:                                    # covers (cdnlibs.org) and chapter pictures answer 403 without the site's Referer
+            for host in ("cdnlibs.org", "ranobelib.me", "mangalib.me", "cdnlib.link"):
+                register(host, lambda: {"Referer": SITE + "/", "User-Agent": UA})
 
     def _get(self, path: str, params=None):
         try:

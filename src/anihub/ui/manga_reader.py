@@ -4,7 +4,9 @@ Pages are fetched lazily from Suwayomi. Reading progress (last page / read flag)
 """
 from __future__ import annotations
 
-from PySide6.QtCore import QPoint, QRectF, Qt, QTimer, Signal
+from PySide6.QtCore import (
+    QEasingCurve, QPoint, QPointF, QPropertyAnimation, QRectF, QSizeF, Qt, QTimer, QVariantAnimation, Signal,
+)
 from PySide6.QtGui import QColor, QImage, QKeyEvent, QMouseEvent, QPainter, QPixmap, QResizeEvent
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QHBoxLayout, QLabel, QScrollArea, QSlider, QStackedWidget, QToolButton, QVBoxLayout, QWidget,
@@ -13,6 +15,7 @@ from PySide6.QtWidgets import (
 from anihub.context import AppContext
 from anihub.core.i18n import tr
 from anihub.ui import style
+from anihub.ui.zoomview import STEP, clamp_pan, clamp_zoom, zoom_pan
 from anihub.ui.workers import run_async
 
 MODES = ("paged", "double", "webtoon")
@@ -46,44 +49,179 @@ def step_back(images: dict[int, QImage], count: int, i: int, double: bool) -> in
 
 
 class PagedCanvas(QWidget):
+    """One page or a spread. Ctrl + wheel zooms (the level is kept between pages), a drag pans a zoomed page, a click on a
+    half flips; flipping slides the old page out to one side while the next one comes in from the other."""
     clicked_side = Signal(str)  # "left" | "right"
+    zoom_changed = Signal(float)
+    SLIDE_MS = 300
 
     def __init__(self):
         super().__init__()
         self.images: list[QImage | None] = []
         self.rtl = True
         self.message = ""
+        self.zoom = 1.0
+        self._pan = QPointF()
+        self._press: QPointF | None = None
+        self._moved = False
+        self._old: tuple[list[QImage | None], float, QPointF] | None = None      # what is sliding out
+        self._dir = 0                                                              # +1: the new page enters from the right
+        self._t = 1.0
+        self._anim = QVariantAnimation(self, duration=self.SLIDE_MS)
+        self._anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._anim.valueChanged.connect(self._on_slide)
+        self._anim.finished.connect(self._end_slide)
         self.setMinimumSize(300, 300)
+
+    # --- content -------------------------------------------------------------------------------------------------
 
     def show_images(self, images: list[QImage | None], message: str = "") -> None:
         self.images, self.message = images, message
         self.update()
 
+    def reset_pan(self) -> None:
+        self._pan = QPointF()
+
+    def start_slide(self, direction: int) -> None:
+        """The page on screen leaves (to the left when direction is +1, to the right when -1). Call before show_images()."""
+        if not any(im is not None for im in self.images) or not self.isVisible() or not direction:
+            self._old = None
+            return
+        self._old = (list(self.images), self.zoom, QPointF(self._pan))
+        self._dir, self._t = direction, 0.0
+        self._pan = QPointF()
+        self._anim.stop()
+        self._anim.setStartValue(0.0)
+        self._anim.setEndValue(1.0)
+        self._anim.start()
+
+    def _on_slide(self, value) -> None:
+        self._t = float(value)
+        self.update()
+
+    def _end_slide(self) -> None:
+        self._old, self._t = None, 1.0
+        self.update()
+
+    # --- geometry --------------------------------------------------------------------------------------------------
+
+    def _ordered(self, images) -> list[QImage]:
+        shown = list(reversed(images)) if (self.rtl and len(images) == 2) else list(images)
+        return [im for im in shown if im is not None]
+
+    def _fitted(self, images) -> QSizeF:
+        """Size of the page (or spread) at zoom 1: as large as fits, equal heights side by side."""
+        ready = self._ordered(images)
+        if not ready:
+            return QSizeF(0, 0)
+        h0 = ready[0].height()
+        total_w = sum(im.width() * (h0 / im.height()) for im in ready)
+        scale = min(self.width() / total_w, self.height() / h0)
+        return QSizeF(total_w * scale, h0 * scale)
+
+    def _rects(self, images, zoom: float, pan: QPointF) -> list[tuple[QImage, QRectF]]:
+        ready = self._ordered(images)
+        if not ready:
+            return []
+        fitted = self._fitted(images)
+        h0 = ready[0].height()
+        total_w = sum(im.width() * (h0 / im.height()) for im in ready)
+        k = fitted.width() * zoom / total_w                                          # px per (height-normalised) image px
+        h = h0 * (fitted.height() / h0) * zoom
+        x = (self.width() - fitted.width() * zoom) / 2 + pan.x()
+        y = (self.height() - h) / 2 + pan.y()
+        out = []
+        for im in ready:
+            w = im.width() * (h0 / im.height()) * k
+            out.append((im, QRectF(x, y, w, h)))
+            x += w
+        return out
+
+    def _draw(self, p: QPainter, images, zoom: float, pan: QPointF, message: str) -> None:
+        rects = self._rects(images, zoom, pan)
+        if not rects:
+            p.setPen(QColor("#9aa0a6"))
+            p.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, message or tr("status.loading"))
+            return
+        for im, rect in rects:
+            p.drawImage(rect, im)
+
     def paintEvent(self, _event) -> None:
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
         p.fillRect(self.rect(), QColor("#101214"))
-        shown = list(reversed(self.images)) if (self.rtl and len(self.images) == 2) else list(self.images)
-        ready = [im for im in shown if im is not None]
-        if not ready:
-            p.setPen(QColor("#9aa0a6"))
-            p.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, self.message or tr("status.loading"))
+        width = self.width()
+        if self._old is not None and self._t < 1.0:
+            old_images, old_zoom, old_pan = self._old
+            p.save()
+            p.translate(-self._dir * self._t * width, 0)
+            self._draw(p, old_images, old_zoom, old_pan, "")
+            p.restore()
+            p.translate(self._dir * (1.0 - self._t) * width, 0)
+        self._draw(p, self.images, self.zoom, self._pan, self.message)
+
+    # --- zoom / pan / click ----------------------------------------------------------------------------------------
+
+    def set_zoom(self, zoom: float, anchor: QPointF | None = None) -> None:
+        zoom = clamp_zoom(zoom)
+        fitted = self._fitted(self.images)
+        if zoom == self.zoom or fitted.isEmpty():
+            self.zoom = zoom if fitted.isEmpty() else self.zoom
             return
-        total_w = sum(im.width() * (ready[0].height() / im.height()) for im in ready)  # equal heights side by side
-        scale = min(self.width() / total_w, self.height() / ready[0].height())
-        x = (self.width() - total_w * scale) / 2
-        for im in ready:
-            w, h = im.width() * (ready[0].height() / im.height()) * scale, ready[0].height() * scale
-            p.drawImage(QRectF(x, (self.height() - h) / 2, w, h), im)
-            x += w
+        area = QSizeF(self.width(), self.height())
+        anchor = anchor if anchor is not None else QPointF(area.width() / 2, area.height() / 2)
+        self._pan = zoom_pan(self.zoom, zoom, self._pan, anchor, area, fitted)
+        self.zoom = zoom
+        self.update()
+        self.zoom_changed.emit(zoom)
+
+    def wheelEvent(self, e) -> None:
+        if e.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            if e.angleDelta().y():
+                self.set_zoom(self.zoom * STEP ** (e.angleDelta().y() / 120), e.position())
+            e.accept()
+        else:
+            e.ignore()                                                                 # the reader flips the page
 
     def mousePressEvent(self, e: QMouseEvent) -> None:
-        self.clicked_side.emit("left" if e.position().x() < self.width() / 2 else "right")
+        self._press, self._moved = e.position(), False
+
+    def mouseMoveEvent(self, e: QMouseEvent) -> None:
+        if self._press is None:
+            return
+        delta = e.position() - self._press
+        if not self._moved and delta.manhattanLength() < 6:
+            return
+        self._moved = True
+        self._press = e.position()
+        if self.zoom > 1.0:
+            fitted = self._fitted(self.images)
+            self._pan = clamp_pan(self._pan + delta, QSizeF(fitted.width() * self.zoom, fitted.height() * self.zoom),
+                                  QSizeF(self.width(), self.height()))
+            self.update()
+
+    def mouseReleaseEvent(self, e: QMouseEvent) -> None:
+        if self._press is not None and not self._moved:
+            self.clicked_side.emit("left" if e.position().x() < self.width() / 2 else "right")
+        self._press = None
+
+    def mouseDoubleClickEvent(self, e: QMouseEvent) -> None:
+        if self.zoom != 1.0:
+            self._pan = QPointF()
+            self.zoom = 1.0
+            self.update()
+            self.zoom_changed.emit(1.0)
 
 
 class WebtoonView(QScrollArea):
+    """Endless vertical strip. The strip has a readable width of its own (a manhwa page is not stretched over the whole
+    window): Ctrl + wheel changes it and the reader remembers it. The plain wheel, keys and buttons scroll smoothly."""
     page_changed = Signal(int)
     need_page = Signal(int)
+    width_changed = Signal(int)
+    DEFAULT_COLUMN = 800
+    MIN_COLUMN = 240
+    SCROLL_MS = 260
 
     def __init__(self):
         super().__init__()
@@ -95,8 +233,13 @@ class WebtoonView(QScrollArea):
         self.lay.setContentsMargins(0, 0, 0, 0)
         self.lay.setSpacing(0)
         self.setWidget(self.container)
+        self.column = self.DEFAULT_COLUMN                       # the strip's width in px (never wider than the window)
         self.labels: list[QLabel] = []
         self.images: dict[int, QImage] = {}
+        self._target = 0
+        self._anim = QPropertyAnimation(self.verticalScrollBar(), b"value", self)
+        self._anim.setDuration(self.SCROLL_MS)
+        self._anim.setEasingCurve(QEasingCurve.Type.OutCubic)
         self.verticalScrollBar().valueChanged.connect(self._on_scroll)
 
     def set_pages(self, count: int) -> None:
@@ -112,7 +255,7 @@ class WebtoonView(QScrollArea):
             self.labels.append(lab)
 
     def _width(self) -> int:
-        return max(self.viewport().width(), 200)
+        return max(min(self.column, self.viewport().width()), 200)
 
     def set_image(self, i: int, img: QImage) -> None:
         self.images[i] = img
@@ -122,15 +265,73 @@ class WebtoonView(QScrollArea):
         img = self.images.get(i)
         if img is None or i >= len(self.labels):
             return
-        w = self._width()
-        pm = QPixmap.fromImage(img.scaledToWidth(w, Qt.TransformationMode.SmoothTransformation))
+        pm = QPixmap.fromImage(img.scaledToWidth(self._width(), Qt.TransformationMode.SmoothTransformation))
         self.labels[i].setPixmap(pm)
         self.labels[i].setFixedHeight(pm.height())
 
-    def resizeEvent(self, e: QResizeEvent) -> None:
-        super().resizeEvent(e)
+    def _refit_all(self) -> None:
         for i in self.images:
             self._fit(i)
+        for i, lab in enumerate(self.labels):
+            if i not in self.images:
+                lab.setFixedHeight(int(self._width() * 1.4))
+
+    def resizeEvent(self, e: QResizeEvent) -> None:
+        super().resizeEvent(e)
+        self._refit_all()
+
+    # --- width (Ctrl + wheel) --------------------------------------------------------------------------------------
+
+    def set_column(self, width: int, notify: bool = True) -> None:
+        """Change the strip's width and keep the place: the same spot of the same page stays in view."""
+        width = max(self.MIN_COLUMN, min(int(width), max(self.viewport().width(), self.MIN_COLUMN)))
+        if width == self.column:
+            return
+        page = self.current_page()
+        lab = self.labels[page] if self.labels else None
+        frac = (self.verticalScrollBar().value() - lab.y()) / max(lab.height(), 1) if lab is not None else 0.0
+        self.column = width
+        self._refit_all()
+
+        def restore() -> None:
+            if lab is not None and page < len(self.labels):
+                target = self.labels[page]
+                self.verticalScrollBar().setValue(int(target.y() + frac * target.height()))
+
+        QTimer.singleShot(0, restore)
+        if notify:
+            self.width_changed.emit(width)
+
+    def zoom_steps(self, steps: float) -> None:
+        self.set_column(round(self.column * STEP ** steps))
+
+    # --- scrolling -------------------------------------------------------------------------------------------------
+
+    def scroll_by(self, delta: int, animated: bool = True) -> None:
+        bar = self.verticalScrollBar()
+        base = self._target if self._anim.state() == QPropertyAnimation.State.Running else bar.value()
+        self._target = max(0, min(base + int(delta), bar.maximum()))
+        self._anim.stop()
+        if not animated:
+            bar.setValue(self._target)
+            return
+        self._anim.setStartValue(bar.value())
+        self._anim.setEndValue(self._target)
+        self._anim.start()
+
+    def wheelEvent(self, e) -> None:
+        if e.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            if e.angleDelta().y():
+                self.zoom_steps(e.angleDelta().y() / 120)
+            e.accept()
+            return
+        pixels = e.pixelDelta().y()
+        if pixels:                                                                    # a touchpad already scrolls smoothly
+            self._anim.stop()
+            self.verticalScrollBar().setValue(self.verticalScrollBar().value() - pixels)
+        else:
+            self.scroll_by(-int(e.angleDelta().y() * 1.1))
+        e.accept()
 
     def current_page(self) -> int:
         mid = self.verticalScrollBar().value() + self.viewport().height() // 2
@@ -141,6 +342,7 @@ class WebtoonView(QScrollArea):
 
     def scroll_to_page(self, i: int) -> None:
         if 0 <= i < len(self.labels):
+            self._anim.stop()
             self.verticalScrollBar().setValue(self.labels[i].y())
 
     def _on_scroll(self) -> None:
@@ -212,7 +414,12 @@ class Reader(QWidget):
 
         self.canvas = PagedCanvas()
         self.canvas.rtl = self.rtl
+        self.canvas.zoom = clamp_zoom(float(cfg.get("manga.reader.zoom", 1.0) or 1.0))         # remembered for manga
         self.web = WebtoonView()
+        self.web.column = int(cfg.get("manga.reader.webtoon_width", WebtoonView.DEFAULT_COLUMN) or WebtoonView.DEFAULT_COLUMN)
+        self._cfg_timer = QTimer(self)                                                          # the wheel fires often: save once
+        self._cfg_timer.setSingleShot(True)
+        self._cfg_timer.timeout.connect(cfg.save)
         self.stack = QStackedWidget()
         self.stack.addWidget(self.canvas)
         self.stack.addWidget(self.web)
@@ -237,6 +444,8 @@ class Reader(QWidget):
         self.close_btn.clicked.connect(self.close)
         self.page_slider.valueChanged.connect(self._slider_moved)
         self.canvas.clicked_side.connect(self._on_click_side)
+        self.canvas.zoom_changed.connect(lambda z: self._remember("manga.reader.zoom", round(z, 3)))
+        self.web.width_changed.connect(lambda w: self._remember("manga.reader.webtoon_width", int(w)))
         self.web.need_page.connect(self._ensure)
         self.web.page_changed.connect(self._on_web_page)
         self.save_timer = QTimer(self)
@@ -244,6 +453,27 @@ class Reader(QWidget):
         self.save_timer.timeout.connect(self._save_progress)
         self.setFocus()
         self.open_chapter(index)
+
+    def _remember(self, key: str, value) -> None:
+        self.ctx.cfg.set(key, value, save=False)
+        self._cfg_timer.start(600)
+
+    def _zoom_step(self, steps: float) -> None:
+        if self.mode == "webtoon":
+            self.web.zoom_steps(steps)
+        else:
+            self.canvas.set_zoom(self.canvas.zoom * STEP ** steps)
+
+    def _zoom_reset(self) -> None:
+        if self.mode == "webtoon":
+            self.web.set_column(WebtoonView.DEFAULT_COLUMN)
+        else:
+            self.canvas.set_zoom(1.0)
+            self.canvas.reset_pan()
+
+    def _slide_direction(self, forward: bool) -> int:
+        """Which way the page on screen leaves: to the left for a forward flip, except in right-to-left reading."""
+        return (1 if forward else -1) * (-1 if self.rtl else 1)
 
     def _tool(self, icon: str, tip_key: str, size: int = 20, side: int = 38) -> QToolButton:
         button = QToolButton()
@@ -278,6 +508,8 @@ class Reader(QWidget):
         if not 0 <= index < len(self.chapters):
             return
         self._flush_progress()
+        if self.mode != "webtoon":
+            self.canvas.start_slide(self._slide_direction(index > self.index))
         self.index = index
         self._token += 1
         token = self._token
@@ -341,7 +573,10 @@ class Reader(QWidget):
     def _goto(self, i: int, initial: bool = False) -> None:
         if not self.pages:
             return
+        previous = self.page
         self.page = min(max(i, 0), len(self.pages) - 1)
+        if self.mode != "webtoon" and not initial and self.page != previous:
+            self.canvas.start_slide(self._slide_direction(self.page > previous))
         if self.mode == "webtoon":
             for k in range(self.page, self.page + PRELOAD_AHEAD + 1):
                 self._ensure(k)
@@ -350,6 +585,8 @@ class Reader(QWidget):
         else:
             for k in range(self.page - 1, self.page + PRELOAD_AHEAD + 1):
                 self._ensure(k)
+            if self.page != previous:
+                self.canvas.reset_pan()
             self._refresh_canvas()
         self._page_changed()
 
@@ -369,7 +606,7 @@ class Reader(QWidget):
             if bar.value() >= bar.maximum():
                 self.open_chapter(self.index + 1)
             else:
-                bar.setValue(bar.value() + int(self.web.viewport().height() * 0.9))
+                self.web.scroll_by(int(self.web.viewport().height() * 0.9))
             return
         last = self._shown()[-1]
         if last >= len(self.pages) - 1:
@@ -384,7 +621,7 @@ class Reader(QWidget):
             if bar.value() <= 0:
                 self.open_chapter(self.index - 1, last_page=True)
             else:
-                bar.setValue(bar.value() - int(self.web.viewport().height() * 0.9))
+                self.web.scroll_by(-int(self.web.viewport().height() * 0.9))
             return
         if self.page <= 0:
             self.open_chapter(self.index - 1, last_page=True)
@@ -505,9 +742,9 @@ class Reader(QWidget):
         elif k in (Qt.Key.Key_Backspace, Qt.Key.Key_PageUp):
             self.prev_page()
         elif k == Qt.Key.Key_Down and self.mode == "webtoon":
-            self.web.verticalScrollBar().setValue(self.web.verticalScrollBar().value() + 120)
+            self.web.scroll_by(120)
         elif k == Qt.Key.Key_Up and self.mode == "webtoon":
-            self.web.verticalScrollBar().setValue(self.web.verticalScrollBar().value() - 120)
+            self.web.scroll_by(-120)
         elif k == Qt.Key.Key_BracketRight:
             self.open_chapter(self.index + 1)
         elif k == Qt.Key.Key_BracketLeft:
@@ -516,6 +753,12 @@ class Reader(QWidget):
             self._goto(0, initial=True)
         elif k == Qt.Key.Key_End:
             self._goto(len(self.pages) - 1, initial=True)
+        elif k in (Qt.Key.Key_Plus, Qt.Key.Key_Equal):
+            self._zoom_step(1)
+        elif k == Qt.Key.Key_Minus:
+            self._zoom_step(-1)
+        elif k == Qt.Key.Key_0:
+            self._zoom_reset()
         elif k == Qt.Key.Key_M:
             self.cycle_mode()
         elif k == Qt.Key.Key_R:
@@ -528,7 +771,9 @@ class Reader(QWidget):
             super().keyPressEvent(e)
 
     def wheelEvent(self, e) -> None:
-        if self.mode != "webtoon":
+        if e.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            self._zoom_step(e.angleDelta().y() / 120)                 # Ctrl + wheel anywhere in the window
+        elif self.mode != "webtoon":
             (self.prev_page if e.angleDelta().y() > 0 else self.next_page)()
 
     def closeEvent(self, event) -> None:

@@ -178,6 +178,9 @@ class _Cfg(dict):
     def set(self, key, value, save=True):
         self[key] = value
 
+    def save(self):
+        pass
+
 
 def make_reader(qapp, rtl=True):
     from types import SimpleNamespace

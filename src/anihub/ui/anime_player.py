@@ -219,7 +219,7 @@ class AnimePlayer(QWidget):
         player = str(self.ctx.cfg.get("anime.external_player", "") or "")
         try:
             if player:
-                subprocess.Popen(external_command(player, stream))          # noqa: S603 - the user's own configured player
+                subprocess.Popen(external_command(player, stream), creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))          # noqa: S603 - the user's own configured player
             else:
                 import os
 

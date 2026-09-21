@@ -18,7 +18,7 @@ from anihub.services.anilist import (
 )
 from anihub.ui import style
 from anihub.ui.anime_watch import WatchTab
-from anihub.ui.music_tab import MusicTab
+from anihub.ui.music_hub import MusicHub
 from anihub.ui.grid import ThumbGrid, image_to_thumb
 from anihub.ui.workers import run_async
 
@@ -550,12 +550,13 @@ class AnimePage(QWidget):
         self.season = SeasonTab(ctx)
         self.mylist = MyListTab(ctx)
         self.watch = WatchTab(ctx)
-        self.music = MusicTab(ctx)
+        self.music_hub = MusicHub(ctx)
+        self.music = self.music_hub.library
         self.tabs = QTabWidget()
         self.tabs.addTab(self.season, tr("anime.tab.season"))
         self.tabs.addTab(self.mylist, tr("anime.tab.list"))
         self.tabs.addTab(self.watch, tr("anime.tab.watch"))
-        self.tabs.addTab(self.music, tr("anime.tab.music"))
+        self.tabs.addTab(self.music_hub, tr("anime.tab.music"))
         self.account_btn = style.secondary(QPushButton(), "user")
         self.account_label = QLabel()
         style.role(self.account_label, "dim")

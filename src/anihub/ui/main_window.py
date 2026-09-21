@@ -5,7 +5,7 @@ import time
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QAction, QCloseEvent, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
-    QApplication, QLabel, QListWidget, QMainWindow, QMenu, QScrollArea, QStackedWidget, QSystemTrayIcon, QTabWidget,
+    QApplication, QCheckBox, QLabel, QListWidget, QMainWindow, QMenu, QMessageBox, QScrollArea, QStackedWidget, QSystemTrayIcon, QTabWidget,
     QToolButton, QWidget, QHBoxLayout, QVBoxLayout,
 )
 
@@ -375,9 +375,44 @@ class MainWindow(QMainWindow):
         else:
             super().paintEvent(event)                              # the stylesheet's opaque gradient
 
+    def _ask_close(self) -> tuple[str, bool] | None:
+        """The first time the window is closed: quit for good or keep running in the tray? -> (action, remember) or None (cancel)."""
+        box = QMessageBox(self)
+        box.setWindowTitle(APP_NAME)
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setText(tr("close.ask"))
+        box.setInformativeText(tr("close.info"))
+        tray_btn = box.addButton(tr("close.tray"), QMessageBox.ButtonRole.AcceptRole)
+        quit_btn = box.addButton(tr("close.quit"), QMessageBox.ButtonRole.DestructiveRole)
+        box.addButton(tr("close.cancel"), QMessageBox.ButtonRole.RejectRole)
+        remember = QCheckBox(tr("close.remember"))
+        box.setCheckBox(remember)
+        box.setDefaultButton(tray_btn)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked is tray_btn:
+            return "tray", remember.isChecked()
+        if clicked is quit_btn:
+            return "quit", remember.isChecked()
+        return None
+
     def closeEvent(self, event: QCloseEvent) -> None:
-        # Closing the window minimises to the tray so background work is not interrupted (ТЗ раздел 7).
+        # The first time the user chooses between quitting and the tray (and may remember it); the tray keeps background
+        # work (downloads, subscriptions, manga updates) running (ТЗ раздел 7).
         if self._quitting or not self.tray.isVisible():
+            event.accept()
+            return
+        action = str(self.ctx.cfg.get("ui.close_action", "") or "")
+        if action not in ("tray", "quit"):
+            choice = self._ask_close()
+            if choice is None:
+                event.ignore()
+                return
+            action, remember = choice
+            if remember:
+                self.ctx.cfg.set("ui.close_action", action)
+        if action == "quit":
+            self.quit_app()
             event.accept()
             return
         event.ignore()

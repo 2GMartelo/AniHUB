@@ -42,6 +42,10 @@ class SettingsPage(QWidget):
         for key in ("system", "light", "dark"):
             self.theme.addItem(tr(f"settings.theme.{key}"), key)
         self.theme.setCurrentIndex(self.theme.findData(cfg.get("theme")))
+        self.close_action = QComboBox()
+        for key in ("", "tray", "quit"):
+            self.close_action.addItem(tr(f"settings.close.{key or 'ask'}"), key)
+        self.close_action.setCurrentIndex(max(self.close_action.findData(str(cfg.get("ui.close_action", "") or "")), 0))
         self.glass = QCheckBox(tr("settings.glass"))
         self.glass.setChecked(bool(cfg.get("ui.glass", True)) and glass_supported())
         self.glass.setEnabled(glass_supported())
@@ -179,7 +183,7 @@ class SettingsPage(QWidget):
             return box
 
         look_box = form_box(tr("settings.g_appearance"), (tr("settings.language"), self.lang), (tr("settings.theme"), self.theme),
-                            ("", self.glass))
+                            ("", self.glass), (tr("settings.close"), self.close_action))
         storage_box = form_box(tr("settings.g_storage"), (tr("settings.library"), library_row),
                                (tr("settings.cache_limit"), self.cache_limit))
         age_box = form_box(tr("age.title"), (tr("age.mode"), self.age_mode), (tr("age.locked"), self.locked_tags),
@@ -318,6 +322,7 @@ class SettingsPage(QWidget):
         cfg.set("language", self.lang.currentData(), save=False)
         cfg.set("theme", self.theme.currentData(), save=False)
         cfg.set("ui.glass", self.glass.isChecked(), save=False)
+        cfg.set("ui.close_action", self.close_action.currentData(), save=False)
         mode = self.age_mode.currentData()
         if mode == "18" and agemode.mode_of(cfg) != "18" and not self._confirm_adult():
             self.age_mode.setCurrentIndex(self.age_mode.findData(agemode.mode_of(cfg)))

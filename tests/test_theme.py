@@ -150,4 +150,5 @@ def test_main_window_can_be_toggled_between_glass_and_opaque(qapp, tmp_path):
     assert win.testAttribute(Qt.WidgetAttribute.WA_TranslucentBackground) == theme.is_glass()
     theme.apply_theme(qapp, "dark", glass=False)
     assert not win.testAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+    win._quitting = True                                  # closing must not ask the tray question
     win.close()

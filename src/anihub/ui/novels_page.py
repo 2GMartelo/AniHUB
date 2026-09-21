@@ -59,6 +59,7 @@ def progress_text(row) -> str:
 
 class BookBrowser(QTextBrowser):
     """QTextBrowser that serves the pictures of the open book (`book:` URLs)."""
+    zoom_wheel = Signal(int)
 
     def __init__(self):
         super().__init__()
@@ -83,6 +84,14 @@ class BookBrowser(QTextBrowser):
 
     def reset_cache(self) -> None:
         self._cache.clear()
+
+    def wheelEvent(self, e) -> None:  # noqa: N802
+        if e.modifiers() & Qt.KeyboardModifier.ControlModifier:          # Ctrl + wheel = the reader's font size (remembered)
+            if e.angleDelta().y():
+                self.zoom_wheel.emit(1 if e.angleDelta().y() > 0 else -1)
+            e.accept()
+        else:
+            super().wheelEvent(e)
 
 
 class NovelReader(QWidget):
@@ -160,6 +169,7 @@ class NovelReader(QWidget):
         self.save_timer = QTimer(self)
         self.save_timer.setSingleShot(True)
         self.save_timer.timeout.connect(self.save)
+        self.browser.zoom_wheel.connect(lambda d: self.set_font(self.font_size + d))
         self.toc_btn.clicked.connect(lambda: self.toc.setVisible(not self.toc.isVisible()))
         self.toc.itemClicked.connect(lambda _i: self.goto(self.toc.currentRow()))
         self.smaller.clicked.connect(lambda: self.set_font(self.font_size - 1))

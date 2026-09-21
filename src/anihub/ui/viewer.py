@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 
 from anihub.core.i18n import tr
 from anihub.ui import style
+from anihub.ui.zoomview import ZoomLabel
 from anihub.ui.workers import run_async
 
 VIDEO_SUFFIXES = {".mp4", ".webm", ".mkv", ".mov"}
@@ -89,7 +90,7 @@ class Viewer(QWidget):
         self.resize(1300, 850)
 
         # media area
-        self.image = QLabel(alignment=Qt.AlignmentFlag.AlignCenter)
+        self.image = ZoomLabel(alignment=Qt.AlignmentFlag.AlignCenter)      # Ctrl + wheel zooms, drag pans, double click resets
         self.image.setMinimumSize(200, 200)
         self.image.setWordWrap(True)
         self.video = QVideoWidget()
@@ -295,6 +296,7 @@ class Viewer(QWidget):
             self._movie.stop()
             self._movie = None
         self._pixmap = None
+        self.image.set_source(None)
         self.image.clear()
 
     def _show_path(self, path: Path) -> None:
@@ -318,15 +320,11 @@ class Viewer(QWidget):
             self.image.setText(tr("viewer.unsupported", name=path.name, url=self.items[self.index].page_url))
             return
         self._pixmap = pm
-        self._rescale()
+        self.image.set_source(pm)                       # painted (fit to the window) by the label itself; zoom starts at "fit"
 
     def _rescale(self) -> None:
-        target = self.image.size()
-        if self._pixmap is not None:
-            self.image.setPixmap(self._pixmap.scaled(target, Qt.AspectRatioMode.KeepAspectRatio,
-                                                     Qt.TransformationMode.SmoothTransformation))
-        elif self._movie is not None and self._movie_size.isValid():
-            self._movie.setScaledSize(self._movie_size.scaled(target, Qt.AspectRatioMode.KeepAspectRatio))
+        if self._pixmap is None and self._movie is not None and self._movie_size.isValid():
+            self._movie.setScaledSize(self._movie_size.scaled(self.image.size(), Qt.AspectRatioMode.KeepAspectRatio))
 
     def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
@@ -443,7 +441,9 @@ class Viewer(QWidget):
 
     def wheelEvent(self, event) -> None:  # noqa: N802 - wheel over the picture flips through items
         delta = event.angleDelta().y()
-        if delta and len(self.items) > 1:
+        if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            event.ignore()                              # Ctrl + wheel is the picture's zoom (ZoomLabel), never a page flip
+        elif delta and len(self.items) > 1:
             self.step(-1 if delta > 0 else 1)
             event.accept()
         else:
