@@ -69,6 +69,7 @@ def actions(win) -> list[Entry]:
         Entry(tr("rules.title"), library_tool("_rules"), a, "rules auto"),
         Entry(tr("integrity.title"), library_tool("_integrity"), a, "integrity check"),
         Entry(tr("tags.manager"), library_tool("_tag_manager"), a, "tags"),
+        Entry(tr("stats.title"), library_tool("_stats"), a, "statistics dashboard numbers"),
         Entry(tr("bug.button"), lambda: win.settings.about.report_btn.click(), a, "bug report error"),
         Entry(tr("about.logs"), lambda: win.settings.about.logs_btn.click(), a, "logs"),
         Entry(tr("tray.quit"), win.quit_app, a, "exit quit"),

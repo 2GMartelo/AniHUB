@@ -23,6 +23,7 @@ from anihub.ui.library_dialogs import DuplicatesDialog, ImportDialog, TagEditDia
 from anihub.ui.compare import CompareDialog
 from anihub.ui.integrity_dialog import IntegrityDialog
 from anihub.ui.rules_dialog import RulesDialog
+from anihub.ui.stats_dialog import StatsDialog
 from anihub.ui.tag_widgets import tag_line_edit
 from anihub.ui.tagquery import apply_tag
 from anihub.ui.viewer import ViewItem, Viewer
@@ -302,6 +303,7 @@ class LibraryView(QWidget):
             m.addAction(tr("dup.title") + "...", self._duplicates)
         m.addAction(tr("lib.autotag_all"), self._autotag_untagged)
         m.addAction(tr("integrity.title") + "...", self._integrity)
+        m.addAction(tr("stats.title") + "...", self._stats)
         m.addSeparator()
         m.addAction(tr("lib.empty_trash"), self._empty_trash)
 
@@ -310,6 +312,9 @@ class LibraryView(QWidget):
         dlg.changed.connect(lambda: (self.refresh_sidebar(), self.reload()))
         dlg.exec()
         self.refresh_sidebar()
+
+    def _stats(self) -> None:
+        StatsDialog(self.ctx, self).exec()
 
     def _integrity(self) -> None:
         dlg = IntegrityDialog(self.ctx, self)

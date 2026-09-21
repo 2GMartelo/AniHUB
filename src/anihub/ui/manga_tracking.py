@@ -316,10 +316,11 @@ class TrackDialog(QDialog):
         trackers, records = result
         while self.body.count():
             item = self.body.takeAt(0)
-            if item.widget():
-                item.widget().hide()
-                item.widget().setParent(None)
-                item.widget().deleteLater()
+            widget = item.widget()
+            if widget is not None:
+                widget.hide()
+                widget.setParent(None)
+                widget.deleteLater()
         by_tracker = {r["trackerId"]: r for r in records}
         signed = [t for t in trackers if t["isLoggedIn"]]
         for t in signed:
