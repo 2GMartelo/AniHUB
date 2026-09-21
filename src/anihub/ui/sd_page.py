@@ -26,6 +26,7 @@ from anihub.ui.forge_controller import ForgeController
 from anihub.ui.style import StatusChip
 from anihub.ui.grid import ThumbGrid, image_to_thumb
 from anihub.ui.mask_editor import MaskDialog
+from anihub.ui.lora_editor import LoraEditor
 from anihub.ui.prompt_builder import PromptBuilder
 from anihub.ui.xy_dialog import XYDialog
 from anihub.ui.library_view import LibraryView
@@ -564,6 +565,16 @@ class GenerateView(QWidget):
         current = self.prompt.toPlainText().rstrip()
         self.prompt.setPlainText(f"{current}, {text}" if current else text)
 
+    def insert_lora(self, prompt: str, negative: str, name: str) -> bool:
+        """The LoRA editor's "add to the prompt": False when this LoRA is already written in the prompt."""
+        if f"<lora:{name}:" in self.prompt.toPlainText():
+            return False
+        self._append_prompt(prompt)
+        if negative:
+            current = self.negative.toPlainText().rstrip()
+            self.negative.setPlainText(f"{current}, {negative}" if current else negative)
+        return True
+
     def _open_lora(self) -> None:
         api = self.controller.manager.api
 
@@ -871,9 +882,14 @@ class SDPage(QWidget):
             "set": self.generate.set_prompts,
             "api": lambda: self.controller.manager.api if self.controller.state.ready else None,
         })
+        self.lora = LoraEditor(ctx, hooks={
+            "insert": self.generate.insert_lora,
+            "refresh": lambda: self.controller.manager.api.refresh("loras") if self.controller.state.ready else None,
+        })
         self.tabs = tabs = QTabWidget()
         tabs.addTab(self.generate, tr("sd.tab.generate"))
         tabs.addTab(self.builder, tr("sd.tab.builder"))
+        tabs.addTab(self.lora, "LoRA")
         tabs.addTab(self.queue_view, tr("sd.tab.queue"))
         tabs.addTab(self.history, tr("sd.tab.history"))
         tabs.addTab(self.civitai, "CivitAI")
