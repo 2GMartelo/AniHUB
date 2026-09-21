@@ -97,13 +97,18 @@ class HttpClient:
         self._host_headers[suffix.lower()] = headers
 
     def _merged_headers(self, url: str, headers: dict | None) -> dict | None:
-        if not self._host_headers:
-            return headers
         host = urlsplit(url).hostname or ""
         extra: dict[str, str] = {}
         for suffix, make in self._host_headers.items():
             if host == suffix or host.endswith("." + suffix):
                 extra.update(make())
+        jar = self.cfg.get("cookie.jar")                                # cookies imported from a browser export (services/cookies.py)
+        if jar and not any(k.lower() == "cookie" for k in {**extra, **(headers or {})}):
+            from anihub.services.cookies import header_for
+
+            cookie = header_for(jar, host)
+            if cookie:
+                extra["Cookie"] = cookie
         return {**extra, **(headers or {})} if extra else headers
 
     def abort_downloads(self) -> None:

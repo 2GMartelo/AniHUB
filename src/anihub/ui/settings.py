@@ -15,7 +15,7 @@ from anihub.core.i18n import LANGUAGES, tr
 from anihub.services.autotag import download_model
 from anihub.services.backends import gpu_list
 from anihub.ui.workers import run_async
-from anihub.ui import style
+from anihub.ui import cookie_import, style
 from anihub.ui.about_box import AboutBox
 from anihub.ui.backup_box import BackupBox
 from anihub.ui import smoothscroll
@@ -226,6 +226,18 @@ class SettingsPage(QWidget):
                 hint = style.role(QLabel(help_text), "dim")
                 hint.setWordWrap(True)
                 creds.addRow("", hint)
+        import_btn = style.secondary(QPushButton(tr("cookies.import")), "upload")
+        import_btn.clicked.connect(lambda: cookie_import.pick_and_import(ctx, self))
+        forget_btn = style.ghost(QPushButton(tr("cookies.clear")), "trash")
+        forget_btn.clicked.connect(lambda: cfg.set("cookie.jar", {}))
+        import_hint = style.role(QLabel(tr("cookies.hint")), "dim")
+        import_hint.setWordWrap(True)
+        import_row = QHBoxLayout()
+        import_row.addWidget(import_btn)
+        import_row.addWidget(forget_btn)
+        import_row.addStretch(1)
+        creds.addRow(import_row)
+        creds.addRow(import_hint)
         creds_box = QGroupBox(tr("settings.creds"))
         creds_box.setLayout(creds)
         for group in (forge_box, manga_box, gen_box, lib_box, tag_box):

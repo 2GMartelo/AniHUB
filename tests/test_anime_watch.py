@@ -75,9 +75,9 @@ def test_plugins_are_loaded_and_broken_ones_are_skipped(tmp_path):
     (folder / "noclass.py").write_text("X = 1", encoding="utf-8")
     assert [c.name for c in load_plugins(folder)] == ["demo"]
     sources = build_anime_sources(None, None, tmp_path / "anime", folder)
-    assert list(sources) == ["local", "anilibria", "demo"] and sources["demo"].search("x")[0][0].title == "Demo x"
+    assert list(sources) == ["local", "anilibria", "anime365", "demo"] and sources["demo"].search("x")[0][0].title == "Demo x"
     (folder / "clash.py").write_text(PLUGIN.replace("Demo", "Demo2"), encoding="utf-8")          # same name "demo": ignored
-    assert list(build_anime_sources(None, None, tmp_path / "anime", folder)) == ["local", "anilibria", "demo"]
+    assert list(build_anime_sources(None, None, tmp_path / "anime", folder)) == ["local", "anilibria", "anime365", "demo"]
     assert load_plugins(tmp_path / "missing") == []
 
 
@@ -269,3 +269,110 @@ def test_player_opens_the_episode_and_records_progress(qapp, tmp_path):
     player.open_episode(5)                                                     # out of range: ignored
     assert player.index == 1
     player.close()
+
+
+# --- Anime365 (Russian subtitles) and the shelf -------------------------------------------------------------------------------------
+
+EMBED = ('<html><body><video id="main-video" data-sources="[{&quot;height&quot;:1080,&quot;urls&quot;:[&quot;https://cdn.x/1080.mp4&quot;]},'
+         '{&quot;height&quot;:720,&quot;urls&quot;:[&quot;https://cdn.x/720.mp4&quot;]}]" data-vtt="/translations/vtt/55" '
+         'data-subtitles="/episodeTranslations/55.ass"></video></body></html>')
+LOCKED = '<video id="main-video" data-sources="[]" data-vtt="/translations/vtt/55" data-require-activation="1"></video>'
+
+
+class FakeAnimeHttp:
+    def __init__(self, embed=EMBED):
+        self.embed, self.asked = embed, []
+
+    def get_json(self, url, params=None, interval_ms=None, **kw):
+        self.asked.append(url)
+        if url.endswith("/series/"):
+            return {"data": [{"id": 1, "titles": {"ru": "Фрирен", "romaji": "Frieren"}, "posterUrl": "https://p/1.jpg", "isHentai": 0,
+                              "descriptions": [{"value": "Elf [b]tale[/b]"}]},
+                             {"id": 2, "titles": {"ru": "Скрыто"}, "isHentai": 1}]}
+        if "/series/1" in url:
+            return {"data": {"episodes": [{"id": 10, "episodeInt": 2, "episodeFull": "2 серия", "episodeType": "tv", "isActive": 1},
+                                          {"id": 9, "episodeInt": 1, "episodeFull": "Трейлер", "episodeType": "preview", "isActive": 1},
+                                          {"id": 11, "episodeInt": 1, "episodeFull": "1 серия", "episodeType": "tv", "isActive": 1}]}}
+        if "/episodes/" in url:
+            tr = lambda i, kind, h, who: {"id": i, "type": kind, "isActive": 1, "height": h, "priority": 1, "authorsSummary": who,   # noqa: E731
+                                          "typeLang": "ru" if kind.endswith("Ru") else "en", "embedUrl": f"https://e/{i}"}
+            return {"data": {"translations": [tr(55, "subRu", 1080, "Crunchyroll"), tr(56, "voiceEn", 1080, "x"), tr(57, "voiceRu", 720, "Dub"),
+                                              tr(58, "raw", 1080, "Raws")]}}
+        raise AssertionError(url)
+
+    def get_text(self, url, params=None, headers=None, interval_ms=None):
+        self.asked.append(url)
+        return self.embed
+
+
+def test_anime365_lists_titles_episodes_and_translations_with_russian_subtitles_first():
+    from anihub.sources.anime.anime365 import Anime365
+
+    src = Anime365(FakeAnimeHttp(), None)
+    entries, more = src.search("frieren")
+    assert [e.title for e in entries] == ["Фрирен"] and entries[0].description == "Elf tale" and not more        # adult titles are dropped
+    eps = src.episodes(entries[0])
+    assert [(e.id, e.number) for e in eps] == [("11", 1.0), ("10", 2.0)]                                         # the trailer is not an episode
+    streams = src.streams(entries[0], eps[0])
+    assert [s.label for s in streams] == ["RU sub · Crunchyroll · 1080p", "RU voice · Dub · 1080p", "RAW · Raws · 1080p"]
+    assert streams[0].url == "https://cdn.x/1080.mp4" and streams[0].subtitles == [("ru", "https://smotret-anime.org/translations/vtt/55")]
+    assert streams[1].subtitles == [] and streams[0].headers["Referer"].startswith("https://smotret-anime.org")
+
+
+def test_anime365_says_when_the_site_wants_a_login():
+    import pytest
+    from anihub.sources.anime.anime365 import Anime365
+    from anihub.sources.anime.base import AnimeSourceError
+
+    src = Anime365(FakeAnimeHttp(LOCKED), None)
+    entry, ep = src.search("x")[0][0], src.episodes(src.search("x")[0][0])[0]
+    with pytest.raises(AnimeSourceError, match="log in"):
+        src.streams(entry, ep)
+
+
+def test_the_shelf_keeps_titles_by_state(tmp_path):
+    from anihub.core.db import Database
+
+    db = Database(tmp_path / "l.db")
+    db.saved_set("anime365", "1", "Фрирен", "c.jpg", "u", "later")
+    db.saved_set("anilibria", "7", "Other", "", "", "watching")
+    db.saved_set("anime365", "1", "Фрирен 2", "c.jpg", "u", "done")                                               # the same title: state changes
+    assert {r["title"]: r["status"] for r in db.saved_list()} == {"Фрирен 2": "done", "Other": "watching"}
+    assert db.saved_counts() == {"done": 1, "watching": 1} and [r["entry_id"] for r in db.saved_list("done")] == ["1"]
+    db.saved_remove("anime365", "1")
+    assert db.saved_get("anime365", "1") is None
+    try:
+        db.saved_set("a", "1", "t", "", "", "bogus")
+        raise AssertionError("bad status accepted")
+    except ValueError:
+        pass
+    db.close()
+
+
+def test_watch_tab_shelf_saves_titles_and_reopens_them_from_their_own_source(qapp, tmp_path):
+    from PySide6.QtCore import Qt
+
+    from anihub.core.i18n import tr
+    from anihub.ui.anime_watch import SAVED, WatchTab
+
+    ctx = watch_ctx(tmp_path, ["Frieren/Frieren - 01.mkv", "Frieren/Frieren - 02.mkv", "Bleach/Bleach 1.mkv"])
+    tab = WatchTab(ctx)
+    assert tab.source_box.itemData(0) == SAVED and tab.source().name == "local"                      # the shelf is listed first, never the default
+    tab.ensure_loaded()
+    wait(qapp, lambda: tab.grid.count() == 2)
+    entry = tab.grid.item(1).data(Qt.ItemDataRole.UserRole)
+    tab.select_entry(entry)
+    wait(qapp, lambda: tab.tree.topLevelItemCount() == 2)
+    tab._set_shelf("later")
+    assert ctx.db.saved_get("local", "Frieren")["status"] == "later" and tr("watch.shelf.later") in tab.shelf_btn.text()
+    tab._set_shelf("done")                                                                           # "watched": every episode is marked
+    assert ctx.watch.positions("local", "Frieren")["Frieren - 01.mkv"]["watched"] and ctx.watch.positions("local", "Frieren")["Frieren - 02.mkv"]["watched"]
+    tab.source_box.setCurrentIndex(0)
+    tab.search()
+    assert tab.grid.count() == 1 and tab.shelf_filter.count() == 4 and not tab.shelf_filter.isHidden()
+    payload = tab.grid.item(0).data(Qt.ItemDataRole.UserRole)
+    assert payload[0] == "local" and payload[1].title == "Frieren"
+    tab._open_item(tab.grid.item(0))                                                                 # opens with the source it came from
+    assert tab._src.name == "local" and tab.entry.title == "Frieren"
+    tab._set_shelf(None)
+    assert ctx.db.saved_get("local", "Frieren") is None and tab.grid.count() == 0

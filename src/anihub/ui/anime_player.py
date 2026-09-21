@@ -9,11 +9,12 @@ from PySide6.QtGui import QKeyEvent
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtWidgets import (
-    QComboBox, QHBoxLayout, QLabel, QSlider, QToolButton, QVBoxLayout, QWidget,
+    QComboBox, QHBoxLayout, QLabel, QSlider, QStackedLayout, QToolButton, QVBoxLayout, QWidget,
 )
 
 from anihub.context import AppContext
 from anihub.core.i18n import tr
+from anihub.services import subtitles
 from anihub.sources.anime.base import AnimeEntry, AnimeSource, Episode, Stream
 from anihub.ui import style
 from anihub.ui.workers import run_async
@@ -66,6 +67,14 @@ class AnimePlayer(QWidget):
         self.resize(1180, 720)
 
         self.video = QVideoWidget()
+        self.track = subtitles.Track([])                 # the subtitles of the stream being played (drawn over the picture)
+        self._subs_request = 0
+        self.subs_on = bool(ctx.cfg.get("anime.subtitles", True))
+        self.sub_text = QLabel(alignment=Qt.AlignmentFlag.AlignCenter)
+        self.sub_text.setWordWrap(True)
+        self.sub_text.setStyleSheet("color: white; font-size: 24px; font-weight: 600; background: rgba(0, 0, 0, 120); "
+                                    "border-radius: 8px; padding: 4px 12px;")
+        self.sub_text.hide()
         self.player = QMediaPlayer(self)
         self.audio = QAudioOutput(self)
         self.player.setAudioOutput(self.audio)
@@ -81,6 +90,9 @@ class AnimePlayer(QWidget):
         self.next_btn = self._tool("skip-forward", "reader.next_chapter")
         self.back_btn = self._tool("chevrons-left", "watch.back10")
         self.fwd_btn = self._tool("chevrons-right", "watch.fwd10")
+        self.subs_btn = self._tool("file-text", "watch.subtitles")
+        self.subs_btn.setCheckable(True)
+        self.subs_btn.setChecked(self.subs_on)
         self.mute_btn = self._tool("volume", "viewer.mute")
         self.full_btn = self._tool("maximize", "reader.fullscreen")
         self.ext_btn = self._tool("external", "watch.external")
@@ -105,7 +117,7 @@ class AnimePlayer(QWidget):
             bar.addWidget(w)
         bar.addWidget(self.time_label)
         bar.addWidget(self.seek, 1)
-        for w in (self.quality, self.speed, self.mute_btn, self.volume, self.ext_btn, self.full_btn):
+        for w in (self.quality, self.speed, self.subs_btn, self.mute_btn, self.volume, self.ext_btn, self.full_btn):
             bar.addWidget(w)
         self.bar = QWidget()
         self.bar.setLayout(bar)
@@ -119,10 +131,23 @@ class AnimePlayer(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
         layout.addWidget(self.head)
-        layout.addWidget(self.video, 1)
+        stage = QWidget()                                # the picture with the subtitles laid over it
+        stack = QStackedLayout(stage)
+        stack.setStackingMode(QStackedLayout.StackingMode.StackAll)
+        overlay = QWidget()
+        overlay.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        overlay.setStyleSheet("background: transparent;")
+        ol = QVBoxLayout(overlay)
+        ol.setContentsMargins(40, 0, 40, 34)
+        ol.addStretch(1)
+        ol.addWidget(self.sub_text, 0, Qt.AlignmentFlag.AlignHCenter)
+        stack.addWidget(self.video)
+        stack.addWidget(overlay)
+        overlay.raise_()
+        layout.addWidget(stage, 1)
         layout.addWidget(self.bar)
         for w in (self.prev_btn, self.play_btn, self.next_btn, self.back_btn, self.fwd_btn, self.mute_btn, self.full_btn,
-                  self.ext_btn, self.seek, self.volume, self.speed, self.quality):
+                  self.ext_btn, self.seek, self.volume, self.speed, self.quality, self.subs_btn):
             w.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
         self.save_timer = QTimer(self)
@@ -133,6 +158,7 @@ class AnimePlayer(QWidget):
         self.play_btn.clicked.connect(self.toggle_play)
         self.back_btn.clicked.connect(lambda: self.skip(-SEEK_MS))
         self.fwd_btn.clicked.connect(lambda: self.skip(SEEK_MS))
+        self.subs_btn.clicked.connect(self.toggle_subtitles)
         self.mute_btn.clicked.connect(self.toggle_mute)
         self.full_btn.clicked.connect(self.toggle_fullscreen)
         self.ext_btn.clicked.connect(self.open_external)
@@ -198,8 +224,40 @@ class AnimePlayer(QWidget):
         number = f"{episode.number:g}"
         return tr("watch.episode_n", n=number) + (f" — {episode.title}" if episode.title and episode.title != number else "")
 
+    def toggle_subtitles(self) -> None:
+        self.subs_on = not self.subs_on
+        self.subs_btn.setChecked(self.subs_on)
+        self.ctx.cfg.set("anime.subtitles", self.subs_on)
+        self._show_subtitle(self.player.position())
+
+    def _load_subtitles(self, stream: Stream) -> None:
+        """The stream's subtitle file (WebVTT / SRT / ASS) is fetched in the background and drawn by this player."""
+        self.track = subtitles.Track([])
+        self._show_subtitle(0)
+        wanted = next((url for lang, url in stream.subtitles if lang == "ru"), None) or (stream.subtitles[0][1] if stream.subtitles else "")
+        self._subs_request += 1
+        request = self._subs_request
+        if not wanted:
+            return
+
+        def done(track: subtitles.Track) -> None:
+            if request == self._subs_request:
+                self.track = track
+                self._show_subtitle(self.player.position())
+
+        run_async(lambda: subtitles.Track(subtitles.parse(self.ctx.http.get_text(wanted, headers=stream.headers or None))), on_done=done,
+                  on_error=lambda exc: request == self._subs_request and self.message.setText(tr("watch.subs_error", msg=str(exc))))
+
+    def _show_subtitle(self, pos: int) -> None:
+        lines = self.track.at(pos) if self.subs_on and self.track else []
+        text = "\n".join(lines)
+        if text != self.sub_text.text():
+            self.sub_text.setText(text)
+        self.sub_text.setVisible(bool(text))
+
     def play_stream(self, stream: Stream) -> None:
         self.message.clear()
+        self._load_subtitles(stream)
         self._seek_to = self.watch.resume_ms(self.source.name, self.entry.id, self.episode)
         self.player.setSource(stream_url(stream, self.ctx.http))
         self.player.setPlaybackRate(self.speed.currentData())
@@ -209,6 +267,7 @@ class AnimePlayer(QWidget):
         stream = self.quality.currentData()
         if stream is not None:
             self._seek_to = self.player.position()
+            self._load_subtitles(stream)
             self.player.setSource(stream_url(stream, self.ctx.http))
             self.player.play()
 
@@ -249,6 +308,7 @@ class AnimePlayer(QWidget):
         if not self.seek.isSliderDown():
             self.seek.setValue(pos)
         self.time_label.setText(f"{fmt(pos)} / {fmt(self.player.duration())}")
+        self._show_subtitle(pos)
 
     def _error(self, message: str) -> None:
         self.message.setText(tr("watch.play_error", msg=message))
@@ -309,6 +369,8 @@ class AnimePlayer(QWidget):
             self.open_episode(self.index - 1)
         elif k == Qt.Key.Key_M:
             self.toggle_mute()
+        elif k == Qt.Key.Key_S:
+            self.toggle_subtitles()
         elif k in (Qt.Key.Key_F, Qt.Key.Key_F11):
             self.toggle_fullscreen()
         elif k == Qt.Key.Key_Escape:

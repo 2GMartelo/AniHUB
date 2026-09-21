@@ -10,9 +10,7 @@ tags like `nsfw` are left without a picture.
 from __future__ import annotations
 
 import argparse
-import shutil
 import sys
-import tempfile
 import time
 from pathlib import Path
 
@@ -25,7 +23,7 @@ from anihub.core.config import Config, config_dir  # noqa: E402
 from anihub.core.db import Database  # noqa: E402
 from anihub.services import promptbook as pb  # noqa: E402
 from anihub.services.forge import ForgeManager  # noqa: E402
-from anihub.services.generation import GenParams, run_generation  # noqa: E402
+from anihub.services.tagpictures import PictureMaker  # noqa: E402
 
 
 def wait_for_forge(manager: ForgeManager, minutes: float) -> None:
@@ -44,10 +42,10 @@ def main() -> None:
     ap.add_argument("--library", required=True, type=Path, help="working folder (database + pictures)")
     ap.add_argument("--pack", type=Path, help="write the pack zip here when done")
     ap.add_argument("--model", default="", help="part of the checkpoint name to use")
-    ap.add_argument("--size", type=int, default=832)
-    ap.add_argument("--steps", type=int, default=24)
-    ap.add_argument("--cfg", type=float, default=5.5)
-    ap.add_argument("--seed", type=int, default=12345)
+    ap.add_argument("--size", type=int, default=None, help="default: the standard character settings")
+    ap.add_argument("--steps", type=int, default=None, help="default: the standard character settings")
+    ap.add_argument("--cfg", type=float, default=None, help="default: the standard character settings")
+    ap.add_argument("--seed", type=int, default=None, help="default: the standard character settings")
     ap.add_argument("--only", default="", help="comma separated tags to draw (default: all without a picture)")
     ap.add_argument("--categories", default="", help="comma separated category keys or their beginnings, e.g. style,appearance.body")
     ap.add_argument("--redo", action="store_true", help="draw again even when there is a picture (with --only / --categories)")
@@ -81,29 +79,20 @@ def main() -> None:
         manager.start()
         try:
             wait_for_forge(manager, 15)
-            api = manager.api
-            title = ""
-            if args.model:
-                title = next((m["title"] for m in api.models() if args.model.lower() in m["title"].lower()), "")
-                if not title:
-                    sys.exit(f"no checkpoint matches {args.model!r}")
-            print("checkpoint:", title or "(Forge's current)", flush=True)
+            saved = dict(Config.load().get("promptbook.character") or {})
+            saved.update({k: v for k, v in (("seed", args.seed), ("size", args.size), ("steps", args.steps), ("cfg", args.cfg)) if v is not None})
+            character = pb.character_from(saved)
+            maker = PictureMaker(manager.api, character, model_override=args.model)
+            print("checkpoint:", maker.model_title() or "(Forge's current)", flush=True)
             began = time.time()
             for i, row in enumerate(todo, 1):
                 node = book.node(row["group_id"]) or {}
-                prompt, negative = pb.preview_prompt(row["slot"], row["text"], node.get("key") or "")
-                tmp = Path(tempfile.mkdtemp(prefix="anihub_tag_"))
                 try:
-                    params = GenParams(prompt=prompt, negative_prompt=negative, model=title, steps=args.steps, cfg_scale=args.cfg,
-                                       width=args.size, height=args.size, seed=args.seed + (row['id'] if row['slot'] in pb.VARIED_SEED_SLOTS else 0), sampler_name="Euler a")
-                    results = run_generation(api, params, tmp)
-                    book.set_image(row["id"], Path(results[0].path))
+                    book.set_image(row["id"], maker.draw(row, node.get("key") or ""))
                     per = (time.time() - began) / i
                     print(f"[{i}/{len(todo)}] {row['slot']}/{row['text']}  ({per:.1f}s each, ~{per * (len(todo) - i) / 60:.0f} min left)", flush=True)
                 except Exception as exc:  # noqa: BLE001 - one failed picture must not stop the rest
                     print(f"[{i}/{len(todo)}] FAILED {row['text']}: {exc}", flush=True)
-                finally:
-                    shutil.rmtree(tmp, ignore_errors=True)
         finally:
             if started_by_us:
                 manager.stop()

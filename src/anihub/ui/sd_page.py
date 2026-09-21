@@ -913,7 +913,7 @@ class SDPage(QWidget):
         tabs.addTab(self.lora, "LoRA")
         tabs.addTab(self.queue_view, tr("sd.tab.queue"))
         tabs.addTab(self.history, tr("sd.tab.history"))
-        tabs.addTab(self.civitai, "CivitAI")
+        tabs.addTab(self.civitai, "CivitAI.red")
         tabs.addTab(self.saved, tr("sd.tab.saved"))
         self.character = CharacterTab(ctx, hooks={
             "api": lambda: self.controller.manager.api if self.controller.state.ready else None,

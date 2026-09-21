@@ -6,11 +6,12 @@ from pathlib import Path
 from anihub.core.config import Config
 from anihub.net.http import HttpClient
 from anihub.sources.anime.anilibria import AniLibria
+from anihub.sources.anime.anime365 import Anime365
 from anihub.sources.anime.base import AnimeSource
 from anihub.sources.anime.local import LocalAnime
 from anihub.sources.plugins import build_plugins, load_plugin_classes
 
-BUILTIN_ONLINE: list[type[AnimeSource]] = [AniLibria]
+BUILTIN_ONLINE: list[type[AnimeSource]] = [AniLibria, Anime365]
 
 
 def load_plugins(folder: Path) -> list[type[AnimeSource]]:

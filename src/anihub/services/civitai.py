@@ -13,7 +13,11 @@ from anihub.net.http import HttpClient, HttpError
 
 log = logging.getLogger(__name__)
 
-API = "https://civitai.com/api/v1"
+SITE = "https://civitai.red"          # civitai.red is the site that also has the 16+ and 18+ models (civitai.com hides them)
+API = SITE + "/api/v1"
+# a model's nsfwLevel is a bit mask of the levels of its pictures: 1 PG, 2 PG-13, 4 R (16+), 8 X, 16 XXX, 32 blocked (18+)
+LEVEL_LIMIT = {"12": 2, "16": 4, "18": 63}          # the highest level bit each age mode may see
+IMAGE_LEVEL_LIMIT = {"12": 1, "16": 4, "18": 31}    # the same for the little preview pictures
 TYPES = ["Checkpoint", "LORA", "TextualInversion", "VAE"]
 SORTS = ["Most Downloaded", "Highest Rated", "Newest"]
 # model type -> folder inside the Forge installation, and which list Forge must rescan afterwards
@@ -61,10 +65,11 @@ class CivitModel:
     downloads: int
     rating: float
     versions: list[CivitVersion] = field(default_factory=list)
+    nsfw_level: int = 0
 
     @property
     def page_url(self) -> str:
-        return f"https://civitai.com/models/{self.id}"
+        return f"{SITE}/models/{self.id}"
 
 
 def headers(token: str = "") -> dict[str, str]:
@@ -94,7 +99,7 @@ def parse_model(raw: dict) -> CivitModel:
     return CivitModel(id=raw["id"], name=raw.get("name", ""), type=raw.get("type", ""),
                       creator=(raw.get("creator") or {}).get("username", ""), description=plain_text(raw.get("description", "")),
                       nsfw=bool(raw.get("nsfw")), downloads=int(stats.get("downloadCount") or 0),
-                      rating=float(stats.get("rating") or 0), versions=versions)
+                      rating=float(stats.get("rating") or 0), versions=versions, nsfw_level=int(raw.get("nsfwLevel") or 0))
 
 
 def parse_model_url(text: str) -> tuple[int, int | None] | None:
@@ -102,15 +107,22 @@ def parse_model_url(text: str) -> tuple[int, int | None] | None:
     text = text.strip()
     if text.isdigit():
         return int(text), None
-    m = re.search(r"civitai\.com/models/(\d+)", text)
+    m = re.search(r"civitai\.(?:com|red|green)/models/(\d+)", text)
     if not m:
         return None
     v = re.search(r"modelVersionId=(\d+)", text)
     return int(m.group(1)), int(v.group(1)) if v else None
 
 
+def level_ok(level: int, mode: str) -> bool:
+    """Whether a model (its nsfwLevel bit mask) may be shown in an age mode: the highest level any of its pictures has decides."""
+    level = int(level or 0)
+    return level <= 0 or (1 << (level.bit_length() - 1)) <= LEVEL_LIMIT.get(mode, 2)
+
+
 def search(http: HttpClient, query: str = "", model_type: str = "Checkpoint", sort: str = "Most Downloaded",
-           nsfw: bool = False, token: str = "", next_url: str | None = None, limit: int = 20) -> tuple[list[CivitModel], str | None]:
+           nsfw: bool = False, token: str = "", next_url: str | None = None, limit: int = 20,
+           mode: str = "12") -> tuple[list[CivitModel], str | None]:
     """One page of results and the URL of the next page (None at the end)."""
     try:
         if next_url:
@@ -124,7 +136,8 @@ def search(http: HttpClient, query: str = "", model_type: str = "Checkpoint", so
         raise CivitaiError(f"CivitAI: {exc}") from exc
     if not isinstance(data, dict):
         raise CivitaiError("CivitAI: unexpected response")
-    return [parse_model(m) for m in data.get("items", [])], (data.get("metadata") or {}).get("nextPage")
+    models = [parse_model(m) for m in data.get("items", [])]
+    return [m for m in models if level_ok(m.nsfw_level, mode)], (data.get("metadata") or {}).get("nextPage")
 
 
 def get_model(http: HttpClient, model_id: int, token: str = "") -> CivitModel:

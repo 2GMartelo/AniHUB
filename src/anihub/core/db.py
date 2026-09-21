@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 from typing import Iterable
 
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 12
 
 SD_TABLES = '''
 CREATE TABLE sd_presets (
@@ -66,6 +66,14 @@ CREATE TABLE novels (
     chapter_index INTEGER NOT NULL DEFAULT 0, scroll REAL NOT NULL DEFAULT 0,   -- where the reader stopped
     finished INTEGER NOT NULL DEFAULT 0,
     source TEXT, remote_id TEXT, remote TEXT);        -- online novels (path is empty, sha256 is "online:<source>:<id>")
+'''
+
+SAVED_ANIME_TABLE = '''
+CREATE TABLE anime_saved (                        -- the user's own shelf of titles from the anime sources (no tracker needed)
+    source TEXT NOT NULL, entry_id TEXT NOT NULL, title TEXT NOT NULL, cover TEXT NOT NULL DEFAULT '', url TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL,                         -- later | watching | done
+    added_at REAL NOT NULL, updated_at REAL NOT NULL, PRIMARY KEY (source, entry_id));
+CREATE INDEX idx_anime_saved_status ON anime_saved(status, updated_at);
 '''
 
 PROMPTBOOK_TABLES = '''
@@ -138,6 +146,7 @@ MIGRATIONS = {
         ALTER TABLE novels ADD COLUMN remote TEXT;        -- JSON: {"entry": ..., "chapters": [...]} (opens without the network)
     """,
     10: PROMPTBOOK_TABLES,
+    11: SAVED_ANIME_TABLE,
 }
 
 SCHEMA = """
@@ -196,7 +205,7 @@ CREATE TABLE collection_items (
     added_at REAL NOT NULL, PRIMARY KEY (collection_id, item_id));
 CREATE INDEX idx_collection_items_item ON collection_items(item_id);
 CREATE TABLE smart_tags (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE, tags TEXT NOT NULL);
-""" + SD_TABLES + RULES_TABLE + ANIME_TABLE + NOVEL_TABLE + WATCH_TABLES + SUBSCRIPTION_TABLE + PROMPTBOOK_TABLES
+""" + SD_TABLES + RULES_TABLE + ANIME_TABLE + NOVEL_TABLE + WATCH_TABLES + SUBSCRIPTION_TABLE + PROMPTBOOK_TABLES + SAVED_ANIME_TABLE
 
 SORTS = {
     "added": "i.added_at",
@@ -695,6 +704,36 @@ class Database:
     def anime_delete(self, media_id: int) -> None:
         with self.conn:
             self.conn.execute("DELETE FROM anime_list WHERE media_id=?", (media_id,))
+
+    # --- the shelf of source titles (later / watching / done) ------------------------------------------------------
+
+    SAVED_STATUSES = ("later", "watching", "done")
+
+    def saved_get(self, source: str, entry_id: str) -> sqlite3.Row | None:
+        return self.conn.execute("SELECT * FROM anime_saved WHERE source=? AND entry_id=?", (source, entry_id)).fetchone()
+
+    def saved_list(self, status: str | None = None) -> list[sqlite3.Row]:
+        sql, args = "SELECT * FROM anime_saved", ()
+        if status:
+            sql, args = sql + " WHERE status=?", (status,)
+        return self.conn.execute(sql + " ORDER BY updated_at DESC", args).fetchall()
+
+    def saved_counts(self) -> dict[str, int]:
+        return {r[0]: r[1] for r in self.conn.execute("SELECT status, COUNT(*) FROM anime_saved GROUP BY status")}
+
+    def saved_set(self, source: str, entry_id: str, title: str, cover: str, url: str, status: str) -> None:
+        if status not in self.SAVED_STATUSES:
+            raise ValueError(f"bad status {status!r}")
+        now = time.time()
+        with self.conn:
+            self.conn.execute(
+                "INSERT INTO anime_saved(source, entry_id, title, cover, url, status, added_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(source, entry_id) DO UPDATE SET title=excluded.title, cover=excluded.cover, url=excluded.url, "
+                "status=excluded.status, updated_at=excluded.updated_at", (source, entry_id, title, cover, url, status, now, now))
+
+    def saved_remove(self, source: str, entry_id: str) -> None:
+        with self.conn:
+            self.conn.execute("DELETE FROM anime_saved WHERE source=? AND entry_id=?", (source, entry_id))
 
     def anime_unsynced(self) -> list[sqlite3.Row]:
         return self.conn.execute("SELECT * FROM anime_list WHERE synced=0 ORDER BY updated_at").fetchall()

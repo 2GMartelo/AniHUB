@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QAction, QCloseEvent, QKeySequence, QShortcut
@@ -27,6 +28,7 @@ from anihub.ui.navrail import NavRail
 from anihub.ui import style
 from anihub.ui.style import EmptyState, state_color
 from anihub.ui.theme import apply_backdrop, is_glass, make_app_icon, paint_glass
+from anihub.ui import cookie_import
 from anihub.ui.close_dialog import CloseDialog
 from anihub.ui.tutorial import Step, TutorialOverlay
 from anihub.ui.workers import run_async
@@ -44,6 +46,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(APP_NAME)
         self.setWindowIcon(make_app_icon())
         self.resize(1300, 850)
+        self.setAcceptDrops(True)          # a cookies / logins file dropped on the window logs in to the sites in it
 
         self.browse = BrowseView(ctx)
         self.library = LibraryView(ctx)
@@ -414,6 +417,17 @@ class MainWindow(QMainWindow):
         dlg = CloseDialog(self)
         dlg.exec()
         return (dlg.choice, dlg.remember) if dlg.choice else None
+
+    def dragEnterEvent(self, event) -> None:  # noqa: N802
+        urls = [u.toLocalFile() for u in event.mimeData().urls() if u.isLocalFile()]
+        if urls and all(cookie_import.is_cookie_file(u) for u in urls):
+            event.acceptProposedAction()
+
+    def dropEvent(self, event) -> None:  # noqa: N802
+        for url in event.mimeData().urls():
+            if url.isLocalFile() and cookie_import.is_cookie_file(url.toLocalFile()):
+                cookie_import.import_path(self.ctx, Path(url.toLocalFile()), self)
+        event.acceptProposedAction()
 
     def closeEvent(self, event: QCloseEvent) -> None:
         # The first time the user chooses between quitting and the tray (and may remember it); the tray keeps background

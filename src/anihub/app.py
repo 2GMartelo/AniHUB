@@ -45,6 +45,13 @@ def main() -> int:
     ctx = AppContext.build(cfg)
     window = MainWindow(ctx)
     window.show()
+    from pathlib import Path
+
+    from anihub.ui import cookie_import
+
+    for arg in sys.argv[1:]:                                        # a cookies / logins file given to the program (drag it onto the exe, "open with")
+        if cookie_import.is_cookie_file(arg) and Path(arg).is_file():
+            QTimer.singleShot(600, lambda a=arg: cookie_import.import_path(ctx, Path(a), window))
     if cfg.get("tutorial.pending"):                                 # set by the setup wizard: show the tour once
         QTimer.singleShot(900, window.start_tutorial)
     code = app.exec()

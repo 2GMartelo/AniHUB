@@ -85,6 +85,10 @@ class LinkDialog(QDialog):
             self.accept()
 
 
+SAVED = "__saved__"            # the pseudo-source of the source box that shows the user's shelf (later / watching / done)
+SHELF = (("later", "watch.shelf.later"), ("watching", "watch.shelf.watching"), ("done", "watch.shelf.done"))
+
+
 class WatchTab(QWidget):
     list_changed = Signal()
 
@@ -95,8 +99,11 @@ class WatchTab(QWidget):
         self.episodes: list[Episode] = []
         self._gen, self._page, self._loading, self._exhausted = 0, 1, False, True
         self._players: list[AnimePlayer] = []
+        self._src: AnimeSource | None = None            # the source of the title on the right (in the shelf it differs from the source box)
 
         self.source_box = QComboBox()
+        self.shelf_filter = QComboBox()
+        self.shelf_filter.hide()
         self.query = QLineEdit(placeholderText=tr("watch.search"))
         self.query.setClearButtonEnabled(True)
         self.go = style.primary(QPushButton(tr("search.button")), "search")
@@ -107,7 +114,8 @@ class WatchTab(QWidget):
         self.status = QLabel()
         style.role(self.status, "dim")
         top = QHBoxLayout()
-        for w, s in ((self.source_box, 0), (self.lang_filter, 0), (self.query, 1), (self.go, 0), (self.ext_btn, 0), (self.folder_btn, 0)):
+        for w, s in ((self.source_box, 0), (self.shelf_filter, 0), (self.lang_filter, 0), (self.query, 1), (self.go, 0), (self.ext_btn, 0),
+                     (self.folder_btn, 0)):
             top.addWidget(w, s)
         left = QWidget()
         ll = QVBoxLayout(left)
@@ -125,6 +133,10 @@ class WatchTab(QWidget):
         self.link_btn = style.secondary(QPushButton(tr("watch.link")), "external")
         self.unlink_btn = style.ghost(QPushButton(tr("watch.unlink")), "x")
         self.site_btn = style.ghost(QPushButton(tr("watch.site")), "external")
+        self.shelf_btn = style.secondary(QPushButton(tr("watch.shelf.add") + "  ▾"), "heart")
+        self.shelf_menu = QMenu(self)
+        self.shelf_btn.setMenu(self.shelf_menu)
+        self.shelf_menu.aboutToShow.connect(self._build_shelf_menu)
         self.tree = QTreeWidget()
         self.tree.setHeaderLabels([tr("watch.col.no"), tr("watch.col.title"), tr("watch.col.state")])
         self.tree.setRootIsDecorated(False)
@@ -140,7 +152,7 @@ class WatchTab(QWidget):
         style.role(self.message, "dim")
         self.hint = style.EmptyState("tv", tr("watch.pick_title"), tr("watch.pick_text"))
         link_row = QHBoxLayout()
-        for w in (self.link_btn, self.unlink_btn, self.site_btn):
+        for w in (self.shelf_btn, self.link_btn, self.unlink_btn, self.site_btn):
             link_row.addWidget(w)
         link_row.addStretch(1)
         buttons = QHBoxLayout()
@@ -178,7 +190,8 @@ class WatchTab(QWidget):
         self.query.returnPressed.connect(self.search)
         self.folder_btn.clicked.connect(self._open_folder)
         self.grid.need_more.connect(self._load_page)
-        self.grid.itemDoubleClicked.connect(lambda it: self.select_entry(it.data(Qt.ItemDataRole.UserRole)))
+        self.grid.itemDoubleClicked.connect(self._open_item)
+        self.shelf_filter.activated.connect(lambda _i: self.search())
         self.link_btn.clicked.connect(self._link)
         self.unlink_btn.clicked.connect(self._unlink)
         self.site_btn.clicked.connect(lambda: self.entry and self.entry.url.startswith("http") and QDesktopServices.openUrl(QUrl(self.entry.url)))
@@ -198,11 +211,12 @@ class WatchTab(QWidget):
         self.lang_filter.set_languages({s.lang for n, s in sources.items() if n != "local"})
         current = self.source_box.currentData() or self.ctx.cfg.get("anime.last_source")
         self.source_box.clear()
+        self.source_box.addItem(tr("watch.shelf"), SAVED)
         for name, source in sources.items():
             if name == "local" or self.lang_filter.accepts(source.lang):
                 self.source_box.addItem(source_title(source), name)
-        if current is not None:
-            self.source_box.setCurrentIndex(max(self.source_box.findData(current), 0))
+        index = self.source_box.findData(current) if current is not None else -1
+        self.source_box.setCurrentIndex(index if index >= 0 else min(1, self.source_box.count() - 1))       # the shelf is never the default
 
     def _extensions(self) -> None:
         dlg = ExtensionsDialog(self.ctx, self.ctx.extensions, ("anime",), lambda: self.ctx.anime_sources, self)
@@ -212,6 +226,9 @@ class WatchTab(QWidget):
 
     def source(self) -> AnimeSource | None:
         return self.ctx.anime_sources.get(self.source_box.currentData())
+
+    def _in_shelf(self) -> bool:
+        return self.source_box.currentData() == SAVED
 
     def ensure_loaded(self) -> None:
         if not self._loaded_once:
@@ -225,6 +242,17 @@ class WatchTab(QWidget):
         os.startfile(folder)
 
     def search(self) -> None:
+        shelf = self._in_shelf()
+        self.shelf_filter.setVisible(shelf)
+        self.lang_filter.setVisible(not shelf)
+        self.query.setVisible(not shelf)
+        self.go.setVisible(not shelf)
+        if shelf:
+            self._loaded_once = True
+            self._gen += 1
+            self.folder_btn.hide()
+            self._show_shelf()
+            return
         if self.source() is None:
             return
         self._loaded_once = True
@@ -233,6 +261,39 @@ class WatchTab(QWidget):
         self._page, self._loading, self._exhausted = 1, False, False
         self.folder_btn.setVisible(self.source().name == "local")
         self._load_page()
+
+    def _fill_shelf_filter(self) -> None:
+        counts = self.ctx.db.saved_counts()
+        current = self.shelf_filter.currentData()
+        self.shelf_filter.blockSignals(True)
+        self.shelf_filter.clear()
+        self.shelf_filter.addItem(f"{tr('watch.shelf.all')} ({sum(counts.values())})", "")
+        for status, key in SHELF:
+            self.shelf_filter.addItem(f"{tr(key)} ({counts.get(status, 0)})", status)
+        self.shelf_filter.setCurrentIndex(max(self.shelf_filter.findData(current), 0))
+        self.shelf_filter.blockSignals(False)
+
+    def _show_shelf(self) -> None:
+        """The user's shelf: every saved title with its state (later / watching / done); a double click opens it where it was left."""
+        self._fill_shelf_filter()
+        self.grid.clear_items()
+        self._loading, self._exhausted = False, True
+        rows = self.ctx.db.saved_list(self.shelf_filter.currentData() or None)
+        for row in rows:
+            entry = AnimeEntry(id=row["entry_id"], title=row["title"], cover=row["cover"], url=row["url"])
+            self._add_entry((row["source"], entry), entry, f"{entry.title}\n{tr(dict(SHELF)[row['status']])}")
+        self.status.setText(tr("watch.shelf_n", n=len(rows)) if rows else tr("watch.shelf_empty"))
+
+    def _open_item(self, item) -> None:
+        data = item.data(Qt.ItemDataRole.UserRole)
+        if isinstance(data, tuple):                                   # a shelf tile: (source name, entry)
+            source = self.ctx.anime_sources.get(data[0])
+            if source is None:
+                self.status.setText(tr("watch.shelf_no_source", name=data[0]))
+                return
+            self.select_entry(data[1], source)
+        else:
+            self.select_entry(data)
 
     def _load_page(self) -> None:
         source = self.source()
@@ -264,6 +325,9 @@ class WatchTab(QWidget):
         run_async(lambda: source.search(text, page), on_done=done, on_error=failed)
 
     def _add(self, source: AnimeSource, entry: AnimeEntry) -> None:
+        self._add_entry(entry, entry, entry.title)
+
+    def _add_entry(self, payload, entry: AnimeEntry, tooltip: str) -> None:
         size = self.grid.thumb_size
 
         def load():
@@ -277,14 +341,15 @@ class WatchTab(QWidget):
                 pass
             return placeholder_cover(entry.title, size)
 
-        self.grid.add_entry(entry, entry.title, load)
+        self.grid.add_entry(payload, tooltip, load)
 
     # --- one title ------------------------------------------------------------------------------------------
 
-    def select_entry(self, entry: AnimeEntry) -> None:
-        source = self.source()
+    def select_entry(self, entry: AnimeEntry, source: AnimeSource | None = None) -> None:
+        source = source or self.source()
         if source is None:
             return
+        self._src = source
         self.entry = entry
         self.hint.hide()
         self.details.show()
@@ -293,6 +358,7 @@ class WatchTab(QWidget):
         self.episodes = []
         self.message.setText(tr("status.loading"))
         self._show_link()
+        self._show_shelf_state()
         self.site_btn.setVisible(entry.url.startswith("http"))
 
         def done(episodes: list[Episode]) -> None:
@@ -306,13 +372,13 @@ class WatchTab(QWidget):
                   on_error=lambda exc: self.message.setText(tr("status.error", msg=str(exc))))
 
     def _show_link(self) -> None:
-        media = self.ctx.watch.linked_media(self.source().name, self.entry.id) if self.entry else None
+        media = self.ctx.watch.linked_media(self._src.name, self.entry.id) if self.entry and self._src else None
         self.link_label.setText(tr("watch.linked_to", title=media["title"]) if media else tr("watch.not_linked"))
         self.unlink_btn.setVisible(media is not None)
         self.link_btn.setText(tr("watch.relink") if media else tr("watch.link"))
 
     def _fill_tree(self) -> None:
-        source, entry = self.source(), self.entry
+        source, entry = self._src, self.entry
         if source is None or entry is None:
             return
         positions = self.ctx.watch.positions(source.name, entry.id)
@@ -335,21 +401,24 @@ class WatchTab(QWidget):
             return
         dlg = LinkDialog(self.ctx, self.entry.title, self)
         if dlg.exec() and dlg.chosen:
-            self.ctx.watch.link(self.source().name, self.entry.id, dlg.chosen)
+            self.ctx.watch.link(self._src.name, self.entry.id, dlg.chosen)
             self._show_link()
             self.message.setText(tr("watch.link_saved"))
 
     def _unlink(self) -> None:
         if self.entry is not None:
-            self.ctx.watch.link(self.source().name, self.entry.id, None)
+            self.ctx.watch.link(self._src.name, self.entry.id, None)
             self._show_link()
 
     # --- playing --------------------------------------------------------------------------------------------
 
     def play(self, index: int | None = None) -> None:
-        source, entry = self.source(), self.entry
+        source, entry = self._src, self.entry
         if source is None or entry is None or not self.episodes:
             return
+        saved = self.ctx.db.saved_get(source.name, entry.id)
+        if saved is not None and saved["status"] == "later":           # started: it is no longer "for later"
+            self._set_shelf("watching")
         if not isinstance(index, int) or index < 0:
             selected = self.tree.selectedItems()
             if selected:
@@ -368,13 +437,55 @@ class WatchTab(QWidget):
         return [self.episodes[self.tree.indexOfTopLevelItem(i)] for i in self.tree.selectedItems()]
 
     def _mark(self, watched: bool) -> None:
-        source, entry = self.source(), self.entry
+        source, entry = self._src, self.entry
         if source is None or entry is None:
             return
         for ep in self._selected_episodes():
             self.ctx.watch.mark(source.name, entry.id, ep, watched)
         self._fill_tree()
         self.list_changed.emit()
+
+    # --- the shelf: later / watching / done ---------------------------------------------------------------------------------
+
+    def _shelf_status(self) -> str | None:
+        if self._src is None or self.entry is None:
+            return None
+        row = self.ctx.db.saved_get(self._src.name, self.entry.id)
+        return row["status"] if row else None
+
+    def _show_shelf_state(self) -> None:
+        status = self._shelf_status()
+        self.shelf_btn.setText((tr(dict(SHELF)[status]) if status else tr("watch.shelf.add")) + "  ▾")
+
+    def _build_shelf_menu(self) -> None:
+        self.shelf_menu.clear()
+        current = self._shelf_status()
+        for status, key in SHELF:
+            action = self.shelf_menu.addAction(tr(key), lambda st=status: self._set_shelf(st))
+            action.setCheckable(True)
+            action.setChecked(status == current)
+        if current:
+            self.shelf_menu.addSeparator()
+            self.shelf_menu.addAction(tr("watch.shelf.remove"), lambda: self._set_shelf(None))
+
+    def _set_shelf(self, status: str | None) -> None:
+        """Puts the open title on the shelf (or takes it off). "Done" also marks every episode as watched."""
+        source, entry = self._src, self.entry
+        if source is None or entry is None:
+            return
+        if status is None:
+            self.ctx.db.saved_remove(source.name, entry.id)
+        else:
+            self.ctx.db.saved_set(source.name, entry.id, entry.title, entry.cover, entry.url, status)
+            if status == "done":
+                for ep in self.episodes:
+                    self.ctx.watch.mark(source.name, entry.id, ep, True)
+                self._fill_tree()
+        self._show_shelf_state()
+        self.message.setText(tr("watch.shelf_saved", state=tr(dict(SHELF)[status])) if status else tr("watch.shelf_removed"))
+        self.list_changed.emit()
+        if self._in_shelf():
+            self._show_shelf()
 
     def _menu(self, pos) -> None:
         if not self.tree.selectedItems():

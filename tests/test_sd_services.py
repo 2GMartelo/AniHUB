@@ -212,7 +212,7 @@ RAW = {"id": 5, "name": "Detailer", "type": "LORA", "nsfw": False, "description"
 def test_parse_model_and_pick_file():
     m = civitai.parse_model(RAW)
     assert (m.name, m.type, m.creator, m.downloads, m.rating) == ("Detailer", "LORA", "bob", 10, 4.5)
-    assert m.description == "Adds detail\n\nLine2" and m.page_url == "https://civitai.com/models/5"
+    assert m.description == "Adds detail\n\nLine2" and m.page_url == "https://civitai.red/models/5"
     v = m.versions[0]
     assert v.base_model == "SDXL 1.0" and v.trained_words == ["dtl"]
     best = civitai.pick_file(v)
@@ -288,3 +288,21 @@ def test_search_builds_query_and_returns_next_page():
     assert headers["Authorization"] == "Bearer t"
     civitai.search(http, "", nsfw=True)
     assert "query" not in http.calls[1][1] and http.calls[1][1]["nsfw"] == "true"
+
+
+def test_civitai_red_is_the_site_and_age_modes_limit_what_is_shown():
+    assert civitai.API == "https://civitai.red/api/v1"
+    assert civitai.parse_model_url("https://civitai.red/models/9/x") == (9, None) and civitai.parse_model_url("civitai.com/models/9") == (9, None)
+    assert civitai.level_ok(1, "12") and civitai.level_ok(3, "12") and not civitai.level_ok(4, "12")           # PG, PG-13 only
+    assert civitai.level_ok(4 | 1, "16") and not civitai.level_ok(8, "16") and not civitai.level_ok(1 | 16, "16")  # R yes, X / XXX no
+    assert civitai.level_ok(60, "18") and civitai.level_ok(0, "12") and not civitai.level_ok(60, "16")
+
+
+def test_search_drops_models_the_age_mode_does_not_allow():
+    class FakeHttp:
+        def get_json(self, url, params=None, headers=None):
+            return {"items": [{"id": 1, "name": "safe", "type": "LORA", "nsfwLevel": 1}, {"id": 2, "name": "r", "type": "LORA", "nsfwLevel": 5},
+                              {"id": 3, "name": "x", "type": "LORA", "nsfwLevel": 60}], "metadata": {}}
+
+    names = lambda mode: [m.name for m in civitai.search(FakeHttp(), nsfw=True, mode=mode)[0]]              # noqa: E731
+    assert names("12") == ["safe"] and names("16") == ["safe", "r"] and names("18") == ["safe", "r", "x"]

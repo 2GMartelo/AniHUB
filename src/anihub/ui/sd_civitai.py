@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
 )
 
 from anihub.context import AppContext
+from anihub.core import agemode
 from anihub.core.i18n import tr
 from anihub.services import civitai
 from anihub.ui.workers import run_async
@@ -44,10 +45,11 @@ class CivitaiView(QWidget):
         self.base = QComboBox()
         for b in BASES:
             self.base.addItem(b or tr("civ.any_base"), b)
-        self.nsfw = QCheckBox(tr("civ.nsfw"))
-        explicit_ok = "explicit" in ctx.allowed_ratings()
-        self.nsfw.setEnabled(explicit_ok)  # the same rule as everywhere: 18+ only when Explicit is enabled
-        if not explicit_ok:
+        mode = agemode.mode_of(ctx.cfg)
+        self.nsfw = QCheckBox(tr("civ.nsfw_mode", mode=mode) if mode != "12" else tr("civ.nsfw"))
+        self.nsfw.setEnabled(mode != "12")  # the same rule as everywhere: 16+ / 18+ models only in the 16+ / 18+ age mode
+        self.nsfw.setChecked(mode != "12")
+        if mode == "12":
             self.nsfw.setToolTip(tr("civ.nsfw_off"))
         self.search_btn = QPushButton(tr("search.button"))
         self.more_btn = QPushButton(tr("civ.more"))
@@ -138,7 +140,7 @@ class CivitaiView(QWidget):
         gen = self._gen = self._gen + (0 if more else 1)
         next_url = self._next_url if more else None
         args = (self.ctx.http, self.query.text(), self.type.currentData(), self.sort.currentData(),
-                self.nsfw.isChecked() and self.nsfw.isEnabled(), self._token(), next_url)
+                self.nsfw.isChecked() and self.nsfw.isEnabled(), self._token(), next_url, 20, agemode.mode_of(self.ctx.cfg))
 
         def done(result) -> None:
             self.search_btn.setEnabled(True)
@@ -179,9 +181,10 @@ class CivitaiView(QWidget):
             self._select(-1)
 
     def _load_preview(self, item: QListWidgetItem, model: civitai.CivitModel) -> None:
-        """Only images CivitAI rates as safe (level <= 1) are fetched as previews; the rest stay blank."""
+        """Only the pictures CivitAI rates as fitting the age mode are fetched as previews; the rest stay blank."""
         images = model.versions[0].images if model.versions else []
-        url = next((i["url"] for i in images if int(i.get("nsfwLevel") or 1) <= 1 and i.get("url")), None)
+        limit = civitai.IMAGE_LEVEL_LIMIT.get(agemode.mode_of(self.ctx.cfg), 1)
+        url = next((i["url"] for i in images if int(i.get("nsfwLevel") or 1) <= limit and i.get("url")), None)
         if not url:
             return
 
