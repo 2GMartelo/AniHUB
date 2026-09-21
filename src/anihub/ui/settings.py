@@ -337,7 +337,32 @@ class SettingsPage(QWidget):
         return {key: button.color for key, button in self.custom_buttons.items()}
 
     def _theme_changed(self) -> None:
+        """Picking a theme shows it at once; it stays only if the settings are saved (see hideEvent)."""
         self.custom_row.setVisible(self.theme.currentData() == "custom")
+        theme_module.set_custom_colors(self._custom_values())
+        apply_theme(QApplication.instance(), self.theme.currentData())
+
+    def revert_preview(self) -> None:
+        """Back to the saved theme: the pick was not saved. The controls follow, so they always show what is really applied."""
+        cfg = self.ctx.cfg
+        saved = cfg.get("theme")
+        colors = {**theme_module.DEFAULT_CUSTOM, **(cfg.get("theme_custom") or {})}
+        pending = (self.theme.currentData() != saved) or self._custom_values() != {
+            k: theme_module._norm_hex(colors.get(k), v) for k, v in theme_module.DEFAULT_CUSTOM.items()}
+        if not pending:
+            return
+        self.theme.blockSignals(True)
+        self.theme.setCurrentIndex(max(self.theme.findData(saved), 0))
+        self.theme.blockSignals(False)
+        theme_module.set_custom_colors(colors)
+        for key, button in self.custom_buttons.items():
+            button.set_color(theme_module.custom_colors()[key])
+        self.custom_row.setVisible(saved == "custom")
+        apply_theme(QApplication.instance(), saved)
+
+    def hideEvent(self, event) -> None:  # noqa: N802 - leaving the page (another section, minimised window) drops an unsaved pick
+        super().hideEvent(event)
+        self.revert_preview()
 
     def _custom_changed(self, _color: str = "") -> None:
         """A colour was picked: show the result at once when the custom theme is the chosen one."""

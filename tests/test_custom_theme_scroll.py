@@ -229,3 +229,71 @@ def test_settings_switch_toggles_smooth_scrolling(qapp, tmp_path, smooth):
     assert cfg.get("ui.smooth_scroll") is False
     page.smooth.setChecked(True)
     assert smooth.enabled
+
+
+def test_theme_pick_previews_at_once_and_reverts_when_the_page_is_left_unsaved(qapp, tmp_path):
+    from anihub.context import AppContext
+    from anihub.ui.settings import SettingsPage
+
+    cfg = Config.load(tmp_path / "c.json")
+    cfg.set("library_path", str(tmp_path / "lib"), save=False)
+    cfg.set("theme", "dark", save=False)
+    theme.set_custom_colors(None)
+    theme.apply_theme(qapp, "dark")
+    page = SettingsPage(AppContext.build(cfg))
+    page.show()
+    pump(qapp, 0.05)
+    page.theme.setCurrentIndex(page.theme.findData("light"))
+    assert theme.current().name == "light"                                     # applied without saving
+    assert cfg.get("theme") == "dark"
+    page.hide()                                                                # leaving the settings unsaved
+    assert theme.current().name == "dark" and page.theme.currentData() == "dark"
+    # a custom pick is dropped too, controls included
+    page.show()
+    page.theme.setCurrentIndex(page.theme.findData("custom"))
+    page.custom_buttons["accent"].set_color("#ff5500")
+    page._custom_changed()
+    assert theme.current().name == "custom" and theme.current().accent == "#ff5500"
+    page.hide()
+    assert theme.current().name == "dark" and page.custom_buttons["accent"].color == theme.DEFAULT_CUSTOM["accent"]
+    assert theme.custom_colors() == theme.DEFAULT_CUSTOM and page.custom_row.isHidden()
+    # saving keeps it
+    page.show()
+    page.theme.setCurrentIndex(page.theme.findData("light"))
+    page._save()
+    page.hide()
+    assert theme.current().name == "light" and cfg.get("theme") == "light" and page.theme.currentData() == "light"
+    # saved custom colours survive leaving as well
+    page.show()
+    page.theme.setCurrentIndex(page.theme.findData("custom"))
+    page.custom_buttons["accent"].set_color("#2244ff")
+    page._custom_changed()
+    page._save()
+    page.hide()
+    assert theme.current().name == "custom" and theme.custom_colors()["accent"] == "#2244ff"
+    theme.set_custom_colors(None)
+    theme.apply_theme(qapp, "dark")
+
+
+def test_switching_sections_in_the_real_window_drops_an_unsaved_theme(qapp, tmp_path):
+    from anihub.context import AppContext
+    from anihub.ui.main_window import MainWindow
+
+    cfg = Config.load(tmp_path / "c.json")
+    cfg.set("library_path", str(tmp_path / "lib"), save=False)
+    cfg.set("first_run_done", True, save=False)
+    cfg.set("theme", "dark", save=False)
+    theme.set_custom_colors(None)
+    theme.apply_theme(qapp, "dark")
+    win = MainWindow(AppContext.build(cfg))
+    win.resize(1400, 850)
+    win.show()
+    win.go("settings")
+    pump(qapp, 0.1)
+    win.settings.theme.setCurrentIndex(win.settings.theme.findData("light"))
+    assert theme.current().name == "light"
+    win.go("anime")
+    pump(qapp, 0.05)
+    assert theme.current().name == "dark" and win.settings.theme.currentData() == "dark"
+    win._quitting = True
+    win.close()
