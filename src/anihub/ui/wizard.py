@@ -5,14 +5,14 @@ import os
 from pathlib import Path
 
 from PySide6.QtWidgets import (
-    QApplication, QCheckBox, QComboBox, QFileDialog, QFormLayout, QHBoxLayout, QLabel, QLineEdit,
+    QApplication, QCheckBox, QRadioButton, QComboBox, QFileDialog, QFormLayout, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QVBoxLayout, QWidget, QWizard, QWizardPage,
 )
 
+from anihub.core import agemode
 from anihub.core.config import Config
 from anihub.core.i18n import set_language, tr
 from anihub.services import sysreq
-from anihub.sources.base import RATINGS
 from anihub.ui.theme import apply_theme
 
 
@@ -112,21 +112,23 @@ class RatingPage(QWizardPage):
         self.label.setWordWrap(True)
         layout = QVBoxLayout(self)
         layout.addWidget(self.label)
-        self.boxes = {r: QCheckBox() for r in RATINGS}
+        self.boxes = {m: QRadioButton() for m in agemode.MODES}
         for box in self.boxes.values():
             layout.addWidget(box)
 
     def initializePage(self) -> None:
         self.setTitle(tr("wizard.p3.title"))
         self.label.setText(tr("wizard.p3.text"))
-        allowed = set(self.cfg.get("ratings.allowed", ["general"]))
-        for r, box in self.boxes.items():
-            box.setText(tr(f"rating.{r}"))
-            box.setChecked(r in allowed)
+        current = agemode.mode_of(self.cfg)
+        for mode, box in self.boxes.items():
+            box.setText(tr(f"wizard.p3.{mode}"))
+            box.setChecked(mode == current)
+
+    def chosen(self) -> str:
+        return next((m for m, box in self.boxes.items() if box.isChecked()), agemode.DEFAULT_MODE)
 
     def validatePage(self) -> bool:
-        chosen = [r for r, box in self.boxes.items() if box.isChecked()] or ["general"]
-        self.cfg.set("ratings.allowed", chosen, save=False)
+        agemode.apply_mode(self.cfg, self.chosen(), save=False)
         return True
 
 

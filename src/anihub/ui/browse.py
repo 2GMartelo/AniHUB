@@ -86,12 +86,13 @@ class BrowseView(QWidget):
     def _fetch(self, source: Source, tags: list[str], page: int, limit: int, allowed: set[str]):
         shown: list[Post] = []
         hidden = 0
+        blocker = self.ctx.blocker
         for _ in range(4):  # skip pages that are entirely hidden by the rating filter
             raw = source.search(tags, page, limit)
             page += 1
             if not raw:
                 return shown, page, True, hidden
-            shown = [p for p in raw if p.rating in allowed]
+            shown = [p for p in raw if p.rating in allowed and not blocker.blocked_in(p.tag_names)]
             hidden += len(raw) - len(shown)
             if shown:
                 break

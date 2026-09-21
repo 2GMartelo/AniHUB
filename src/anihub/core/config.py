@@ -16,6 +16,8 @@ DEFAULTS: dict[str, Any] = {
     "theme": "system",  # system | light | dark
     "library_path": "",
     "ratings": {"allowed": ["general"]},
+    "age": {"mode": ""},                       # 12 | 16 | 18 (see core/agemode.py); empty = derived from ratings.allowed
+    "filter": {"custom_tags": []},             # the user's own hidden tags, on top of the age mode's
     "network": {"proxy": "", "min_interval_ms": 250, "max_parallel": 6, "user_agent": "AniHUB/0.1"},
     "sources": {
         "danbooru": {"login": "", "api_key": ""},

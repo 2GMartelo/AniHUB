@@ -59,8 +59,10 @@ class EHentai(Source):
 
     def _categories(self) -> tuple[int, str]:
         """(f_cats bitmask, rating of what the mask lets through) for the user's content-rating setting."""
-        allowed = set(self.cfg.get("ratings.allowed", ["general"]))
-        if "explicit" in allowed or "questionable" in allowed:
+        from anihub.core import agemode
+
+        allowed = set(agemode.RATINGS_BY_MODE[agemode.mode_of(self.cfg)])
+        if "explicit" in allowed:
             return 0, "explicit"
         if "sensitive" in allowed:
             return ALL_CATEGORIES - NON_H, "sensitive"

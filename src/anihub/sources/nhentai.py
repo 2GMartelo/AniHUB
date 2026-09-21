@@ -59,7 +59,9 @@ class NHentai(Source):
             raise SourceError("nhentai: unexpected response (blocked or rate limited)") from exc
 
     def search(self, tags: list[str], page: int, limit: int) -> list[Post]:
-        if "explicit" not in set(self.cfg.get("ratings.allowed", ["general"])):
+        from anihub.core import agemode
+
+        if "explicit" not in agemode.RATINGS_BY_MODE[agemode.mode_of(self.cfg)]:
             raise SourceError("nhentai: adult content only. Enable the 'explicit' rating in Settings.")
         query = " ".join(t for t in (search_token(t) for t in tags) if t)
         # no query = the newest galleries; the search endpoint refuses an empty string

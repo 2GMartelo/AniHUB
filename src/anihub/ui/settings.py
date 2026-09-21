@@ -6,14 +6,14 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, QFormLayout, QGroupBox, QProgressBar, QTableWidget,
     QTableWidgetItem, QHBoxLayout, QLabel, QLineEdit, QPushButton,
-    QScrollArea, QSpinBox, QVBoxLayout, QWidget,
+    QMessageBox, QPlainTextEdit, QScrollArea, QSpinBox, QVBoxLayout, QWidget,
 )
 
 from anihub.context import AppContext
+from anihub.core import agemode
 from anihub.core.i18n import tr
 from anihub.services.autotag import download_model
 from anihub.services.backends import gpu_list
-from anihub.sources.base import RATINGS
 from anihub.ui.workers import run_async
 from anihub.ui import style
 from anihub.ui.about_box import AboutBox
@@ -50,13 +50,17 @@ class SettingsPage(QWidget):
         library_row.addWidget(self.library, 1)
         library_row.addWidget(open_btn)
 
-        allowed = set(cfg.get("ratings.allowed", ["general"]))
-        self.ratings = {r: QCheckBox(tr(f"rating.{r}")) for r in RATINGS}
-        for r, box in self.ratings.items():
-            box.setChecked(r in allowed)
-        ratings_row = QHBoxLayout()
-        for box in self.ratings.values():
-            ratings_row.addWidget(box)
+        self.age_mode = QComboBox()
+        for mode in agemode.MODES:
+            self.age_mode.addItem(tr(f"age.m{mode}"), mode)
+        self.age_mode.setCurrentIndex(self.age_mode.findData(agemode.mode_of(cfg)))
+        self.locked_tags = QPlainTextEdit(readOnly=True)               # follows the mode; the user cannot edit it
+        self.locked_tags.setMaximumHeight(120)
+        self.custom_tags = QPlainTextEdit(" ".join(agemode.custom_tags(cfg)))
+        self.custom_tags.setMaximumHeight(90)
+        self.custom_tags.setPlaceholderText(tr("age.custom.hint"))
+        self.age_mode.currentIndexChanged.connect(self._show_locked)
+        self._show_locked()
 
         self.proxy = QLineEdit(cfg.get("network.proxy"))
         self.interval = QSpinBox(minimum=0, maximum=10000, singleStep=50, value=int(cfg.get("network.min_interval_ms")))
@@ -172,7 +176,9 @@ class SettingsPage(QWidget):
 
         look_box = form_box(tr("settings.g_appearance"), (tr("settings.language"), self.lang), (tr("settings.theme"), self.theme))
         storage_box = form_box(tr("settings.g_storage"), (tr("settings.library"), library_row),
-                               (tr("settings.ratings"), ratings_row), (tr("settings.cache_limit"), self.cache_limit))
+                               (tr("settings.cache_limit"), self.cache_limit))
+        age_box = form_box(tr("age.title"), (tr("age.mode"), self.age_mode), (tr("age.locked"), self.locked_tags),
+                           (tr("age.custom"), self.custom_tags))
         network_box = form_box(tr("settings.g_network"), (tr("settings.proxy"), self.proxy),
                                (tr("settings.interval"), self.interval), (tr("settings.parallel"), self.parallel))
 
@@ -202,7 +208,7 @@ class SettingsPage(QWidget):
         cl = QVBoxLayout(content)
         cl.setContentsMargins(0, 0, 8, 12)
         cl.setSpacing(6)
-        for box in (look_box, storage_box, network_box, creds_box, forge_box, gen_box, manga_box, lib_box, tag_box, self.backup, self.about):
+        for box in (look_box, age_box, storage_box, network_box, creds_box, forge_box, gen_box, manga_box, lib_box, tag_box, self.backup, self.about):
             cl.addWidget(box)
         cl.addStretch(1)
         holder = QWidget()
@@ -285,6 +291,13 @@ class SettingsPage(QWidget):
         self.tag_bar.setRange(0, max(total, 1))
         self.tag_bar.setValue(done)
 
+    def _show_locked(self) -> None:
+        tags = agemode.locked_tags(self.age_mode.currentData())
+        self.locked_tags.setPlainText(", ".join(tags) if tags else tr("age.locked.none"))
+
+    def _confirm_adult(self) -> bool:
+        return QMessageBox.question(self, "AniHUB", tr("age.confirm18")) == QMessageBox.StandardButton.Yes
+
     def _pick_forge(self) -> None:
         folder = QFileDialog.getExistingDirectory(self, tr("settings.forge_path"), self.forge_path.text())
         if folder:
@@ -294,8 +307,12 @@ class SettingsPage(QWidget):
         cfg = self.ctx.cfg
         cfg.set("language", self.lang.currentData(), save=False)
         cfg.set("theme", self.theme.currentData(), save=False)
-        chosen = [r for r, box in self.ratings.items() if box.isChecked()] or ["general"]
-        cfg.set("ratings.allowed", chosen, save=False)
+        mode = self.age_mode.currentData()
+        if mode == "18" and agemode.mode_of(cfg) != "18" and not self._confirm_adult():
+            self.age_mode.setCurrentIndex(self.age_mode.findData(agemode.mode_of(cfg)))
+            mode = agemode.mode_of(cfg)
+        agemode.apply_mode(cfg, mode, save=False)
+        cfg.set("filter.custom_tags", agemode.parse_tags(self.custom_tags.toPlainText()), save=False)
         cfg.set("network.proxy", self.proxy.text().strip(), save=False)
         cfg.set("network.min_interval_ms", self.interval.value(), save=False)
         cfg.set("network.max_parallel", self.parallel.value(), save=False)
@@ -320,6 +337,7 @@ class SettingsPage(QWidget):
         cfg.save()
         self.ctx.http.reconfigure()
         self.ctx.refresh_tagger()
+        self.ctx.refresh_filter()
         self._refresh_tag_status()
         apply_theme(QApplication.instance(), cfg.get("theme"))
         self.note.setText(tr("settings.saved"))

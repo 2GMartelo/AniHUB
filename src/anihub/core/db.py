@@ -704,9 +704,33 @@ class Database:
 
     # --- search ----------------------------------------------------------------
 
+    # --- hidden tags (age mode + the user's filter) -----------------------------------------------------------
+
+    blocked_names: frozenset[str] = frozenset()
+    blocked_prefixes: tuple[str, ...] = ()
+
+    def set_blocked(self, names, prefixes=()) -> None:
+        """Items carrying any of these tags disappear from every library search and count (the trash view excepted)."""
+        self.blocked_names, self.blocked_prefixes = frozenset(names), tuple(prefixes)
+
+    def _blocked_ids(self) -> list[int]:
+        ids: set[int] = set()
+        names = sorted(self.blocked_names)
+        for i in range(0, len(names), 500):
+            chunk = names[i:i + 500]
+            ids.update(r[0] for r in self.conn.execute(f"SELECT id FROM tags WHERE name IN ({','.join('?' * len(chunk))})", chunk))
+        for prefix in self.blocked_prefixes:
+            ids.update(r[0] for r in self.conn.execute("SELECT id FROM tags WHERE name LIKE ? ESCAPE '\\'", (_like_escape(prefix) + "%",)))
+        return sorted(ids)
+
     def _where(self, include, exclude, ratings, kind, category_id, collection_id, favorites, min_stars, trashed):
         where = ["i.kind=?", "i.trashed_at IS NOT NULL" if trashed else "i.trashed_at IS NULL"]
         args: list = [kind]
+        if not trashed and (self.blocked_names or self.blocked_prefixes):
+            blocked = self._blocked_ids()
+            if blocked:
+                where.append(f"NOT EXISTS (SELECT 1 FROM item_tags bt WHERE bt.item_id=i.id AND bt.tag_id IN ({','.join('?' * len(blocked))}))")
+                args += blocked
         if ratings is not None:
             ratings = list(ratings)
             if not ratings:

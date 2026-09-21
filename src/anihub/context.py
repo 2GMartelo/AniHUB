@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from anihub.core import agemode
 from anihub.core.config import Config, config_dir
 from anihub.core.db import Database
 from anihub.core.paths import LibraryPaths
@@ -66,7 +67,17 @@ class AppContext:
         ctx.downloads = DownloadManager(ctx.library, http, cfg)
         ctx.subscriptions = SubscriptionService(db, ctx.sources, ctx.downloads, cfg)
         ctx.refresh_tagger()
+        ctx.refresh_filter()
         return ctx
+
+    def refresh_filter(self) -> None:
+        """Apply the age mode and the user's tag filter (call after either changed)."""
+        blocker = agemode.blocker_for(self.cfg)
+        self.db.set_blocked(blocker.exact, blocker.prefixes)
+
+    @property
+    def blocker(self) -> agemode.Blocker:
+        return agemode.blocker_for(self.cfg)
 
     def refresh_tagger(self) -> None:
         """Apply the autotagger settings: the library only gets a tagger when it is enabled AND its model exists."""
@@ -75,4 +86,4 @@ class AppContext:
         self.library.tagger = self.autotagger if self.cfg.get("autotag.enabled") and self.autotagger.available else None
 
     def allowed_ratings(self) -> list[str]:
-        return list(self.cfg.get("ratings.allowed", ["general"]))
+        return list(agemode.RATINGS_BY_MODE[agemode.mode_of(self.cfg)])

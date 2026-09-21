@@ -34,23 +34,30 @@ class SubscriptionService:
     def __init__(self, db: Database, sources: dict[str, Source], downloads, cfg):
         self.db, self.sources, self.downloads, self.cfg = db, sources, downloads, cfg
 
+    def _blocker(self):
+        from anihub.core import agemode
+
+        return agemode.blocker_for(self.cfg)
+
     # --- helpers -------------------------------------------------------------------------------------------
 
     def _allowed(self) -> set[str]:
-        return set(self.cfg.get("ratings.allowed", ["general"]))
+        from anihub.core import agemode
+
+        return set(agemode.RATINGS_BY_MODE[agemode.mode_of(self.cfg)])
 
     def _tags(self, query: str) -> list[str]:
         return query.split()
 
     def _fetch_new(self, source: Source, query: str, since: int) -> list[Post]:
         """Posts newer than `since` matching the query and the user's rating setting, newest first."""
-        allowed, found = self._allowed(), []
+        allowed, found, blocker = self._allowed(), [], self._blocker()
         for page in range(1, MAX_PAGES + 1):
             posts = source.search(self._tags(query), page, PAGE_LIMIT)
             if not posts:
                 break
             fresh = [p for p in posts if post_number(p) > since]
-            found += [p for p in fresh if p.rating in allowed]
+            found += [p for p in fresh if p.rating in allowed and not blocker.blocked_in(p.tag_names)]
             if len(fresh) < len(posts):          # reached posts we have already seen
                 break
         found.sort(key=post_number, reverse=True)
