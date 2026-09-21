@@ -260,3 +260,26 @@ def test_source_settings_dialog_saves_changes(qapp):
     assert (0, "editTextState", "secret") in saved and (1, "switchState", True) in saved
     pump(lambda: dialog.changed)
     assert dialog.changed
+
+
+def test_tag_rows_have_plus_and_minus_buttons(qapp, tmp_path):
+    from anihub.ui.viewer import TagRow
+
+    viewer = Viewer([ViewItem("t", "i", lambda: tmp_path / "x.png", tags=[("cat", "general"), ("miku", "artist")])], 0)
+    seen = []
+    viewer.tag_action.connect(lambda tag, mode: seen.append((tag, mode)))
+    rows = [viewer.tags.itemWidget(viewer.tags.item(i)) for i in range(viewer.tags.count())]
+    rows = [r for r in rows if isinstance(r, TagRow)]
+    assert [r.name for r in rows] == ["miku", "cat"] or sorted(r.name for r in rows) == ["cat", "miku"]
+    cat = next(r for r in rows if r.name == "cat")
+    cat.plus.click()
+    cat.minus.click()
+    cat.label.mousePressEvent(None)
+    assert seen == [("cat", "add"), ("cat", "exclude"), ("cat", "search")]
+    viewer.close()
+
+
+def test_add_from_viewer_keeps_it_open_and_extends_the_query():
+    from anihub.ui.tagquery import apply_tag
+
+    assert apply_tag("cat", "dog", "add") == "cat dog" and apply_tag("cat dog", "dog", "exclude") == "cat -dog"

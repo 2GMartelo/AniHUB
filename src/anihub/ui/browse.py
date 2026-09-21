@@ -173,8 +173,9 @@ class BrowseView(QWidget):
 
     def _tag_from_viewer(self, viewer: Viewer, tag: str, mode: str) -> None:
         self.query.setText(apply_tag(self.query.text(), tag, mode))
-        viewer.close()
-        self.window().activateWindow()
+        if mode == "search":                       # a fresh search leaves the picture; "+" / "−" refine and keep the viewer open
+            viewer.close()
+            self.window().activateWindow()
         self.start_search()
 
     def _save_from_viewer(self, item: ViewItem) -> None:

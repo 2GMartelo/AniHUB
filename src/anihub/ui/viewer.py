@@ -35,6 +35,36 @@ class ViewItem:
     stars: int = 0
 
 
+class TagRow(QWidget):
+    """A tag with its own buttons: the name searches for it alone, + adds it to the current search, − excludes it."""
+
+    def __init__(self, name: str, color: str | None, on_action: Callable[[str], None], parent=None):
+        super().__init__(parent)
+        self.name = name
+        self.label = QLabel(name)
+        self.label.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.label.setToolTip(tr("tag.search"))
+        if color:
+            self.label.setStyleSheet(f"color: {color};")
+        self.plus = QToolButton(text="+")
+        self.minus = QToolButton(text="−")
+        for button, key in ((self.plus, "tag.add"), (self.minus, "tag.exclude")):
+            button.setProperty("tagbtn", True)
+            button.setToolTip(tr(key))
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            button.setFixedSize(22, 22)
+            button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        row = QHBoxLayout(self)
+        row.setContentsMargins(4, 0, 2, 0)
+        row.setSpacing(4)
+        row.addWidget(self.label, 1)
+        row.addWidget(self.plus)
+        row.addWidget(self.minus)
+        self.plus.clicked.connect(lambda: on_action("add"))
+        self.minus.clicked.connect(lambda: on_action("exclude"))
+        self.label.mousePressEvent = lambda e: on_action("search")          # type: ignore[method-assign]
+
+
 def fmt_time(ms: int) -> str:
     s = max(ms, 0) // 1000
     return f"{s // 60}:{s % 60:02d}"
@@ -92,7 +122,7 @@ class Viewer(QWidget):
 
         # tag panel
         self.tags = QListWidget()
-        self.tags.setFixedWidth(280)
+        self.tags.setFixedWidth(310)
         self.tags.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tags.customContextMenuRequested.connect(self._tag_menu)
         self.tags.itemDoubleClicked.connect(lambda it: self._emit_tag(it, "search"))
@@ -357,11 +387,12 @@ class Viewer(QWidget):
             header.setFlags(Qt.ItemFlag.NoItemFlags)
             self.tags.addItem(header)
             for name in names:
-                item = QListWidgetItem(name)
+                item = QListWidgetItem()
                 item.setData(Qt.ItemDataRole.UserRole, name)
-                if category in CATEGORY_COLORS:
-                    item.setForeground(QBrush(QColor(CATEGORY_COLORS[category])))
+                item.setSizeHint(QSize(0, 28))
                 self.tags.addItem(item)
+                self.tags.setItemWidget(item, TagRow(name, CATEGORY_COLORS.get(category),
+                                                     lambda mode, n=name: self.tag_action.emit(n, mode)))
 
     def _emit_tag(self, item: QListWidgetItem, mode: str) -> None:
         tag = item.data(Qt.ItemDataRole.UserRole)

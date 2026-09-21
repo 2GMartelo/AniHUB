@@ -703,6 +703,7 @@ class LibraryView(QWidget):
 
     def _tag_from_viewer(self, viewer: Viewer, tag: str, mode: str) -> None:
         self.query.setText(apply_tag(self.query.text(), tag, mode))
-        viewer.close()
-        self.window().activateWindow()
+        if mode == "search":
+            viewer.close()
+            self.window().activateWindow()
         self.reload()
