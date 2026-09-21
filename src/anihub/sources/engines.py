@@ -36,6 +36,19 @@ class GelbooruEngine(Source):
             score=int(raw.get("score") or 0),
         )
 
+    def suggest_tags(self, prefix: str, limit: int = 12) -> list[tuple[str, int]]:
+        user_id, key = self.cred("user_id"), self.cred("api_key")
+        if not (user_id and key):                                  # these sites answer tag queries only with an API key
+            return []
+        params = {"page": "dapi", "s": "tag", "q": "index", "json": 1, "name_pattern": f"%{prefix}%", "orderby": "count", "limit": limit,
+                  "user_id": user_id, "api_key": key}
+        try:
+            data = self.http.get_json(self.api_url, params=params)
+        except (HttpError, ValueError):
+            return []
+        rows = data.get("tag") if isinstance(data, dict) else data
+        return [(str(r["name"]), int(r.get("count") or 0)) for r in rows or [] if isinstance(r, dict) and r.get("name")]
+
     def search(self, tags: list[str], page: int, limit: int) -> list[Post]:
         params = {"page": "dapi", "s": "post", "q": "index", "json": 1,
                   "tags": " ".join(tags), "limit": limit, "pid": page - 1}  # pid is 0-based
@@ -58,6 +71,15 @@ class GelbooruEngine(Source):
 
 class MoebooruEngine(Source):
     """Moebooru (yande.re, konachan.com)."""
+
+    def suggest_tags(self, prefix: str, limit: int = 12) -> list[tuple[str, int]]:
+        try:
+            data = self.http.get_json(f"{self.base_url}/tag.json", params={"name": prefix, "order": "count", "limit": limit})
+        except (HttpError, ValueError):
+            return []
+        if not isinstance(data, list):
+            return []
+        return [(str(r["name"]), int(r.get("count") or 0)) for r in data if isinstance(r, dict) and r.get("name")]
 
     base_url: str
     rating_map = {"s": "general", "q": "questionable", "e": "explicit"}

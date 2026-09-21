@@ -87,6 +87,10 @@ class Source(ABC):
     def cred(self, key: str) -> str:
         return str(self.cfg.get(f"sources.{self.name}.{key}") or "")
 
+    def suggest_tags(self, prefix: str, limit: int = 12) -> list[tuple[str, int]]:
+        """Tag names of the site that contain `prefix` with their post counts, most used first (blocking; empty when the site cannot say)."""
+        return []
+
     @abstractmethod
     def search(self, tags: list[str], page: int, limit: int) -> list[Post]:
         """Return one page (1-based). An empty list means there are no more results."""

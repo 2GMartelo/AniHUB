@@ -1,11 +1,14 @@
 """Tag autocomplete for search boxes and tag editors (ТЗ 6.9)."""
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from typing import Callable
+
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import QCompleter, QLineEdit
 
 from anihub.core.db import Database
+from anihub.ui.workers import run_async
 
 NAME_ROLE = Qt.ItemDataRole.UserRole
 
@@ -24,9 +27,14 @@ class TagCompleter(QCompleter):
     `multi=False` turns it into a single-tag completer (tag editors, hierarchy forms).
     """
 
-    def __init__(self, db: Database, line_edit: QLineEdit, multi: bool = True, limit: int = 15):
+    def __init__(self, db: Database, line_edit: QLineEdit, multi: bool = True, limit: int = 15,
+                 remote: Callable[[str], list[tuple[str, int]]] | None = None):
         super().__init__(line_edit)
         self.db, self.multi, self.limit = db, multi, limit
+        self.remote = remote                                  # blocking lookup of the tags of a site (runs in a worker, a moment after typing)
+        self._ask = 0
+        self._wait = QTimer(self, singleShot=True, interval=250)
+        self._wait.timeout.connect(self._ask_remote)
         self._model = QStandardItemModel(self)
         self.setModel(self._model)
         self.setWidget(line_edit)
@@ -49,6 +57,32 @@ class TagCompleter(QCompleter):
             item = QStandardItem(f"{name}  ({count})" if count else name)
             item.setData(name, NAME_ROLE)
             self._model.appendRow(item)
+        self._wait.stop()
+        if self.remote is not None and len(token) >= 2 and not token.startswith("@"):
+            self._wait.start()
+
+    def _ask_remote(self) -> None:
+        edit = self.widget()
+        token = self._parts(edit.text())[2]
+        if not token:
+            return
+        self._ask += 1
+        ask = self._ask
+
+        def done(found: list) -> None:
+            if ask != self._ask or self._parts(edit.text())[2] != token or not found:
+                return
+            have = {self._model.item(i).data(NAME_ROLE) for i in range(self._model.rowCount())}
+            for name, count in found:
+                if name not in have:
+                    item = QStandardItem(f"{name}  ({count})" if count else name)
+                    item.setData(name, NAME_ROLE)
+                    self._model.appendRow(item)
+            if edit.hasFocus():
+                self.setCompletionPrefix(token)
+                self.complete()
+
+        run_async(lambda: self.remote(token), on_done=done, on_error=lambda _e: None)
 
     def splitPath(self, path: str) -> list[str]:  # what the popup filters on
         return [self._parts(path)[2]]
@@ -59,7 +93,7 @@ class TagCompleter(QCompleter):
         return f"{head}{minus}{name} " if self.multi else name
 
 
-def tag_line_edit(db: Database, placeholder: str = "", multi: bool = True) -> QLineEdit:
+def tag_line_edit(db: Database, placeholder: str = "", multi: bool = True, remote=None) -> QLineEdit:
     edit = QLineEdit(placeholderText=placeholder)
-    edit.tag_completer = TagCompleter(db, edit, multi=multi)  # keep a reference alive
+    edit.tag_completer = TagCompleter(db, edit, multi=multi, remote=remote)  # keep a reference alive
     return edit

@@ -12,6 +12,7 @@ from anihub.core.i18n import tr
 from anihub.sources.base import Post, Source, SourceError
 from anihub.ui import icons, style
 from anihub.ui.grid import PAYLOAD, ThumbGrid, image_to_thumb
+from anihub.ui.tag_widgets import tag_line_edit
 from anihub.ui.tagquery import apply_tag
 from anihub.ui.viewer import ViewItem, Viewer
 from anihub.ui.workers import run_async
@@ -38,7 +39,7 @@ class BrowseView(QWidget):
         last = ctx.cfg.get("browse.last_source")
         idx = self.source.findData(last)
         self.source.setCurrentIndex(max(idx, 0))
-        self.query = QLineEdit(placeholderText=tr("search.placeholder"))
+        self.query = tag_line_edit(ctx.db, tr("search.placeholder"), remote=self._remote_tags)      # suggestions: your library's tags + the site's own
         self.source.currentIndexChanged.connect(self._update_hint)
         self._update_hint()
         self.search_btn = QPushButton(tr("search.button"))
@@ -74,6 +75,11 @@ class BrowseView(QWidget):
         self.grid.need_more.connect(self._load_page)
         self.grid.itemDoubleClicked.connect(self._open_viewer)
         self.grid.itemSelectionChanged.connect(lambda: self.save_btn.setEnabled(bool(self.grid.selectedItems())))
+
+    def _remote_tags(self, prefix: str) -> list[tuple[str, int]]:
+        """The tags of the chosen site that contain what is typed (a worker thread calls this)."""
+        source = self.ctx.sources.get(self.source.currentData())
+        return source.suggest_tags(prefix) if source is not None else []
 
     def _update_hint(self) -> None:
         source = self.ctx.sources.get(self.source.currentData())

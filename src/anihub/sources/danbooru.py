@@ -45,6 +45,15 @@ class Danbooru(Source):
     title = "Danbooru"
     credentials = [("login", "login"), ("api_key", "API key")]
 
+    def suggest_tags(self, prefix: str, limit: int = 12) -> list[tuple[str, int]]:
+        try:
+            data = self.http.get_json(f"{BASE}/autocomplete.json", params={"search[query]": prefix, "search[type]": "tag_query", "limit": limit})
+        except (HttpError, ValueError):
+            return []
+        if not isinstance(data, list):
+            return []
+        return [(str(r.get("value")), int(r.get("post_count") or 0)) for r in data if isinstance(r, dict) and r.get("value")]
+
     def search(self, tags: list[str], page: int, limit: int) -> list[Post]:
         params = {"tags": " ".join(tags), "limit": limit, "page": page}
         login = self.cred("login")
