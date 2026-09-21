@@ -638,7 +638,28 @@ class PromptBuilder(QWidget):
     def _more_menu(self) -> None:
         menu = QMenu(self)
         menu.addAction(tr("pb.tree.restore"), self._restore)
+        menu.addSeparator()
+        menu.addAction(tr("pb.pack.export"), self._export_pack)
+        menu.addAction(tr("pb.pack.import"), self._import_pack)
         menu.exec(self.more_btn.mapToGlobal(QPoint(0, self.more_btn.height())))
+
+    def _export_pack(self) -> None:
+        path, _ = QFileDialog.getSaveFileName(self, tr("pb.pack.export"), "promptbook_pack.zip", "ZIP (*.zip)")
+        if path:
+            try:
+                n = self.book.export_pack(Path(path))
+            except OSError as exc:
+                self.status.setText(tr("status.error", msg=str(exc)))
+                return
+            self.status.setText(tr("pb.pack.exported", n=n, path=path))
+
+    def _import_pack(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(self, tr("pb.pack.import"), "", "ZIP (*.zip)")
+        if path:
+            n = self.book.apply_pack(Path(path), overwrite=True)
+            self._refresh_grid()
+            self._refresh_doc()
+            self.status.setText(tr("pb.pack.imported", n=n))
 
     def _restore(self) -> None:
         self.book.restore_defaults()

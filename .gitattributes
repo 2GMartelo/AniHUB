@@ -1,2 +1,3 @@
 extensions/*.py text eol=lf
 extensions/*.json text eol=lf
+src/anihub/data/*.zip binary

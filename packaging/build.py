@@ -50,6 +50,7 @@ def main() -> None:
     args = [sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "--windowed", "--name", "AniHUB",
             "--icon", str(icon), "--paths", str(ROOT / "src"), "--distpath", str(ROOT / "dist"),
             "--workpath", str(ROOT / "build" / "pyi"), "--specpath", str(ROOT / "build")]
+    args += ["--add-data", f"{ROOT / 'src' / 'anihub' / 'data'};anihub/data"]       # pictures of the prompt builder's tags
     args += ["--collect-submodules", "anihub.core.lang"]        # the translation tables are imported by name at run time
     for mod in EXCLUDES:
         args += ["--exclude-module", mod]

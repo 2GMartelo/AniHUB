@@ -2,8 +2,11 @@
 back into slots, and the tag catalogue in the database (built-in entries plus the user's own categories, tags and pictures)."""
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 import shutil
+import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -17,6 +20,7 @@ POSITIVE = [s[0] for s in SLOTS if not s[3]]
 NEGATIVE = [s[0] for s in SLOTS if s[3]]
 SLOT_NAMES = {key: (en, ru) for key, en, ru, _neg in SLOTS}
 SEED_VERSION = 1
+PACK_FILE = Path(__file__).resolve().parents[1] / "data" / "promptbook_pack.zip"     # the pictures of the built-in tags that ship with the app
 IMAGE_SIZE = 256
 MIN_W, MAX_W, STEP_W = 0.1, 2.0, 0.1
 
@@ -242,6 +246,7 @@ class PromptBook:
                         c.execute("INSERT INTO pb_tags(node_id, text, label, position, key) VALUES (?, ?, ?, ?, ?)",
                                   (node_id, text, label, i, key))
                         have_tags.add(key)
+        self.apply_pack()
 
     def restore_defaults(self) -> None:
         with self.conn:
@@ -388,3 +393,76 @@ class PromptBook:
 
     def wipe_images(self) -> None:
         shutil.rmtree(self.image_dir, ignore_errors=True)
+        self.applied_file.unlink(missing_ok=True)
+
+    # --- the picture pack (pictures of the built-in tags that come with the app) ---------------------------------------------------
+
+    @property
+    def applied_file(self) -> Path:
+        return self.root / "promptbook" / "pack_applied.json"
+
+    def export_pack(self, dest: Path) -> int:
+        """Writes the pictures of all built-in tags to a zip (`index.json`: tag key -> file). This is the file that is shipped with the app
+        as `data/promptbook_pack.zip`. Returns the number of pictures."""
+        rows = self.conn.execute("SELECT key, image FROM pb_tags WHERE key IS NOT NULL AND image <> '' ORDER BY id").fetchall()
+        index: dict[str, str] = {}
+        dest = Path(dest)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        tmp = dest.with_name(dest.name + ".tmp")
+        with zipfile.ZipFile(tmp, "w", zipfile.ZIP_STORED) as zf:                       # jpegs do not compress
+            for r in rows:
+                path = self.root / r["image"]
+                if path.is_file():
+                    name = f"{len(index) + 1:04d}.jpg"
+                    zf.write(path, name)
+                    index[r["key"]] = name
+            zf.writestr("index.json", json.dumps({"version": 1, "pictures": index}, ensure_ascii=False, indent=1))
+        tmp.replace(dest)
+        return len(index)
+
+    def apply_pack(self, pack: Path | None = None, overwrite: bool = False) -> int:
+        """Gives the built-in tags the pictures of a pack. Without `overwrite` (the automatic case) a picture is only put where the user
+        has none: a tag the user gave their own picture, or whose picture they removed, is left alone; a picture that came from an earlier
+        pack and was not touched is replaced by the pack's newer one. Returns the number of pictures written."""
+        pack = Path(pack) if pack else PACK_FILE
+        if not pack.is_file():
+            return 0
+        try:
+            applied = json.loads(self.applied_file.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            applied = {}
+        written = 0
+        try:
+            with zipfile.ZipFile(pack) as zf:
+                pictures = json.loads(zf.read("index.json")).get("pictures", {})
+                rows = {r["key"]: r for r in self.conn.execute("SELECT id, key, image FROM pb_tags WHERE key IS NOT NULL AND hidden=0")}
+                changed = False
+                self.image_dir.mkdir(parents=True, exist_ok=True)
+                for key, member in pictures.items():
+                    row = rows.get(key)
+                    if row is None:
+                        continue
+                    data = zf.read(member)
+                    digest = hashlib.sha1(data).hexdigest()
+                    dest = self.image_dir / f"{row['id']}.jpg"
+                    previous = applied.get(key)
+                    if not overwrite:
+                        if previous == digest or previous == "":
+                            continue
+                        if previous is None:
+                            if row["image"]:                                          # the user's own picture: never replaced
+                                applied[key], changed = "", True
+                                continue
+                        elif not (row["image"] and dest.is_file() and hashlib.sha1(dest.read_bytes()).hexdigest() == previous):
+                            continue                                                # changed or removed by the user since
+                    dest.write_bytes(data)
+                    with self.conn:
+                        self.conn.execute("UPDATE pb_tags SET image=? WHERE id=?", (dest.relative_to(self.root).as_posix(), row["id"]))
+                    applied[key], changed = digest, True
+                    written += 1
+        except (OSError, ValueError, KeyError, zipfile.BadZipFile):
+            return written
+        if changed:
+            self.applied_file.parent.mkdir(parents=True, exist_ok=True)
+            self.applied_file.write_text(json.dumps(applied), encoding="utf-8")
+        return written

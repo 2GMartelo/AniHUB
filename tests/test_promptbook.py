@@ -183,3 +183,65 @@ def test_preview_prompts_show_the_tag_in_a_fitting_shot():
     assert "no humans" in pb.preview_prompt("background", "classroom")[0]
     assert "full body" in pb.preview_prompt("clothing", "kimono")[0] and "portrait" in pb.preview_prompt("appearance", "blue hair")[0]
     assert "kimono" in pb.preview_prompt("clothing", "kimono")[0] and "watermark" in pb.preview_prompt("clothing", "kimono")[1]
+
+
+# --- the picture pack that ships with the app -------------------------------------------------------------------------------------
+
+def _tag(book, text):
+    return next(t for t in book.tags(query=text) if t["text"] == text)
+
+
+def _picture(color):
+    img = QImage(64, 64, QImage.Format.Format_RGB32)
+    img.fill(QColor(color))
+    return img
+
+
+def test_pack_export_and_import_roundtrip(book, tmp_path):
+    for text, color in (("blue hair", "#3366ff"), ("red hair", "#ff3333")):
+        book.set_image(_tag(book, text)["id"], _picture(color))
+    mine = book.add_node("clothing", "Mine")
+    book.set_image(book.add_tag(mine, "custom hat"), _picture("#00ff00"))                                # a user's tag has no stable key: not exported
+    pack = tmp_path / "out" / "pack.zip"
+    assert book.export_pack(pack) == 2
+    other_db = Database(tmp_path / "other.db")
+    other = PromptBook(other_db, tmp_path / "other")
+    other.seed()
+    assert other.apply_pack(pack, overwrite=True) == 2
+    assert other.image_path(_tag(other, "blue hair")).exists() and not _tag(other, "black hair")["image"]
+    other_db.close()
+
+
+def test_automatic_pack_respects_what_the_user_did(book, tmp_path):
+    src = book.tags(query="blue hair")[0]
+    book.set_image(src["id"], _picture("#3366ff"))
+    book.set_image(_tag(book, "red hair")["id"], _picture("#ff3333"))
+    book.set_image(_tag(book, "green hair")["id"], _picture("#33ff33"))
+    pack = tmp_path / "pack.zip"
+    book.export_pack(pack)
+    for text in ("blue hair", "red hair", "green hair"):
+        book.clear_image(_tag(book, text)["id"])
+    book.wipe_images()
+    db2 = Database(tmp_path / "fresh.db")
+    fresh = PromptBook(db2, tmp_path / "fresh")
+    fresh.seed()
+    mine = _tag(fresh, "green hair")
+    fresh.set_image(mine["id"], _picture("#111111"))                                                      # the user's own picture exists BEFORE the pack
+    assert fresh.apply_pack(pack) == 2 and _tag(fresh, "blue hair")["image"] and _tag(fresh, "red hair")["image"]
+    own = fresh.image_path(_tag(fresh, "green hair")).read_bytes()
+    assert fresh.apply_pack(pack) == 0                                                                    # nothing twice
+    fresh.clear_image(_tag(fresh, "red hair")["id"])                                                      # removed on purpose: stays removed
+    assert fresh.apply_pack(pack) == 0 and not _tag(fresh, "red hair")["image"]
+    assert fresh.image_path(_tag(fresh, "green hair")).read_bytes() == own                                 # own picture untouched
+    # a newer pack replaces a picture that came from the old one and was not touched, but not the user's
+    for text, color in (("blue hair", "#0000aa"), ("green hair", "#00aa00")):
+        book.set_image(_tag(book, text)["id"], _picture(color))
+    book.set_image(_tag(book, "red hair")["id"], _picture("#aa0000"))
+    newer = tmp_path / "pack2.zip"
+    book.export_pack(newer)
+    assert fresh.apply_pack(newer) == 1                                                                   # only blue hair: the others are the user's
+    assert QImage(str(fresh.image_path(_tag(fresh, "blue hair")))).pixelColor(5, 5).blue() > 150
+    assert fresh.apply_pack(tmp_path / "missing.zip") == 0
+    (tmp_path / "bad.zip").write_bytes(b"not a zip")
+    assert fresh.apply_pack(tmp_path / "bad.zip") == 0
+    db2.close()
