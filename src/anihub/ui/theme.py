@@ -57,12 +57,12 @@ class Tokens:
 
 
 DARK = Tokens(
-    "dark", bg="#14101d", rail="#110d19", surface="#1c1727", surface2="#251f32", surface3="#31293f", card="#1e1929",
+    "dark", bg="#16101f", rail="#120d1a", surface="#1e1629", surface2="#271e34", surface3="#322940", card="#201829",
     border="#2c2439", border_hover="#453a58", text="#efe9f7", dim="#b4aac6", muted="#7a6f8c",
     accent="#8f48e0", accent_hover="#8340d3", accent_press="#7538c2", accent_text="#cfa9ff",
     soft="rgba(143, 72, 224, 0.24)", on_accent="#ffffff", success="#34d399", warning="#fbbf24", danger="#f87171",
     danger_soft="rgba(248, 113, 113, 0.14)", scroll="#3d3450", accent_end="#6a30b5",
-    window="qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #2a1745, stop:0.5 #14101d, stop:1 #0f0b16)",
+    window="qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #2a1745, stop:0.5 #16101f, stop:1 #100b17)",
     window_glass=((0.0, "rgba(112, 50, 190, 0.30)"), (0.5, "rgba(26, 16, 42, 0.42)"), (1.0, "rgba(12, 8, 20, 0.58)")),
     dialog="qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #261340, stop:1 #130f1b)",
     popup="#201a2d",
@@ -322,8 +322,9 @@ QCheckBox::indicator:hover { border-color: $accent; }
 QCheckBox::indicator:checked { background: $accent; border-color: $accent; image: url("$check"); }
 QCheckBox::indicator:indeterminate { background: $soft; border-color: $accent; }
 QCheckBox::indicator:disabled { background: $surface; border-color: $border; }
-QRadioButton::indicator { width: 18px; height: 18px; border-radius: 10px; border: 1px solid $border_hover; background: $surface2; }
-QRadioButton::indicator:checked { border: 5px solid $accent; background: #ffffff; }
+QRadioButton::indicator { width: 16px; height: 16px; border-radius: 9px; border: 1px solid $border_hover; background: $surface2; }
+QRadioButton::indicator:hover { border-color: $accent; }
+QRadioButton::indicator:checked { width: 8px; height: 8px; border: 5px solid $accent; background: #ffffff; }
 QGroupBox::indicator { width: 18px; height: 18px; border-radius: 5px; border: 1px solid $border_hover; background: $surface2; }
 QGroupBox::indicator:checked { background: $accent; border-color: $accent; image: url("$check"); }
 

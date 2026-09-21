@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -148,4 +149,5 @@ def judge_forge(gpu: str, vram_gb: float, ram_gb: float, disk_gb: float) -> Forg
 def assess_forge(install_path: str | Path = "") -> ForgeAssessment:
     gpu = check_gpu()
     disk = check_disk(install_path)
-    return judge_forge(gpu.detail if gpu.ok else "", gpu.value if gpu.ok else 0.0, total_ram_gb(), disk.value)
+    name = re.sub(r"\s*\(\d+ GB\)", "", gpu.detail) if gpu.ok else ""            # the memory is shown separately
+    return judge_forge(name, gpu.value if gpu.ok else 0.0, total_ram_gb(), disk.value)

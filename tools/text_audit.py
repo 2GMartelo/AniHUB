@@ -69,6 +69,57 @@ def walk_tabs(widget: QWidget, app: QApplication, visit) -> None:
         tabs.setCurrentIndex(original)
 
 
+def audit_dialogs(app: QApplication, ctx, win, cfg) -> dict[str, list[str]]:
+    """Open the dialogs that can be built without special data and check each one (and every wizard page)."""
+    from anihub.ui.bugreport_dialog import BugReportDialog
+    from anihub.ui.close_dialog import CloseDialog
+    from anihub.ui.downloads_view import DownloadsDialog
+    from anihub.ui.extensions_dialog import ExtensionsDialog, ReposDialog
+    from anihub.ui.library_dialogs import DuplicatesDialog, TagManagerDialog
+    from anihub.ui.music_radio import StationDialog
+    from anihub.ui.rules_dialog import RulesDialog
+    from anihub.ui.stats_dialog import StatsDialog
+    from anihub.ui.wizard import SetupWizard
+
+    factories = {
+        "close": lambda: CloseDialog(), "bugreport": lambda: BugReportDialog(cfg), "station": lambda: StationDialog(),
+        "repos": lambda: ReposDialog(ctx.extensions), "rules": lambda: RulesDialog(ctx), "stats": lambda: StatsDialog(ctx),
+        "tags": lambda: TagManagerDialog(ctx), "duplicates": lambda: DuplicatesDialog(ctx),
+        "downloads": lambda: DownloadsDialog(ctx, win.download_signals),
+        "extensions": lambda: ExtensionsDialog(ctx, ctx.extensions, ("anime", "novel"), lambda: ctx.anime_sources),
+    }
+    found: dict[str, list[str]] = {}
+    for name, make in factories.items():
+        try:
+            dlg = make()
+        except Exception as exc:                                         # noqa: BLE001 - a dialog that needs data: report, go on
+            print(f"  (skipped {name}: {exc})")
+            continue
+        dlg.show()
+        for _ in range(8):
+            app.processEvents()
+            time.sleep(0.02)
+        items: list[str] = []
+        walk_tabs(dlg, app, lambda w: items.extend(clipped(w)))
+        if items:
+            found[f"dialog:{name}"] = list(dict.fromkeys(items))
+        dlg.close()
+    wizard = SetupWizard(cfg)
+    wizard.show()
+    for step in range(8):
+        for _ in range(8):
+            app.processEvents()
+            time.sleep(0.02)
+        items = clipped(wizard.currentPage())
+        if items:
+            found[f"wizard:{step}"] = list(dict.fromkeys(items))
+        if not wizard.button(wizard.WizardButton.NextButton).isVisible():
+            break
+        wizard.next()
+    wizard.close()
+    return found
+
+
 def main() -> int:
     lang = sys.argv[1] if len(sys.argv) > 1 else "ru"
     mode = sys.argv[2] if len(sys.argv) > 2 else "dark"
@@ -105,6 +156,7 @@ def main() -> int:
     bar = clipped(win.statusBar())
     if bar:
         problems["statusbar"] = bar
+    problems.update(audit_dialogs(app, ctx, win, cfg))
     for section, items in problems.items():
         print(f"[{section}]")
         for item in items:
