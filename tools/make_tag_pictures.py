@@ -4,7 +4,8 @@
 
 The work happens in its OWN library folder (a database with the seeded catalogue + the pictures), so it can be stopped and started again: tags
 that already have a picture are skipped. Forge is started if it is not running (and stopped afterwards only if this script started it).
-Tags that cannot be shown (negative-prompt ones, quality words, BREAK) get no picture: what they name is a flaw, and a flawed picture on a tile would not help anyone.
+Quality words and negative-prompt tags are drawn too (each with its own seed, the negative ones show the flaw they keep away); only
+tags like `nsfw` are left without a picture.
 """
 from __future__ import annotations
 
@@ -61,11 +62,10 @@ def main() -> None:
     only = {t.strip().lower() for t in args.only.split(",") if t.strip()}
     wanted = [c.strip() for c in args.categories.split(",") if c.strip()]
     nodes = {n["id"]: n["key"] or "" for n in book.nodes()}
-    for row in book.tags():                                                  # slots that cannot be shown get no picture at all
-        if row["slot"] in pb.NO_PICTURE_SLOTS and row["image"]:
+    for row in book.tags():                                                  # tags that are never illustrated get no picture at all
+        if row["text"] in pb.NO_PICTURE_TAGS and row["image"]:
             book.clear_image(row["id"])
-    todo = [t for t in book.tags() if t["slot"] in pb.POSITIVE and t["slot"] not in pb.NO_PICTURE_SLOTS
-            and (not t["image"] or args.redo and (only or wanted))]
+    todo = [t for t in book.tags() if t["text"] not in pb.NO_PICTURE_TAGS and (not t["image"] or args.redo and (only or wanted))]
     if only:
         todo = [t for t in todo if t["text"].lower() in only]
     if wanted:
@@ -95,7 +95,7 @@ def main() -> None:
                 tmp = Path(tempfile.mkdtemp(prefix="anihub_tag_"))
                 try:
                     params = GenParams(prompt=prompt, negative_prompt=negative, model=title, steps=args.steps, cfg_scale=args.cfg,
-                                       width=args.size, height=args.size, seed=args.seed, sampler_name="Euler a")
+                                       width=args.size, height=args.size, seed=args.seed + (row['id'] if row['slot'] in pb.VARIED_SEED_SLOTS else 0), sampler_name="Euler a")
                     results = run_generation(api, params, tmp)
                     book.set_image(row["id"], Path(results[0].path))
                     per = (time.time() - began) / i

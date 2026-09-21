@@ -269,7 +269,12 @@ def test_preview_prompts_for_styles_bodies_and_standing_shots():
     assert "sitting, full body" in p("pose", "sitting", "pose.body_pose")[0] and "denim shorts" in p("pose", "sitting", "pose.body_pose")[0]
     assert "portrait" in p("appearance", "tan", "appearance.body")[0] and "standing, full body" in p("appearance", "tall", "appearance.body")[0]
     assert "upper body" in p("camera", "from below", "camera.angle")[0]
-    assert pb.NO_PICTURE_SLOTS == {"quality", "extra"}
+    assert pb.NO_PICTURE_TAGS == {"nsfw", "explicit", "child"}
+    q = p("quality", "masterpiece", "quality.basic")
+    assert q[0].startswith("(masterpiece:1.3)") and "masterpiece" not in q[1]
+    neg = p("neg_anatomy", "extra fingers", "neg_anatomy.hands")
+    assert neg[0].startswith("extra fingers") and "hands up" in neg[0] and neg[1] == "nsfw"          # the flaw itself is drawn, nothing cancels it
+    assert "split screen" in p("extra", "BREAK", "extra.technical")[0]
 
 
 @pytest.mark.shipped_pack
@@ -283,9 +288,8 @@ def test_the_shipped_pack_matches_the_catalogue(tmp_path):
         assert all(name in zf.namelist() for name in pictures.values())
     keys = {f"{c['key']}.{text}" for c in parse_catalog() for text, _l in c["tags"]}
     assert set(pictures) <= keys, sorted(set(pictures) - keys)[:5]                                        # every picture belongs to a real tag
-    assert len(pictures) > 500
-    quality = {k for k in pictures if k.startswith(("quality.", "extra.", "neg_"))}
-    assert not quality, "pictures that cannot show anything should not ship"
+    assert len(pictures) > 660
+    assert not {k for k in pictures if k.rsplit(".", 1)[-1] in pb.NO_PICTURE_TAGS}, "tags that are never illustrated must not ship a picture"
     db = Database(tmp_path / "lib.db")
     book = PromptBook(db, tmp_path)
     book.seed()                                                                                            # applies the pack by itself

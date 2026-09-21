@@ -196,7 +196,8 @@ CHEST_TAGS = {"flat chest", "small breasts", "medium breasts", "large breasts"}
 SKIN_TAGS = {"pale skin", "tan", "dark skin", "freckles", "mole", "mole under eye", "scar"}
 NEEDS_PARTNER = {"hugging", "holding hands"}
 SUBJECT_ITSELF = re.compile(r"^\d|^multiple |^crowd$|^no humans$")
-NO_PICTURE_SLOTS = {"quality", "extra"}       # "masterpiece" or "BREAK" cannot be shown: every picture would look the same
+NO_PICTURE_TAGS = {"nsfw", "explicit", "child"}       # tags that are never illustrated (their tile keeps the letters)
+VARIED_SEED_SLOTS = {"quality", "extra"} | set(NEGATIVE)   # nothing to compare between tiles: each gets its own seed, so they are not clones
 
 
 def _plain_look(slot: str, category: str) -> str:
@@ -227,6 +228,15 @@ def preview_prompt(slot: str, tag: str, category: str = "") -> tuple[str, str]:
     q, negative = PREVIEW_QUALITY, PREVIEW_NEGATIVE
     if category not in ("appearance.body", "clothing.swimwear"):
         negative += ", cleavage, large breasts"
+    if slot in NEGATIVE:                       # what a negative tag names is shown as it is; the tile then shows what the tag keeps away
+        hands = ", hands up" if slot == "neg_anatomy" else ""
+        return f"{tag}, sfw, 1girl, solo{_plain_look(slot, category)}{hands}, upper body, simple background", "nsfw"
+    if slot == "quality":
+        if tag.startswith("rating_"):          # written out, a rating tag makes the model draw an "R-18" badge and text: show a safe picture instead
+            return f"sfw, 1girl, solo{_plain_look(slot, category)}, upper body, simple background", "nsfw, text, watermark, logo"
+        return f"({_escape(tag)}:1.3), sfw, 1girl, solo{_plain_look(slot, category)}, upper body, simple background", negative
+    if tag == "BREAK":
+        return f"{q}, split screen, two panels, 1girl, solo{_plain_look(slot, category)}, upper body, simple background", negative
     if tag == "no humans":
         return f"{q}, no humans, scenery, nature", negative
     if slot == "background" and category != "background.simple" or category == "lighting.time":
