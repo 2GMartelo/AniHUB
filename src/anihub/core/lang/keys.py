@@ -1101,4 +1101,5 @@ wizard.next
 wizard.finish
 wizard.cancel
 err.sd.nodb
+update.rate_limited
 """.split("\n") if k]

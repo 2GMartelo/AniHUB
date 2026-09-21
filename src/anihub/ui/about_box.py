@@ -12,6 +12,7 @@ from anihub.core.config import config_dir
 from anihub.core.i18n import tr
 from anihub.services.updater import Release
 from anihub.ui import style
+from anihub.ui.about_box_text import update_error_text
 from anihub.ui.bugreport_dialog import BugReportDialog
 from anihub.ui.update_dialog import UpdateDialog, VersionsDialog
 from anihub.ui.workers import run_async
@@ -67,4 +68,4 @@ class AboutBox(QGroupBox):
             UpdateDialog(self.ctx.updater, release, self.quit_app, self).exec()
 
         run_async(lambda: self.ctx.updater.check(force=True), on_done=done,
-                  on_error=lambda exc: (self.check_btn.setEnabled(True), self.status.setText(tr("status.error", msg=str(exc)))))
+                  on_error=lambda exc: (self.check_btn.setEnabled(True), self.status.setText(update_error_text(exc))))

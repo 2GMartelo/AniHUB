@@ -13,6 +13,7 @@ from anihub import __version__
 from anihub.core.config import config_dir
 from anihub.core.i18n import tr
 from anihub.services.updater import Release, Updater, UpdateError, is_newer
+from anihub.ui.about_box_text import update_error_text
 from anihub.ui import style
 from anihub.ui.workers import run_async
 
@@ -198,7 +199,7 @@ class VersionsDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.addWidget(split)
         self.list.currentRowChanged.connect(self._select)
-        run_async(updater.releases, on_done=self._loaded, on_error=lambda exc: self.status.setText(tr("status.error", msg=str(exc))))
+        run_async(updater.releases, on_done=self._loaded, on_error=lambda exc: self.status.setText(update_error_text(exc)))
 
     def _loaded(self, releases: list[Release]) -> None:
         self.releases = releases

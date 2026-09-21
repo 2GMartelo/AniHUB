@@ -25,8 +25,14 @@ def raw(tag, prerelease=False, draft=False, size=100, digest=None, name=None, ur
 
 
 class FakeHttp:
-    def __init__(self, releases=None, payload=b"x" * 100, error=None):
-        self.releases, self.payload, self.error, self.calls = releases or [], payload, error, []
+    def __init__(self, releases=None, payload=b"x" * 100, error=None, feed=None):
+        self.releases, self.payload, self.error, self.feed, self.calls = releases or [], payload, error, feed, []
+
+    def get_text(self, url, params=None, headers=None, interval_ms=None):
+        self.calls.append(("feed", url))
+        if self.feed is None:
+            raise self.error or HttpError(404, "no feed")
+        return self.feed
 
     def get_json(self, url, params=None, **kw):
         self.calls.append(("get", url, params))
@@ -165,3 +171,52 @@ def test_installing_downloads_starts_the_installer_and_quits(qapp, tmp_path, mon
         qapp.processEvents()
         time.sleep(0.01)
     assert quit_calls == [1] and started[0].name == "AniHUB-Setup-0.4.0.exe" and started[0].read_bytes() == payload
+
+
+FEED = """<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+ <entry><link rel="alternate" href="https://github.com/2GMartelo/AniHUB/releases/tag/v0.6.1"/><title>AniHUB 0.6.1</title>
+  <updated>2026-09-21T13:00:00Z</updated>
+  <content type="html">&lt;h2&gt;New&lt;/h2&gt;&lt;ul&gt;&lt;li&gt;Smooth &amp;amp; pink&lt;/li&gt;&lt;li&gt;Custom theme&lt;/li&gt;&lt;/ul&gt;</content></entry>
+ <entry><link rel="alternate" href="https://github.com/2GMartelo/AniHUB/releases/tag/v0.6.0"/><title>AniHUB 0.6.0</title>
+  <updated>2026-09-20T10:00:00Z</updated><content type="html">&lt;p&gt;Older&lt;/p&gt;</content></entry>
+ <entry><link rel="alternate" href="https://github.com/2GMartelo/AniHUB/releases/tag/nightly"/><title>not a version</title></entry>
+</feed>"""
+
+
+def test_rate_limited_api_falls_back_to_the_release_feed(tmp_path):
+    from anihub.services.updater import parse_feed
+
+    parsed = parse_feed(FEED, "2GMartelo/AniHUB")
+    assert [r.version for r in parsed] == ["0.6.1", "0.6.0"]                                  # the non-version entry is skipped
+    top = parsed[0]
+    assert top.asset_url == "https://github.com/2GMartelo/AniHUB/releases/download/v0.6.1/AniHUB-Setup-0.6.1.exe"
+    assert top.installable and top.published == "2026-09-21" and "Smooth & pink" in top.notes and "<" not in top.notes
+    up, cfg = make(tmp_path, current="0.6.0", error=HttpError(403, "API rate limit exceeded"), feed=FEED)
+    release = up.latest()
+    assert release is not None and release.version == "0.6.1"
+    calls = [c[0] for c in up.http.calls]
+    assert calls == ["get", "feed"]
+    assert up.releases()[0].version == "0.6.1" and [c[0] for c in up.http.calls] == calls        # cached: no new requests at all
+    up._cache = None
+    up.releases()
+    assert [c[0] for c in up.http.calls] == calls + ["feed"]                                    # the limited API is left alone for a while
+    # the downloadable file is still only accepted from the project's own repository
+    up.http.error = None                                                                        # (the fake shares one error switch)
+    assert up.download(release, tmp_path / "dl").name == "AniHUB-Setup-0.6.1.exe"
+
+
+def test_rate_limit_with_a_dead_feed_is_reported_as_such(tmp_path):
+    from anihub.services.updater import RateLimited
+
+    up, _ = make(tmp_path, error=HttpError(429, "slow down"))
+    with pytest.raises(RateLimited):
+        up.latest()
+    from anihub.ui.about_box_text import update_error_text
+
+    assert "GitHub" in update_error_text(RateLimited("x")) and "429" not in update_error_text(RateLimited("x"))
+    assert "boom" in update_error_text(UpdateError("boom"))
+    up2, _ = make(tmp_path, error=HttpError(500, "server"), feed=FEED)
+    with pytest.raises(UpdateError) as info:
+        up2.releases()
+    assert not isinstance(info.value, RateLimited) and up2.http.calls[-1][0] == "get"          # other errors are not papered over
