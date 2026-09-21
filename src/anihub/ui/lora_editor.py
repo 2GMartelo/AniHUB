@@ -123,6 +123,10 @@ class LoraEditor(QWidget):
         self.weight = QDoubleSpinBox(minimum=-2.0, maximum=2.0, singleStep=0.1, decimals=2, value=0.8)
         self.base = QComboBox(editable=True)
         self.base.addItems(BASES)
+        self.category = QComboBox()                                   # the LoRA tab of the prompt builder sorts by this
+        self.category.addItem(tr("lora.cat.none"), "")
+        for key in lo.CATEGORIES:
+            self.category.addItem(tr(f"lora.cat.{key}"), key)
         self.negative = QLineEdit(placeholderText=tr("lora.negative_hint"))
         self.template = QLineEdit(placeholderText=lo.DEFAULT_TEMPLATE)
         self.template_reset = style.ghost(QPushButton(tr("lora.template_reset")), "refresh")
@@ -167,6 +171,7 @@ class LoraEditor(QWidget):
         wl.setContentsMargins(0, 0, 0, 0)
         wl.addWidget(field(tr("lora.weight"), self.weight))
         wl.addWidget(field(tr("lora.base"), self.base), 1)
+        wl.addWidget(field(tr("lora.category"), self.category))
         tpl = QWidget()
         tl = QHBoxLayout(tpl)
         tl.setContentsMargins(0, 0, 0, 0)
@@ -238,6 +243,7 @@ class LoraEditor(QWidget):
             edit.textChanged.connect(self._edited)
         self.weight.valueChanged.connect(self._edited)
         self.base.editTextChanged.connect(self._edited)
+        self.category.currentIndexChanged.connect(self._edited)
         self.template_reset.clicked.connect(lambda: self.template.setText(""))
         self.suggest_btn.clicked.connect(self._suggest_menu)
         self.save_btn.clicked.connect(self.save)
@@ -250,11 +256,7 @@ class LoraEditor(QWidget):
     # --- the folder and the cards ---------------------------------------------------------------------------------------------
 
     def root(self) -> Path:
-        custom = self.ctx.cfg.get("lora.dir") or ""
-        if custom:
-            return Path(custom)
-        forge = self.ctx.cfg.get("forge.path") or ""
-        return Path(forge) / "models" / "Lora" if forge else Path()
+        return lo.root_dir(self.ctx.cfg)
 
     def _pick_folder(self) -> None:
         folder = QFileDialog.getExistingDirectory(self, tr("lora.folder"), str(self.root()) if self.root().is_dir() else "")
@@ -361,6 +363,7 @@ class LoraEditor(QWidget):
             self.keywords.setPlainText(lora.keywords)
             self.weight.setValue(lora.weight)
             self.base.setEditText(lora.base)
+            self.category.setCurrentIndex(max(self.category.findData(lora.category), 0))
             self.base.lineEdit().setPlaceholderText(lo.base_from_header(path))
             self.negative.setText(lora.negative)
             self.template.setText(lora.template)
@@ -389,6 +392,7 @@ class LoraEditor(QWidget):
         lora.weight = self.weight.value()
         lora.negative = self.negative.text()
         lora.base = self.base.currentText()
+        lora.category = self.category.currentData() or ""
         lora.template = self.template.text()
         return lora
 

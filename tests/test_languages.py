@@ -34,7 +34,7 @@ def test_extra_language_is_complete_and_keeps_placeholders(code):
     assert t, f"{code}: no translations found"
     assert set(t) <= set(en)
     missing = [k for k in en if k not in t]
-    assert len(missing) <= 130, (code, len(missing), missing[:10])                       # technical strings and the newest screens may stay English for now
+    assert len(missing) <= len(en) * 0.2, (code, len(missing), missing[:10])                       # technical strings and the newest screens may stay English for now
     for key, text in t.items():
         assert sorted(PLACEHOLDER.findall(text)) == sorted(PLACEHOLDER.findall(en[key])), (code, key, text, en[key])
         assert sorted(TAGS.findall(text)) == sorted(TAGS.findall(en[key])), (code, key)

@@ -200,58 +200,80 @@ NO_PICTURE_TAGS = {"nsfw", "explicit", "child"}       # tags that are never illu
 VARIED_SEED_SLOTS = {"quality", "extra"} | set(NEGATIVE)   # nothing to compare between tiles: each gets its own seed, so they are not clones
 
 
-def _plain_look(slot: str, category: str) -> str:
-    """A plain girl to show a tag on, so the tiles look alike: every part of her look is left out when the tag itself is about that part."""
+DEFAULT_CHARACTER = {"hair": "short brown hair", "eyes": "brown eyes", "top": "white t-shirt", "bottom": "pleated skirt", "shorts": "denim shorts",
+                     "extra": "", "negative": "", "model": "", "seed": 12345, "size": 832, "steps": 24, "cfg": 5.5, "sampler": "Euler a"}
+
+
+def character_from(data: dict | None) -> dict:
+    """The standard character (the girl every tag picture is drawn on): the saved settings over the defaults."""
+    out = dict(DEFAULT_CHARACTER)
+    for key, value in (data or {}).items():
+        if key in out and value is not None:
+            try:
+                out[key] = str(value).strip() if isinstance(DEFAULT_CHARACTER[key], str) else type(DEFAULT_CHARACTER[key])(value)
+            except (TypeError, ValueError):
+                pass                                                  # a bad value: the default stays
+    return out
+
+
+def _plain_look(slot: str, category: str, ch: dict | None = None) -> str:
+    """The standard character, so the tiles look alike: every part of her look is left out when the tag itself is about that part."""
+    ch = ch or DEFAULT_CHARACTER
     parts = []
     if not category.startswith("appearance.hair") and category != "appearance.features":
-        parts.append("short brown hair")
+        parts.append(ch["hair"])
     if category not in ("appearance.eye_color", "appearance.eye_shape", "expression.eyes_state"):
-        parts.append("brown eyes")
+        parts.append(ch["eyes"])
     if slot != "clothing" or category in ("clothing.headwear", "clothing.accessories", "clothing.bottoms"):
-        parts.append("white t-shirt")
+        parts.append(ch["top"])
     if category in ("clothing.footwear", "clothing.legwear"):
-        parts.append("white t-shirt, pleated skirt")
+        parts += [ch["top"], ch["bottom"]]
     elif category == "clothing.tops":
-        parts.append("pleated skirt")
+        parts.append(ch["bottom"])
     elif category in ("pose.body_pose", "pose.action"):
-        parts.append("denim shorts")
-    return "".join(", " + p for p in parts)
+        parts.append(ch["shorts"])
+    parts.append(ch["extra"])
+    return "".join(", " + p for p in dict.fromkeys(p for p in parts if p))
 
 
 def _escape(tag: str) -> str:
     return tag.replace("(", "\\(").replace(")", "\\)")
 
 
-def preview_prompt(slot: str, tag: str, category: str = "") -> tuple[str, str]:
+def preview_prompt(slot: str, tag: str, category: str = "", character: dict | None = None) -> tuple[str, str]:
     """What to generate for a tag's picture: the tag on a plain subject in the shot that shows it best. `category` (the built-in
     category key, e.g. "clothing.footwear") refines the shot; without it the slot decides."""
+    ch = character or DEFAULT_CHARACTER
+    look = lambda: _plain_look(slot, category, ch)                # noqa: E731
     q, negative = PREVIEW_QUALITY, PREVIEW_NEGATIVE
+    if ch.get("negative") and slot not in NEGATIVE:
+        negative += ", " + ch["negative"]
     if category not in ("appearance.body", "clothing.swimwear"):
         negative += ", cleavage, large breasts"
     if slot in NEGATIVE:                       # what a negative tag names is shown as it is; the tile then shows what the tag keeps away
         hands = ", hands up" if slot == "neg_anatomy" else ""
-        return f"{tag}, sfw, 1girl, solo{_plain_look(slot, category)}{hands}, upper body, simple background", "nsfw"
+        return f"{tag}, sfw, 1girl, solo{look()}{hands}, upper body, simple background", "nsfw"
     if slot == "quality":
         if tag.startswith("rating_"):          # written out, a rating tag makes the model draw an "R-18" badge and text: show a safe picture instead
-            return f"sfw, 1girl, solo{_plain_look(slot, category)}, upper body, simple background", "nsfw, text, watermark, logo"
-        return f"({_escape(tag)}:1.3), sfw, 1girl, solo{_plain_look(slot, category)}, upper body, simple background", negative
+            return f"sfw, 1girl, solo{look()}, upper body, simple background", "nsfw, text, watermark, logo"
+        return f"({_escape(tag)}:1.3), sfw, 1girl, solo{look()}, upper body, simple background", negative
     if tag == "BREAK":
-        return f"{q}, split screen, two panels, 1girl, solo{_plain_look(slot, category)}, upper body, simple background", negative
+        return f"{q}, split screen, two panels, 1girl, solo{look()}, upper body, simple background", negative
     if tag == "no humans":
         return f"{q}, no humans, scenery, nature", negative
     if slot == "background" and category != "background.simple" or category == "lighting.time":
         return f"{q}, no humans, scenery, {tag}", negative
     if slot == "subject":
         if SUBJECT_ITSELF.search(tag):
-            look = "" if tag in ("crowd", "no humans") else ", brown hair, white t-shirt"
-            return f"{q}, {tag}{look}, {'street, ' if tag == 'crowd' else ''}upper body, simple background", negative
-        return f"{q}, 1girl, {tag}{_plain_look(slot, category)}, upper body, simple background", negative
+            who = "" if tag in ("crowd", "no humans") else f", {ch['hair']}, {ch['top']}"
+            return f"{q}, {tag}{who}, {'street, ' if tag == 'crowd' else ''}upper body, simple background", negative
+        return f"{q}, 1girl, {tag}{look()}, upper body, simple background", negative
     if slot == "character":
         return f"{q}, {tag}, solo, upper body, simple background", negative
     if slot == "style":                       # the art style has to win over the usual polished look: first, stressed, no booster tags
-        return f"({_escape(tag)}:1.4), sfw, best quality, 1girl, solo{_plain_look(slot, category)}, upper body", negative
+        return f"({_escape(tag)}:1.4), sfw, best quality, 1girl, solo{look()}, upper body", negative
     who = "2girls" if tag in NEEDS_PARTNER else "1girl, solo"
-    who += _plain_look(slot, category)
+    who += look()
     if tag == "from below":
         return f"{q}, {who}, {tag}, upper body, outdoors", negative + ", underwear, crotch"
     if category == "camera.shot":
@@ -339,12 +361,12 @@ class PromptBook:
         row = self.conn.execute("SELECT * FROM pb_nodes WHERE id=?", (node_id,)).fetchone()
         return dict(row) if row else None
 
-    def subtree_ids(self, node_id: int) -> list[int]:
+    def subtree_ids(self, node_id: int, hidden: bool = False) -> list[int]:
         ids, todo = [], [node_id]
         while todo:
             current = todo.pop()
             ids.append(current)
-            todo += [r[0] for r in self.conn.execute("SELECT id FROM pb_nodes WHERE parent_id=? AND hidden=0", (current,))]
+            todo += [r[0] for r in self.conn.execute("SELECT id FROM pb_nodes WHERE parent_id=?" + ("" if hidden else " AND hidden=0"), (current,))]
         return ids
 
     def tags(self, node_ids: list[int] | None = None, slot: str | None = None, query: str = "") -> list[dict]:
@@ -409,6 +431,39 @@ class PromptBook:
         if user_nodes:
             with self.conn:
                 self.conn.execute(f"DELETE FROM pb_nodes WHERE id IN ({','.join('?' * len(user_nodes))})", user_nodes)
+
+    def move_tag(self, tag_id: int, node_id: int) -> bool:
+        """Moves a tag into another category (its slot follows the category). False when the category already has that tag."""
+        tag, node = self.tag(tag_id), self.node(node_id)
+        if tag is None or node is None or tag["node_id"] == node_id:
+            return False
+        if self.conn.execute("SELECT 1 FROM pb_tags WHERE node_id=? AND lower(text)=lower(?) AND hidden=0 AND id<>?",
+                             (node_id, tag["text"], tag_id)).fetchone():
+            return False
+        pos = self.conn.execute("SELECT COALESCE(MAX(position), 0) + 1 FROM pb_tags WHERE node_id=?", (node_id,)).fetchone()[0]
+        with self.conn:
+            self.conn.execute("UPDATE pb_tags SET node_id=?, position=? WHERE id=?", (node_id, pos, tag_id))
+        return True
+
+    def move_node(self, node_id: int, parent_id: int | None, slot: str | None = None) -> bool:
+        """Makes a category a subcategory of `parent_id` (None = a category of `slot` itself). A subcategory follows its parent's slot, and
+        so does everything below the moved category. False when that would put a category inside itself."""
+        node = self.node(node_id)
+        if node is None:
+            return False
+        if parent_id is not None:
+            parent = self.node(parent_id)
+            if parent is None or parent_id in self.subtree_ids(node_id, hidden=True):
+                return False
+            slot = parent["slot"]
+        if not slot:
+            return False
+        ids = self.subtree_ids(node_id, hidden=True)
+        pos = self.conn.execute("SELECT COALESCE(MAX(position), 0) + 1 FROM pb_nodes").fetchone()[0]
+        with self.conn:
+            self.conn.execute("UPDATE pb_nodes SET parent_id=?, position=? WHERE id=?", (parent_id, pos, node_id))
+            self.conn.execute(f"UPDATE pb_nodes SET slot=? WHERE id IN ({','.join('?' * len(ids))})", [slot, *ids])
+        return True
 
     def add_tag(self, node_id: int, text: str, label: str = "") -> int | None:
         text = text.strip().strip(",").strip()

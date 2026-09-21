@@ -295,3 +295,20 @@ def progress_text(progress: dict) -> tuple[float, str]:
     eta = progress.get("eta_relative") or 0
     text = f"{job_no}/{job_count} · step {step}/{steps}" + (f" · ~{eta:.0f}s" if eta else "")
     return min(max(frac, 0.0), 1.0), text
+
+
+def progress_line(progress: dict) -> tuple[float, str]:
+    """(0..1, "37% · step 9/24 · ~12 s") for the progress bar in the top bar; empty text while Forge is still preparing."""
+    from anihub.core.i18n import tr
+
+    state = progress.get("state") or {}
+    frac = min(max(float(progress.get("progress") or 0), 0.0), 1.0)
+    step, steps = int(state.get("sampling_step", 0) or 0), int(state.get("sampling_steps", 0) or 0)
+    if steps <= 0:
+        return 0.0, ""
+    eta = int(progress.get("eta_relative") or 0)
+    job_count = int(state.get("job_count", 0)) or 1
+    job_no = min(int(state.get("job_no", 0)) + 1, job_count)
+    text = tr("sd.progress_line", pct=int(frac * 100), step=step, steps=steps, job=f"{job_no}/{job_count} · " if job_count > 1 else "",
+              eta=(f" · ~{eta} " + tr("unit.sec")) if eta else "")
+    return frac, text

@@ -18,7 +18,7 @@ from anihub.context import AppContext
 from anihub.core.i18n import tr
 from anihub.services.forge import ForgeState
 from anihub.services.generation import (
-    GenParams, GenResult, fit_size, params_from_dict, parse_infotext, progress_text, prompt_tags, read_png_text,
+    GenParams, GenResult, fit_size, params_from_dict, parse_infotext, progress_line, prompt_tags, read_png_text,
     record_history, run_generation, run_upscale)
 from anihub.sources.base import RATINGS
 from anihub.ui import style
@@ -26,6 +26,7 @@ from anihub.ui.forge_controller import ForgeController
 from anihub.ui.style import StatusChip
 from anihub.ui.grid import ThumbGrid, image_to_thumb
 from anihub.ui.mask_editor import MaskDialog
+from anihub.ui.character_tab import CharacterTab
 from anihub.ui.lora_editor import LoraEditor
 from anihub.ui.prompt_builder import PromptBuilder
 from anihub.ui.xy_dialog import XYDialog
@@ -199,15 +200,19 @@ class GenerateView(QWidget):
         self.stop_btn = style.danger(QPushButton(tr("sd.interrupt")), "stop")
         self.stop_btn.setMinimumHeight(38)
         self.stop_btn.setEnabled(False)
+        self.swap_btn = style.ghost(QPushButton(), "swap")
+        self.swap_btn.setFixedWidth(36)
+        self.swap_btn.setToolTip(tr("sd.swap_size"))
         self.queue_btn = style.secondary(QPushButton(tr("sd.to_queue")), "list")
         self.xy_btn = style.secondary(QPushButton(tr("xy.button")), "grid")
         self.xy_btn.setToolTip(tr("xy.tip"))
         self.queue_count = QSpinBox(minimum=1, maximum=500, value=1)
         self.queue_count.setPrefix("×")
         self.queue_count.setToolTip(tr("sd.queue_count_hint"))
-        self.progress = QProgressBar()
+        self.progress = QProgressBar()                       # these three live in the top bar of the section (SDPage), whatever tab is open
         self.progress.setRange(0, 1000)
         self.progress_text = style.role(QLabel(), "dim")
+        self.progress_text.setAlignment(Qt.AlignmentFlag.AlignRight)
         self.message = style.role(QLabel(), "dim")
         self.message.setWordWrap(True)
 
@@ -224,7 +229,7 @@ class GenerateView(QWidget):
         model_row.addWidget(self.refresh_btn)
         size_row = QHBoxLayout()
         size_row.addWidget(self.width_)
-        size_row.addWidget(QLabel("×"))
+        size_row.addWidget(self.swap_btn)
         size_row.addWidget(self.height_)
         form = QFormLayout()
         form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
@@ -258,9 +263,6 @@ class GenerateView(QWidget):
         dn.addWidget(self.denoise)
         init_col.addLayout(dn)
         init_box.addLayout(init_col, 1)
-        actions = QHBoxLayout()
-        actions.addWidget(self.generate_btn, 2)
-        actions.addWidget(self.stop_btn, 1)
         queue_row = QHBoxLayout()
         queue_row.addWidget(self.queue_btn, 1)
         queue_row.addWidget(self.xy_btn)
@@ -279,10 +281,7 @@ class GenerateView(QWidget):
         lay.addLayout(form)
         lay.addWidget(self.hr_box)
         lay.addWidget(self.var_box)
-        lay.addLayout(actions)
         lay.addLayout(queue_row)
-        lay.addWidget(self.progress)
-        lay.addWidget(self.progress_text)
         lay.addWidget(self.message)
         lay.addStretch(1)
         left = QScrollArea()
@@ -327,6 +326,7 @@ class GenerateView(QWidget):
         QVBoxLayout(self).addWidget(split)
 
         # --- wiring
+        self.swap_btn.clicked.connect(self.swap_size)
         self.generate_btn.clicked.connect(self.generate)
         self.stop_btn.clicked.connect(self.interrupt)
         self.queue_btn.clicked.connect(self._add_to_queue)
@@ -362,6 +362,12 @@ class GenerateView(QWidget):
         if not ForgeState(state).ready:
             self._data_loaded = False
         self._update_buttons()
+
+    def swap_size(self) -> None:
+        """Width and height change places (a portrait becomes a landscape)."""
+        w, h = self.width_.value(), self.height_.value()
+        self.width_.setValue(h)
+        self.height_.setValue(w)
 
     def _update_buttons(self) -> None:
         ready = self.controller.state.ready
@@ -782,7 +788,7 @@ class GenerateView(QWidget):
         def done(progress: dict) -> None:
             self._polling = False
             if self._generating and not self._interrupting:
-                frac, text = progress_text(progress)
+                frac, text = progress_line(progress)
                 self.progress.setValue(int(frac * 1000))
                 self.progress_text.setText(text or tr("sd.preparing"))
 
@@ -873,6 +879,19 @@ class SDPage(QWidget):
 
         self.queue_ctrl = QueueController(ctx, self.controllers, parent=self)
         self.generate = GenerateView(ctx, controller, self.queue_ctrl)
+        # "Generate", "Stop" and the progress are always at the top right, whatever tab is open
+        gen = self.generate
+        gen.generate_btn.setMinimumHeight(34)
+        gen.stop_btn.setMinimumHeight(34)
+        gen.progress.setFixedWidth(230)
+        progress = QVBoxLayout()
+        progress.setSpacing(3)
+        progress.addWidget(gen.progress)
+        progress.addWidget(gen.progress_text)
+        gen.progress_text.setFixedWidth(230)
+        bar.addLayout(progress)
+        bar.addWidget(gen.generate_btn)
+        bar.addWidget(gen.stop_btn)
         self.queue_view = QueueView(ctx, self.queue_ctrl)
         self.history = HistoryView(ctx)
         self.civitai = CivitaiView(ctx)
@@ -881,6 +900,8 @@ class SDPage(QWidget):
             "get": lambda: (self.generate.prompt.toPlainText(), self.generate.negative.toPlainText()),
             "set": self.generate.set_prompts,
             "api": lambda: self.controller.manager.api if self.controller.state.ready else None,
+            "start": self._start_forge,
+            "open_lora": self._open_in_lora_editor,
         })
         self.lora = LoraEditor(ctx, hooks={
             "insert": self.generate.insert_lora,
@@ -894,6 +915,12 @@ class SDPage(QWidget):
         tabs.addTab(self.history, tr("sd.tab.history"))
         tabs.addTab(self.civitai, "CivitAI")
         tabs.addTab(self.saved, tr("sd.tab.saved"))
+        self.character = CharacterTab(ctx, hooks={
+            "api": lambda: self.controller.manager.api if self.controller.state.ready else None,
+            "start": self._start_forge,
+            "regenerate": self._regenerate_pictures,
+        })
+        tabs.addTab(self.character, tr("sd.tab.character"))
         layout = QVBoxLayout(self)
         layout.addLayout(bar)
         layout.addWidget(tabs, 1)
@@ -920,6 +947,20 @@ class SDPage(QWidget):
     def _load_params(self, data: dict) -> None:
         self.show_generate_tab()
         self.generate.apply_params(data)
+
+    def _start_forge(self) -> None:
+        self.error.clear()
+        self.controller.start()
+
+    def _open_in_lora_editor(self, path) -> None:
+        self.tabs.setCurrentWidget(self.lora)
+        item = self.lora.items.get(path)
+        if item is not None:
+            self.lora.grid.setCurrentItem(item)
+
+    def _regenerate_pictures(self) -> None:
+        self.tabs.setCurrentWidget(self.builder)              # the progress of the drawing is shown there
+        self.builder.regenerate_all()
 
     def show_generate_tab(self) -> None:
         self.tabs.setCurrentWidget(self.generate)

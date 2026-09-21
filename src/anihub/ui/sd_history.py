@@ -6,18 +6,19 @@ import sqlite3
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import Signal
-from PySide6.QtGui import QImage
+from PySide6.QtCore import QUrl, Signal
+from PySide6.QtGui import QDesktopServices, QImage
 from PySide6.QtWidgets import (
-    QComboBox, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QMessageBox, QPushButton, QVBoxLayout, QWidget,
+    QComboBox, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QMenu, QMessageBox, QPushButton, QVBoxLayout, QWidget,
 )
 
 from anihub.context import AppContext
 from anihub.core.i18n import tr
 from anihub.ui import style
-from anihub.services.generation import GenResult
+from anihub.services.generation import GenResult, prompt_tags
 from anihub.sources.base import RATINGS
 from anihub.ui.grid import PAYLOAD, ThumbGrid, image_to_thumb
+from anihub.ui.viewer import ViewItem, Viewer
 from anihub.ui.workers import run_async
 
 PAGE = 200
@@ -37,11 +38,13 @@ class HistoryView(QWidget):
         self._offset = 0
         self._loading = False
         self._exhausted = False
+        self._viewers: list[Viewer] = []
         self.search = QLineEdit(placeholderText=tr("hist.search"))
         self.reload_btn = style.ghost(QPushButton(), "refresh")
         self.reload_btn.setFixedWidth(34)
         self.grid = ThumbGrid(170)
         self.grid.hover_loader = self._hover
+        self.open_btn = style.secondary(QPushButton(tr("hist.open")), "image")
         self.load_btn = QPushButton(tr("hist.load"))
         self.preset_btn = QPushButton(tr("hist.save_preset"))
         self.repeat_btn = QPushButton(tr("hist.repeat"))
@@ -57,7 +60,7 @@ class HistoryView(QWidget):
         top.addWidget(self.search, 1)
         top.addWidget(self.reload_btn)
         buttons = QHBoxLayout()
-        for w in (self.load_btn, self.preset_btn, self.repeat_btn, self.i2i_btn):
+        for w in (self.open_btn, self.load_btn, self.preset_btn, self.repeat_btn, self.i2i_btn):
             buttons.addWidget(w)
         buttons.addSpacing(16)
         buttons.addWidget(self.rating)
@@ -75,7 +78,9 @@ class HistoryView(QWidget):
         self.reload_btn.clicked.connect(self.reload)
         self.grid.need_more.connect(self._load_page)
         self.grid.itemSelectionChanged.connect(self._update_buttons)
-        self.grid.itemDoubleClicked.connect(lambda _it: self._load())
+        self.grid.itemDoubleClicked.connect(self._open)               # a double click shows the picture; "Load parameters" is a button
+        self.grid.context_requested.connect(self._menu)
+        self.open_btn.clicked.connect(lambda: self._open(self.grid.currentItem()))
         self.load_btn.clicked.connect(self._load)
         self.preset_btn.clicked.connect(self._save_preset)
         self.repeat_btn.clicked.connect(self._repeat)
@@ -146,10 +151,54 @@ class HistoryView(QWidget):
 
     def _update_buttons(self) -> None:
         n = len(self._selected())
-        for b in (self.load_btn, self.preset_btn, self.repeat_btn, self.i2i_btn):
+        for b in (self.open_btn, self.load_btn, self.preset_btn, self.repeat_btn, self.i2i_btn):
             b.setEnabled(n >= 1)
         self.add_btn.setEnabled(n >= 1)
         self.delete_btn.setEnabled(n >= 1)
+
+    def _view_item(self, row: sqlite3.Row) -> ViewItem:
+        file = self._file(row)
+        info = (json.loads(row["params"]).get("infotext") if row["params"] else "") or f"seed {row['seed']}\n{row['prompt'] or ''}"
+        tags = [(t, "general") for t in prompt_tags(row["prompt"] or "")]
+        return ViewItem(file.name, info, lambda: file, "", tags, row)
+
+    def _open(self, item) -> None:
+        """Shows the picture in the viewer (arrow keys go through the whole history); a picture whose file is gone is said so."""
+        if item is None:
+            return
+        rows = self.grid.payloads()
+        index = self.grid.row(item)
+        if not self._file(rows[index]).exists():
+            self.status.setText(tr("hist.file_missing", name=self._file(rows[index]).name))
+            return
+        viewer = Viewer([self._view_item(r) for r in rows], index, self._save_from_viewer)
+        viewer.destroyed.connect(lambda: self._viewers.remove(viewer) if viewer in self._viewers else None)
+        self._viewers.append(viewer)
+        viewer.show()
+
+    def _save_from_viewer(self, item: ViewItem) -> None:
+        row = item.payload
+        rating = self.rating.currentData()
+
+        def work():
+            return self.ctx.library.save_generation(self._file(row), self._params(row), rating).status
+
+        run_async(work, on_done=lambda st: (self.status.setText(tr("status.saved", saved=int(st == "saved"), dup=int(st == "duplicate"),
+                                                                    failed=int(st == "failed"))), self.library_changed.emit()),
+                  on_error=lambda exc: self.status.setText(tr("status.error", msg=str(exc))))
+
+    def _menu(self, pos) -> None:
+        row = self._first()
+        if row is None:
+            return
+        menu = QMenu(self)
+        menu.addAction(tr("hist.open"), lambda: self._open(self.grid.currentItem()))
+        menu.addAction(tr("hist.load"), self._load)
+        menu.addAction(tr("lib.to_img2img"), self._img2img)
+        menu.addAction(tr("hist.repeat"), self._repeat)
+        menu.addSeparator()
+        menu.addAction(tr("hist.show_folder"), lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(self._file(row).parent))))
+        menu.exec(pos)
 
     def _params(self, row: sqlite3.Row) -> dict:
         params = json.loads(row["params"])

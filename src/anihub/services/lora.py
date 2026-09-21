@@ -17,6 +17,8 @@ MODEL_EXTS = (".safetensors", ".pt", ".ckpt")
 PICTURE_EXTS = ("png", "jpg", "jpeg", "webp", "gif")
 SIDE_SUFFIXES = ("json", "civitai.info", "metadata.json", "txt") + PICTURE_EXTS + tuple(f"preview.{e}" for e in PICTURE_EXTS)
 DEFAULT_TEMPLATE = "<lora:{name}:{weight}>, {keywords}"
+CATEGORY_KEY = "anihub category"
+CATEGORIES = ["style", "character", "pose", "clothing", "tool"]      # the fixed categories of the prompt builder's LoRA tab
 TEMPLATE_KEY = "anihub template"              # our own key in the card's json (Forge ignores keys it does not know)
 BAD_NAME = re.compile(r'[<>:"/\\|?*,\x00-\x1f]')
 MAX_PICTURE = 768
@@ -37,6 +39,7 @@ class Lora:
     negative: str = ""                 # "negative text"
     base: str = ""                     # "sd version": SD1, SDXL, Pony...
     template: str = ""                 # how it is written into the prompt; empty = DEFAULT_TEMPLATE
+    category: str = ""                 # one of CATEGORIES ("" = not sorted yet)
     extra: dict = field(default_factory=dict)      # the other keys of the json, kept when saving
 
     @property
@@ -64,6 +67,21 @@ class Lora:
 
     def prompt_text(self, weight: float | None = None) -> str:
         return render_template(self.template or DEFAULT_TEMPLATE, self.name, self.weight if weight is None else weight, self.keywords)
+
+
+def root_dir(cfg) -> Path:
+    """The folder with the LoRA files: the one picked in the LoRA editor, else <Forge folder>/models/Lora."""
+    custom = cfg.get("lora.dir") or ""
+    if custom:
+        return Path(custom)
+    forge = cfg.get("forge.path") or ""
+    return Path(forge) / "models" / "Lora" if forge else Path()
+
+
+def set_category(model: Path, root: Path, category: str) -> None:
+    lora = load(model, root)
+    lora.category = category
+    save(lora)
 
 
 def json_path(model: Path) -> Path:
@@ -95,14 +113,14 @@ def load(model: Path, root: Path) -> Lora:
         data = raw if isinstance(raw, dict) else {}
     except (OSError, ValueError):
         pass
-    known = {"description", "activation text", "preferred weight", "negative text", "sd version", TEMPLATE_KEY}
+    known = {"description", "activation text", "preferred weight", "negative text", "sd version", TEMPLATE_KEY, CATEGORY_KEY}
     try:
         weight = float(data.get("preferred weight") or 0.8)
     except (TypeError, ValueError):
         weight = 0.8
     return Lora(model, root, description=str(data.get("description") or ""), keywords=str(data.get("activation text") or ""),
                 weight=weight, negative=str(data.get("negative text") or ""), base=str(data.get("sd version") or ""),
-                template=str(data.get(TEMPLATE_KEY) or ""), extra={k: v for k, v in data.items() if k not in known})
+                template=str(data.get(TEMPLATE_KEY) or ""), category=str(data.get(CATEGORY_KEY) or ""), extra={k: v for k, v in data.items() if k not in known})
 
 
 def save(lora: Lora) -> None:
@@ -114,6 +132,10 @@ def save(lora: Lora) -> None:
         data[TEMPLATE_KEY] = lora.template.strip()
     else:
         data.pop(TEMPLATE_KEY, None)
+    if lora.category in CATEGORIES:
+        data[CATEGORY_KEY] = lora.category
+    else:
+        data.pop(CATEGORY_KEY, None)
     target = json_path(lora.path)
     tmp = target.with_name(target.name + ".tmp")
     try:

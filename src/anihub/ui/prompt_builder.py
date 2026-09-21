@@ -4,11 +4,9 @@ background, light. A tag clicked in the catalogue goes into ITS paragraph, never
 from __future__ import annotations
 
 import hashlib
-import shutil
-import tempfile
 from pathlib import Path
 
-from PySide6.QtCore import QPoint, QSize, Qt, Signal
+from PySide6.QtCore import QPoint, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QAction, QBrush, QClipboard, QColor, QGuiApplication, QIcon, QImage, QLinearGradient, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView, QCheckBox, QDialog, QFileDialog, QFormLayout, QFrame, QHBoxLayout, QInputDialog, QLabel, QLineEdit,
@@ -18,9 +16,13 @@ from PySide6.QtWidgets import (
 
 from anihub.context import AppContext
 from anihub.core.i18n import get_language, tr
+from anihub.services import lora as lo
 from anihub.services import promptbook as pb
+from anihub.services.tagpictures import PictureMaker
 from anihub.services.promptbook import Entry, PromptBook, PromptDoc
+from anihub.ui import builder_lora as bl
 from anihub.ui import style, theme
+from anihub.ui.builder_dnd import LORA_MIME, NODE_MIME, ROLE, TAG_MIME, CatalogTree, DragGrid
 from anihub.ui.manga_filters import FlowLayout
 from anihub.ui.workers import run_async
 
@@ -66,10 +68,17 @@ def placeholder_pixmap(text: str, size: int = TILE) -> QPixmap:
 
 
 def tile_icon(book: PromptBook, row: dict, active: bool, size: int = TILE) -> QIcon:
+    if row.get("lora"):
+        return decorate_icon(bl.lora_pixmap(row["path"], size) or placeholder_pixmap(row["text"], size), active, size)
     path = book.image_path(row)
     pm = QPixmap(str(path)) if path and path.exists() else QPixmap()
     pm = pm.scaled(size, size, Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation) if not pm.isNull() \
         else placeholder_pixmap(row["text"], size)
+    return decorate_icon(pm, active, size)
+
+
+def decorate_icon(pm: QPixmap, active: bool, size: int = TILE) -> QIcon:
+    """The tile picture, with the accent ring and check mark when the tag / LoRA is in the prompt."""
     out = QPixmap(size, size)
     out.fill(Qt.GlobalColor.transparent)
     p = QPainter(out)
@@ -128,7 +137,7 @@ class TagDialog(QDialog):
             self.accept()
 
 
-class TagGrid(QListWidget):
+class TagGrid(DragGrid):
     """Tag tiles: picture over name. Dropping a picture file on a tile sets that tag's picture."""
     picture_dropped = Signal(int, str)
 
@@ -280,12 +289,16 @@ class PromptBuilder(QWidget):
         self._last_pushed: tuple[str, str] | None = None
         self._dirty = False                                  # changes in the builder the form has not received yet
         self._cancel_previews = False
+        self.drawing = False
         self._rows: dict[int, dict] = {}
+        self._lora_queue: list = []
+        self._lora_timer = QTimer(self, interval=15)
+        self._lora_timer.timeout.connect(self._load_lora_thumbs)
 
         # --- left: the catalogue -------------------------------------------------------------------------------
         self.search = QLineEdit(placeholderText=tr("pb.search"))
         self.search.setClearButtonEnabled(True)
-        self.tree = QTreeWidget()
+        self.tree = CatalogTree()
         self.tree.setHeaderHidden(True)
         self.tree.setMinimumWidth(190)
         self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -388,6 +401,9 @@ class PromptBuilder(QWidget):
         self.sync.toggled.connect(lambda v: (ctx.cfg.set("promptbook.sync", bool(v)), v and self._doc_changed()))
         self._preview_progress.connect(self._on_preview_progress)
         self._preview_image.connect(self._on_preview_image)
+        self.tree.tags_dropped.connect(self._tags_dropped)
+        self.tree.node_dropped.connect(self._node_dropped)
+        self.tree.loras_dropped.connect(self._loras_dropped)
         self._fill_tree()
         self._refresh_grid()
         self._refresh_doc()
@@ -415,6 +431,20 @@ class PromptBuilder(QWidget):
         self.tree.blockSignals(True)
         self.tree.clear()
         wanted = None
+        lora_top = QTreeWidgetItem(["LoRA"])                        # a fixed tab: cannot be renamed or deleted, no tags are created in it
+        lora_top.setData(0, ROLE, ("lora", None))
+        font = lora_top.font(0)
+        font.setBold(True)
+        lora_top.setFont(0, font)
+        self.tree.addTopLevelItem(lora_top)
+        if current == ("lora", None):
+            wanted = lora_top
+        for group in ("", *bl.GROUPS):
+            sub = QTreeWidgetItem([bl.group_name(group)])
+            sub.setData(0, ROLE, ("lora", group))
+            lora_top.addChild(sub)
+            if current == ("lora", group):
+                wanted = sub
         for key in pb.SLOT_KEYS:
             top = QTreeWidgetItem([pb.slot_name(key, get_language())])
             top.setData(0, Qt.ItemDataRole.UserRole, ("slot", key))
@@ -440,7 +470,7 @@ class PromptBuilder(QWidget):
             add(top, None)
             if current == ("slot", key):
                 wanted = top
-        first = self.tree.topLevelItem(0)
+        first = self.tree.topLevelItem(1)                       # the first paragraph ("quality"); item 0 is the LoRA tab
         self.tree.setCurrentItem(wanted or first)
         for i in range(self.tree.topLevelItemCount()):
             self.tree.topLevelItem(i).setExpanded(False)
@@ -458,6 +488,8 @@ class PromptBuilder(QWidget):
         sel = self._selection()
         if sel is None:
             return pb.POSITIVE[0]
+        if sel[0] == "lora":
+            return "extra"
         if sel[0] == "slot":
             return sel[1]
         node = self.book.node(sel[1])
@@ -476,13 +508,73 @@ class PromptBuilder(QWidget):
             return self.book.tags(slot=sel[1])
         return self.book.tags(self.book.subtree_ids(sel[1]))
 
+    def _lora_root(self) -> Path:
+        return lo.root_dir(self.ctx.cfg)
+
+    def _refresh_lora_grid(self, group: str | None) -> None:
+        """The LoRA tab: the tiles of the LoRA files of one group (their card pictures load a few at a time, big folders must not freeze)."""
+        rows = bl.lora_rows(self._lora_root(), group)
+        needle = self.search.text().strip().lower()
+        if needle:
+            rows = [r for r in rows if needle in r["text"].lower()]
+        self._rows = {}
+        self.grid.clear()
+        self._lora_queue = []
+        for row in rows:
+            item = QListWidgetItem(row["text"])
+            item.setData(Qt.ItemDataRole.UserRole, row)
+            item.setData(ROLE + 1, (LORA_MIME, [str(row["path"])]))
+            item.setToolTip(row["text"] + ("\n" + row["folder"] if row["folder"] else "") + ("\n" + row["description"][:200] if row["description"] else ""))
+            item.setIcon(QIcon(placeholder_pixmap(row["text"], TILE)))
+            item.setSizeHint(QSize(TILE + 22, TILE + 42))
+            self.grid.addItem(item)
+            self._lora_queue.append(item)
+        root = self._lora_root()
+        self.status.setText(tr("lora.count", n=len(rows)) if root.is_dir() else tr("lora.no_folder", path=str(root)))
+        self._lora_timer.start()
+
+    def _load_lora_thumbs(self) -> None:
+        for _ in range(10):
+            if not self._lora_queue:
+                self._lora_timer.stop()
+                return
+            item = self._lora_queue.pop(0)
+            try:
+                row = item.data(Qt.ItemDataRole.UserRole)
+                item.setIcon(tile_icon(self.book, row, self._lora_active(row["text"])))
+            except RuntimeError:                                       # the tile is gone (the view was refilled)
+                continue
+
+    def _lora_active(self, name: str) -> bool:
+        group = bl.group_of_entry(name)
+        return any(e.group == group for e in self.doc.entries("extra"))
+
+    def _toggle_lora(self, row: dict) -> None:
+        """A LoRA tile: the LoRA (as its card says: name, weight, keywords) goes into the "extra" paragraph, its negative text into the
+        negative prompt; a second click takes both out."""
+        group = bl.group_of_entry(row["text"])
+        if self._lora_active(row["text"]):
+            for slot in ("extra", "neg_unwanted"):
+                self.doc.slots[slot] = [e for e in self.doc.entries(slot) if e.group != group]
+        else:
+            card = lo.load(row["path"], self._lora_root())
+            self.doc.add("extra", card.prompt_text(), group=group)
+            if card.negative.strip():
+                self.doc.add("neg_unwanted", card.negative.strip(), group=group)
+        self._doc_changed()
+
     def _refresh_grid(self) -> None:
+        sel = self._selection()
+        if sel is not None and sel[0] == "lora":
+            self._refresh_lora_grid(sel[1])
+            return
         rows, hidden = self._visible_tags(self._rows_for_view())
         self._rows = {r["id"]: r for r in rows}
         self.grid.clear()
         for row in rows:
             item = QListWidgetItem(display_label(row))
             item.setData(Qt.ItemDataRole.UserRole, row)
+            item.setData(ROLE + 1, (TAG_MIME, [row["id"]]))
             item.setToolTip(row["text"] + ("\n" + pb.slot_name(row["slot"], get_language())))
             item.setIcon(tile_icon(self.book, row, self.doc.has(row["slot"], row["text"])))
             item.setSizeHint(QSize(TILE + 22, TILE + 42))
@@ -495,10 +587,16 @@ class PromptBuilder(QWidget):
         for i in range(self.grid.count()):
             item = self.grid.item(i)
             row = item.data(Qt.ItemDataRole.UserRole)
-            item.setIcon(tile_icon(self.book, row, self.doc.has(row["slot"], row["text"])))
+            if row.get("lora") and item in self._lora_queue:                 # its picture is not loaded yet: the loader will draw the mark
+                continue
+            active = self._lora_active(row["text"]) if row.get("lora") else self.doc.has(row["slot"], row["text"])
+            item.setIcon(tile_icon(self.book, row, active))
 
     def _tile_clicked(self, item: QListWidgetItem) -> None:
         row = item.data(Qt.ItemDataRole.UserRole)
+        if row.get("lora"):
+            self._toggle_lora(row)
+            return
         self.doc.toggle(row["slot"], row["text"], group=str(row["group_id"]), exclusive=bool(row["exclusive"]), tag_id=row["id"])
         self._doc_changed()
 
@@ -639,6 +737,10 @@ class PromptBuilder(QWidget):
         menu = QMenu(self)
         menu.addAction(tr("pb.tree.restore"), self._restore)
         menu.addSeparator()
+        menu.addAction(tr("pb.regen_all"), self.regenerate_all)
+        stop = menu.addAction(tr("pb.stop_drawing"), self.cancel_previews)
+        stop.setEnabled(self.drawing)
+        menu.addSeparator()
         menu.addAction(tr("pb.pack.export"), self._export_pack)
         menu.addAction(tr("pb.pack.import"), self._import_pack)
         menu.exec(self.more_btn.mapToGlobal(QPoint(0, self.more_btn.height())))
@@ -671,7 +773,7 @@ class PromptBuilder(QWidget):
         if item is not None:
             self.tree.setCurrentItem(item)
         sel = self._selection()
-        if sel is None:
+        if sel is None or sel[0] == "lora":                        # the LoRA tab has no menu: nothing in it can be created or deleted
             return
         slot = self._current_slot()
         node = self._selected_node()
@@ -713,6 +815,19 @@ class PromptBuilder(QWidget):
     def _grid_menu(self, pos: QPoint) -> None:
         item = self.grid.itemAt(pos)
         menu = QMenu(self)
+        sel = self._selection()
+        if sel is not None and sel[0] == "lora":                   # a LoRA can only be sorted into a group (or opened in the LoRA editor)
+            if item is not None:
+                row = item.data(Qt.ItemDataRole.UserRole)
+                move = menu.addMenu(tr("lora.category"))
+                for group in ("", *bl.GROUPS):
+                    action = move.addAction(bl.group_name(group), lambda g=group, r=row: self._set_lora_group([str(r["path"])], g))
+                    action.setCheckable(True)
+                    action.setChecked((row["category"] or "") == group)
+                if self.form is not None and self.form.get("open_lora"):
+                    menu.addAction(tr("pb.lora.open"), lambda r=row: self.form["open_lora"](r["path"]))
+                menu.exec(self.grid.viewport().mapToGlobal(pos))
+            return
         if item is not None:
             row = item.data(Qt.ItemDataRole.UserRole)
             menu.addAction(tr("pb.tile.picture_file"), lambda: self._pick_picture(row))
@@ -779,36 +894,98 @@ class PromptBuilder(QWidget):
         self._refresh_grid()
         self._refresh_doc()
 
+    # --- moving things by dragging -------------------------------------------------------------------------------------
+
+    def _tags_dropped(self, ids: list, target) -> None:
+        moved = sum(1 for tag_id in ids if self.book.move_tag(int(tag_id), target[1]))
+        self._refresh_grid()
+        node = self.book.node(target[1])
+        self.status.setText(tr("pb.moved", n=moved, name=node_name(node) if node else "") if moved else tr("pb.move_none"))
+
+    def _node_dropped(self, node_id: int, target) -> None:
+        ok = self.book.move_node(int(node_id), target[1], None) if target[0] == "node" else self.book.move_node(int(node_id), None, target[1])
+        self._fill_tree(("node", int(node_id)) if ok else None)
+        self._refresh_grid()
+        if not ok:
+            self.status.setText(tr("pb.move_none"))
+
+    def _set_lora_group(self, paths: list, group: str) -> None:
+        root = self._lora_root()
+        for path in paths:
+            try:
+                lo.set_category(Path(path), root, group)
+            except lo.LoraError as exc:
+                self.status.setText(tr("status.error", msg=str(exc)))
+                return
+        self._refresh_grid()
+        self.status.setText(tr("pb.moved", n=len(paths), name=bl.group_name(group)))
+
+    def _loras_dropped(self, paths: list, target) -> None:
+        self._set_lora_group(paths, target[1])
+
+    # --- the standard character and the pictures of the tags -------------------------------------------------------------
+
+    def character(self) -> dict:
+        """The standard character every tag picture is drawn on (edited in the "Standard character" tab)."""
+        return pb.character_from(self.ctx.cfg.get("promptbook.character"))
+
     def _api(self):
         return self.form["api"]() if self.form is not None and self.form.get("api") else None
 
-    def _generate_picture(self, row: dict) -> None:
+    def _with_forge(self, action) -> None:
+        """Runs `action(api)` with a running Forge: at once if there is one, else after asking to start it (and waiting until it answers)."""
         api = self._api()
-        if api is None:
+        if api is not None:
+            action(api)
+            return
+        start = self.form.get("start") if self.form is not None else None
+        if start is None:
             self.status.setText(tr("pb.need_forge"))
             return
-        self.status.setText(tr("pb.previews.working", n=1))
-        self._run_previews(api, [row])
+        if QMessageBox.question(self, tr("pb.start_forge_title"), tr("pb.start_forge")) != QMessageBox.StandardButton.Yes:
+            return
+        self.status.setText(tr("pb.forge_starting"))
+        start()
+        waited = {"n": 0}
+        timer = QTimer(self, interval=2000)
+
+        def check() -> None:
+            waited["n"] += 1
+            api = self._api()
+            if api is not None:
+                timer.stop()
+                action(api)
+            elif waited["n"] > 300:                                  # ten minutes
+                timer.stop()
+                self.status.setText(tr("pb.need_forge"))
+
+        timer.timeout.connect(check)
+        timer.start()
+
+    def _generate_picture(self, row: dict) -> None:
+        self._with_forge(lambda api: self._run_previews(api, [row]))
 
     def _previews_for_view(self) -> None:
-        api = self._api()
-        if api is None:
-            self.status.setText(tr("pb.need_forge"))
-            return
         rows = [r for r in self._rows.values() if not r["image"]]
         if not rows:
             self.status.setText(tr("pb.previews.none"))
             return
         if QMessageBox.question(self, tr("pb.tree.previews"), tr("pb.previews.confirm", n=len(rows))) != QMessageBox.StandardButton.Yes:
             return
-        self._run_previews(api, rows)
+        self._with_forge(lambda api: self._run_previews(api, rows))
+
+    def regenerate_all(self) -> None:
+        """One click: every tag of the catalogue gets a new picture drawn on the standard character (the old ones are replaced)."""
+        rows = [r for r in self.book.tags() if r["text"] not in pb.NO_PICTURE_TAGS]
+        if QMessageBox.question(self, tr("pb.regen_all"), tr("pb.regen_confirm", n=len(rows))) != QMessageBox.StandardButton.Yes:
+            return
+        self._with_forge(lambda api: self._run_previews(api, rows))
 
     def _run_previews(self, api, rows: list[dict]) -> None:
-        """Generate a picture per tag with the running Forge (one seed for all, so the tiles look alike), one after another."""
-        from anihub.services.generation import GenParams, run_generation
-
+        """Draws a picture per tag with the running Forge on the standard character, one after another (Stop: "More" > Stop drawing)."""
         self._cancel_previews = False
-        size = int(self.ctx.cfg.get("promptbook.preview_size", 768) or 768)
+        keys = {n["id"]: n["key"] or "" for n in self.book.nodes(include_hidden=True)}
+        maker = PictureMaker(api, self.character())
 
         def work() -> int:
             done = 0
@@ -816,29 +993,31 @@ class PromptBuilder(QWidget):
                 if self._cancel_previews:
                     break
                 self._preview_progress.emit(i, len(rows), row["text"])
-                prompt, negative = pb.preview_prompt(row["slot"], row["text"], (self.book.node(row["group_id"]) or {}).get("key") or "")
-                tmp = Path(tempfile.mkdtemp(prefix="anihub_pb_"))
                 try:
-                    results = run_generation(api, GenParams(prompt=prompt, negative_prompt=negative, steps=20, width=size, height=size,
-                                                             seed=12345, n_iter=1, batch_size=1), tmp)
-                    if results:
-                        self._preview_image.emit(row["id"], Path(results[0].path).read_bytes())
-                        done += 1
+                    self._preview_image.emit(row["id"], maker.draw(row, keys.get(row["group_id"], "")))
+                    done += 1
+                except ValueError:                                     # the configured checkpoint does not exist: nothing can be drawn
+                    raise
                 except Exception:  # noqa: BLE001 - one failed picture must not stop the rest
                     continue
-                finally:
-                    shutil.rmtree(tmp, ignore_errors=True)
             return done
 
-        run_async(work, on_done=lambda n: self.status.setText(tr("pb.previews.done", n=n)),
-                  on_error=lambda exc: self.status.setText(tr("status.error", msg=str(exc))))
+        self.drawing = True
+        run_async(work, on_done=lambda n: (setattr(self, "drawing", False), self.status.setText(tr("pb.previews.done", n=n))),
+                  on_error=lambda exc: (setattr(self, "drawing", False), self.status.setText(tr("status.error", msg=str(exc)))))
 
     def _on_preview_progress(self, i: int, total: int, name: str) -> None:
         self.status.setText(tr("pb.previews.progress", i=i, total=total, name=name))
 
     def _on_preview_image(self, tag_id: int, data: bytes) -> None:
         self.book.set_image(tag_id, data)
-        self._refresh_grid()
+        for i in range(self.grid.count()):                              # only that tile is redrawn: 600 pictures must not refill the grid 600 times
+            item = self.grid.item(i)
+            row = item.data(Qt.ItemDataRole.UserRole)
+            if not row.get("lora") and row["id"] == tag_id:
+                row["image"] = self.book.tag(tag_id)["image"]
+                item.setIcon(tile_icon(self.book, row, self.doc.has(row["slot"], row["text"])))
+                break
         self._refresh_doc()
 
     def cancel_previews(self) -> None:
