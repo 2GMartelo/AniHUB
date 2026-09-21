@@ -41,7 +41,7 @@ def test_assess_forge_uses_the_measurements(monkeypatch):
     monkeypatch.setattr(sysreq, "total_ram_gb", lambda: 32.0)
     monkeypatch.setattr(sysreq, "check_disk", lambda path: sysreq.Check(True, "", 300.0))
     a = sysreq.assess_forge("D:/x")
-    assert a.suitable and a.level == "ok" and a.gpu == "RTX 5070 (12 GB)" and a.vram_gb == 12 and a.ram_gb == 32
+    assert a.suitable and a.level == "ok" and a.gpu == "RTX 5070" and a.vram_gb == 12 and a.ram_gb == 32
     monkeypatch.setattr(sysreq, "check_gpu", lambda: sysreq.Check(False))
     assert not sysreq.assess_forge().suitable
 
