@@ -206,7 +206,7 @@ def test_source_lookup_includes_trashed(db):
 def test_migration_3_to_4_adds_sd_tables(tmp_path):
     path = tmp_path / "v3.db"
     fresh = Database(path)
-    for table in ("anime_links", "anime_positions", "novels", "anime_list", "auto_rules", "sd_presets", "sd_history", "sd_queue"):
+    for table in ("subscriptions", "anime_links", "anime_positions", "novels", "anime_list", "auto_rules", "sd_presets", "sd_history", "sd_queue"):
         fresh.conn.execute(f"DROP TABLE {table}")
     fresh.conn.execute("PRAGMA user_version=3")
     fresh.conn.commit()

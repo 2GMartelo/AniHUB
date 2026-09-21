@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 from typing import Iterable
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 
 SD_TABLES = '''
 CREATE TABLE sd_presets (
@@ -66,6 +66,15 @@ CREATE TABLE anime_positions (                    -- where you stopped in each e
     updated_at REAL NOT NULL, PRIMARY KEY (source, entry_id, episode_id));
 '''
 
+SUBSCRIPTION_TABLE = '''
+CREATE TABLE subscriptions (
+    id INTEGER PRIMARY KEY, name TEXT NOT NULL, source TEXT NOT NULL, query TEXT NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1, auto_save INTEGER NOT NULL DEFAULT 0,
+    last_seen_id INTEGER NOT NULL DEFAULT 0,       -- the newest post the user has looked at / saved
+    new_count INTEGER NOT NULL DEFAULT 0,          -- posts newer than that, as of the last check
+    last_check REAL, last_error TEXT, created_at REAL NOT NULL);
+'''
+
 # Each step upgrades from version N to N+1 (fresh databases run SCHEMA, then jump to SCHEMA_VERSION).
 MIGRATIONS = {
     1: "ALTER TABLE items ADD COLUMN meta TEXT",  # JSON: generation parameters for SD items
@@ -97,6 +106,7 @@ MIGRATIONS = {
     5: ANIME_TABLE,
     6: NOVEL_TABLE,
     7: WATCH_TABLES,
+    8: SUBSCRIPTION_TABLE,
 }
 
 SCHEMA = """
@@ -155,7 +165,7 @@ CREATE TABLE collection_items (
     added_at REAL NOT NULL, PRIMARY KEY (collection_id, item_id));
 CREATE INDEX idx_collection_items_item ON collection_items(item_id);
 CREATE TABLE smart_tags (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE, tags TEXT NOT NULL);
-""" + SD_TABLES + RULES_TABLE + ANIME_TABLE + NOVEL_TABLE + WATCH_TABLES
+""" + SD_TABLES + RULES_TABLE + ANIME_TABLE + NOVEL_TABLE + WATCH_TABLES + SUBSCRIPTION_TABLE
 
 SORTS = {
     "added": "i.added_at",
@@ -519,6 +529,32 @@ class Database:
             "SELECT ci.collection_id, COUNT(*) FROM collection_items ci JOIN items i ON i.id=ci.item_id "
             "WHERE i.kind=? AND i.trashed_at IS NULL GROUP BY ci.collection_id", (kind,)).fetchall()
         return {r[0]: r[1] for r in rows}
+
+    # --- subscriptions ---------------------------------------------------------------
+
+    def subscriptions(self) -> list[sqlite3.Row]:
+        return self.conn.execute("SELECT * FROM subscriptions ORDER BY name COLLATE NOCASE, id").fetchall()
+
+    def subscription(self, sub_id: int) -> sqlite3.Row | None:
+        return self.conn.execute("SELECT * FROM subscriptions WHERE id=?", (sub_id,)).fetchone()
+
+    def add_subscription(self, name: str, source: str, query: str, last_seen_id: int = 0, auto_save: bool = False) -> int:
+        with self.conn:
+            return self.conn.execute(
+                "INSERT INTO subscriptions(name, source, query, last_seen_id, auto_save, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                (name, source, query, last_seen_id, int(auto_save), time.time())).lastrowid
+
+    def update_subscription(self, sub_id: int, **fields) -> None:
+        allowed = {"name", "enabled", "auto_save", "last_seen_id", "new_count", "last_check", "last_error"}
+        if set(fields) - allowed:
+            raise ValueError(f"cannot update {sorted(set(fields) - allowed)}")
+        if fields:
+            with self.conn:
+                self.conn.execute(f"UPDATE subscriptions SET {', '.join(f'{k}=?' for k in fields)} WHERE id=?", [*fields.values(), sub_id])
+
+    def delete_subscription(self, sub_id: int) -> None:
+        with self.conn:
+            self.conn.execute("DELETE FROM subscriptions WHERE id=?", (sub_id,))
 
     # --- watching anime -------------------------------------------------------------
 

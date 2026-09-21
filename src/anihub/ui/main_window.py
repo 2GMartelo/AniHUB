@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import time
+
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QAction, QCloseEvent, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
@@ -18,6 +20,7 @@ from anihub.ui.library_view import LibraryView
 from anihub.ui.manga_controller import MangaController
 from anihub.ui.manga_page import MangaPage
 from anihub.ui.novels_page import NovelsPage
+from anihub.ui.subscriptions_view import SubscriptionsView
 from anihub.ui.sd_page import SDPage
 from anihub.ui.settings import SettingsPage
 from anihub.ui.navrail import NavRail
@@ -45,7 +48,11 @@ class MainWindow(QMainWindow):
         self.arts = arts = QTabWidget()
         arts.addTab(self.browse, tr("tab.browse"))
         arts.addTab(self.library, tr("tab.library"))
+        self.subscriptions = SubscriptionsView(ctx)
+        arts.addTab(self.subscriptions, tr("subs.tab"))
         self.browse.library_changed.connect(self.library.reload)
+        self.browse.subscribed.connect(self.subscriptions.reload)
+        self.subscriptions.changed.connect(self._update_subscription_badge)
 
         self.forge = ForgeController(
             ctx.forge, idle_minutes=lambda: int(ctx.cfg.get("forge.idle_minutes", 0) or 0), parent=self)
@@ -128,6 +135,11 @@ class MainWindow(QMainWindow):
         self.settings.about.update_found.connect(self._update_found)
         QTimer.singleShot(6000, self._auto_check_updates)          # after startup, in the background
         QTimer.singleShot(20000, self._auto_backup)
+        self._subs_timer = QTimer(self)
+        self._subs_timer.timeout.connect(self._poll_subscriptions)
+        self._subs_timer.start(5 * 60 * 1000)
+        QTimer.singleShot(45000, self._poll_subscriptions)
+        self._update_subscription_badge()
         QShortcut(QKeySequence("Ctrl+K"), self, activated=self.open_palette)
         self.error_btn = QToolButton()
         self.error_btn.setObjectName("updateNotice")
@@ -163,6 +175,27 @@ class MainWindow(QMainWindow):
         self.browse.on_batch(tr("dl.batch_status", details=summary_text(result.counts)))
         if result.total >= int(self.ctx.cfg.get("downloads.notify_min", 10)) and getattr(self, "tray", None) is not None:
             self.tray.showMessage(APP_NAME, notify_text(result), QSystemTrayIcon.MessageIcon.Information, 6000)
+
+    def _update_subscription_badge(self) -> None:
+        n = self.ctx.subscriptions.total_new()
+        index = self.arts.indexOf(self.subscriptions)
+        self.arts.setTabText(index, tr("subs.tab") + (f" ({n})" if n else ""))
+
+    def _poll_subscriptions(self) -> None:
+        """Every hour (setting): look for new posts of the followed searches; a notice when there are some."""
+        svc = self.ctx.subscriptions
+        if self.ctx.cfg.get("network.offline", False) or not svc.is_due() or not self.ctx.db.subscriptions():
+            return
+        self.ctx.cfg.set("subscriptions.last_poll", time.time())
+
+        def done(results) -> None:
+            self.subscriptions.reload()
+            fresh = sum(len(r.new) for r in results if not r.saved)
+            saved = sum(r.saved for r in results)
+            if (fresh or saved) and getattr(self, "tray", None) is not None:
+                self.tray.showMessage(APP_NAME, tr("subs.notice", fresh=fresh, saved=saved), QSystemTrayIcon.MessageIcon.Information, 6000)
+
+        run_async(svc.check_all, on_done=done, on_error=lambda exc: None)
 
     def open_palette(self) -> None:
         """Ctrl+K: jump to a section, run an action, find a tag / book / show."""

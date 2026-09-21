@@ -19,6 +19,7 @@ from anihub.ui.workers import run_async
 
 class BrowseView(QWidget):
     library_changed = Signal()
+    subscribed = Signal()
 
     def __init__(self, ctx: AppContext, parent=None):
         super().__init__(parent)
@@ -41,11 +42,14 @@ class BrowseView(QWidget):
         self.search_btn = QPushButton(tr("search.button"))
         self.save_btn = QPushButton(tr("action.save"))
         self.save_btn.setEnabled(False)
+        self.subscribe_btn = QPushButton(tr("subs.button"))
+        self.subscribe_btn.setToolTip(tr("subs.subscribe"))
         self.grid = ThumbGrid(ctx.cfg.get("ui.thumb_size", 180))
         self.grid.hover_loader = self._hover_loader
         self.status = style.role(QLabel(), "dim")
         style.primary(self.search_btn, "search")
         style.secondary(self.save_btn, "save")
+        style.secondary(self.subscribe_btn, "tag")
         self.query.addAction(icons.icon("search", size=16), QLineEdit.ActionPosition.LeadingPosition)
         self.grid.set_empty("search", tr("browse.empty_title"), tr("browse.empty_hint"))
 
@@ -55,6 +59,7 @@ class BrowseView(QWidget):
         top.addWidget(self.query, 1)
         top.addWidget(self.search_btn)
         top.addWidget(self.save_btn)
+        top.addWidget(self.subscribe_btn)
         layout = QVBoxLayout(self)
         layout.addLayout(top)
         layout.addWidget(self.grid, 1)
@@ -63,6 +68,7 @@ class BrowseView(QWidget):
         self.search_btn.clicked.connect(self.start_search)
         self.query.returnPressed.connect(self.start_search)
         self.save_btn.clicked.connect(self._save_selected)
+        self.subscribe_btn.clicked.connect(self._subscribe)
         self.grid.need_more.connect(self._load_page)
         self.grid.itemDoubleClicked.connect(self._open_viewer)
         self.grid.itemSelectionChanged.connect(lambda: self.save_btn.setEnabled(bool(self.grid.selectedItems())))
@@ -182,6 +188,27 @@ class BrowseView(QWidget):
             return
         self.ctx.downloads.submit(posts)               # saved in the background, several at once (Downloads window)
         self.status.setText(tr("dl.queued", n=len(posts)))
+
+    def _subscribe(self) -> None:
+        """Follow the current source + search: new posts will be counted in the Subscriptions tab."""
+        from PySide6.QtWidgets import QInputDialog
+
+        source, query = self.source.currentData(), self.query.text().strip()
+        if not query:
+            self.status.setText(tr("subs.need_query"))
+            return
+        name, ok = QInputDialog.getText(self, tr("subs.subscribe"), tr("subs.name"), text=f"{self.source.currentText()}: {query}"[:80])
+        if not ok:
+            return
+        self.subscribe_btn.setEnabled(False)
+
+        def done(_id) -> None:
+            self.subscribe_btn.setEnabled(True)
+            self.status.setText(tr("subs.subscribed", name=name))
+            self.subscribed.emit()
+
+        run_async(lambda: self.ctx.subscriptions.subscribe(source, query, name), on_done=done,
+                  on_error=lambda exc: (self.subscribe_btn.setEnabled(True), self.status.setText(tr("status.error", msg=str(exc)))))
 
     def on_batch(self, text: str) -> None:
         """A download batch finished (called by the main window)."""

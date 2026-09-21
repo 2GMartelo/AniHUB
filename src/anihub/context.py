@@ -17,6 +17,7 @@ from anihub.services.autotag import Autotagger, model_dir_default
 from anihub.services.backends import build_backends
 from anihub.services.downloads import DownloadManager
 from anihub.services.forge import ForgeManager
+from anihub.services.subscriptions import SubscriptionService
 from anihub.services.updater import Updater
 from anihub.services.suwayomi import SuwayomiManager
 from anihub.sources import build_sources
@@ -44,6 +45,7 @@ class AppContext:
     watch: WatchService
     updater: Updater
     downloads: DownloadManager
+    subscriptions: SubscriptionService
 
     @classmethod
     def build(cls, cfg: Config) -> "AppContext":
@@ -59,9 +61,10 @@ class AppContext:
                   SuwayomiManager(cfg, config_dir() / "suwayomi", paths.manga / "suwayomi", config_dir() / "logs"),
                   Autotagger(model_dir_default(config_dir())), AniList(http, cfg, db), NovelShelf(db, paths),
                   build_anime_sources(http, cfg, paths.anime, config_dir() / "plugins" / "anime"), None,
-                  Updater(http, cfg), None)
+                  Updater(http, cfg), None, None)
         ctx.watch = WatchService(db, ctx.anilist)
         ctx.downloads = DownloadManager(ctx.library, http, cfg)
+        ctx.subscriptions = SubscriptionService(db, ctx.sources, ctx.downloads, cfg)
         ctx.refresh_tagger()
         return ctx
 
