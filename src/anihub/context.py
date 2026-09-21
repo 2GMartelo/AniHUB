@@ -52,7 +52,7 @@ class AppContext:
         db = Database(paths.db_file)
         http = HttpClient(cfg)
         media = MediaCache(http, paths.media)
-        media.prune()
+        media.prune(int(max(float(cfg.get("library.cache_limit_gb", 1) or 1), 0.1) * 1024**3))
         backends = build_backends(cfg, config_dir())
         ctx = cls(cfg, paths, db, http, build_sources(http, cfg), LibraryService(db, paths, http, cfg), media,
                   backends[0], backends,

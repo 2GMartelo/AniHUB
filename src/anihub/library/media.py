@@ -27,7 +27,7 @@ class MediaCache:
             self.http.download(url, path)
         return path
 
-    def prune(self, limit: int = MAX_CACHE_BYTES) -> None:
+    def prune(self, limit: int = MAX_CACHE_BYTES) -> None:  # the limit is a setting: library.cache_limit_gb
         """Delete least recently modified files until the cache fits `limit`."""
         files = [(p.stat().st_mtime, p.stat().st_size, p) for p in self.dir.iterdir() if p.is_file()]
         total = sum(size for _, size, _ in files)

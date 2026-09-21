@@ -30,6 +30,8 @@ class SettingsPage(QWidget):
         self.ctx = ctx
         cfg = ctx.cfg
         self.about = AboutBox(ctx, quit_app)
+        self.cache_limit = QDoubleSpinBox(minimum=0.1, maximum=500, decimals=1, singleStep=0.5, suffix=" GB",
+                                          value=float(cfg.get("library.cache_limit_gb", 1) or 1))
         self.backup = BackupBox(ctx)
 
         self.lang = QComboBox()
@@ -170,7 +172,7 @@ class SettingsPage(QWidget):
 
         look_box = form_box(tr("settings.g_appearance"), (tr("settings.language"), self.lang), (tr("settings.theme"), self.theme))
         storage_box = form_box(tr("settings.g_storage"), (tr("settings.library"), library_row),
-                               (tr("settings.ratings"), ratings_row))
+                               (tr("settings.ratings"), ratings_row), (tr("settings.cache_limit"), self.cache_limit))
         network_box = form_box(tr("settings.g_network"), (tr("settings.proxy"), self.proxy),
                                (tr("settings.interval"), self.interval), (tr("settings.parallel"), self.parallel))
 
@@ -297,6 +299,7 @@ class SettingsPage(QWidget):
         cfg.set("network.proxy", self.proxy.text().strip(), save=False)
         cfg.set("network.min_interval_ms", self.interval.value(), save=False)
         cfg.set("network.max_parallel", self.parallel.value(), save=False)
+        cfg.set("library.cache_limit_gb", self.cache_limit.value(), save=False)
         for key, field in self.cred_fields.items():
             cfg.set(key, field.text().strip(), save=False)
         cfg.set("forge.path", self.forge_path.text().strip(), save=False)
