@@ -11,7 +11,7 @@ from anihub.context import AppContext
 from anihub.core.i18n import get_language, tr
 from anihub.ui import style
 from anihub.services.suwayomi import SuwayomiError, filter_changes
-from anihub.ui.manga_filters import FilterPanel, SourceSettingsDialog
+from anihub.ui.manga_filters import FilterPanel, SourceSettingsDialog, is_account_pref
 from anihub.ui.grid import ThumbGrid, image_to_thumb
 from anihub.ui.manga_controller import MangaController
 from anihub.ui.manga_detail import fmt_date
@@ -233,7 +233,17 @@ class MangaBrowseTab(QWidget):
         """A new source: fetch its filters (genres, tags...) and show the login/settings button if it has any."""
         source = self.source.currentData()
         self.settings_btn.setVisible(bool(source and source.get("isConfigurable")))
+        self.settings_btn.setText(tr("manga.source_settings"))
         self._filters_for = source["id"] if source else ""
+        if source and source.get("isConfigurable"):
+            wanted_id = source["id"]
+
+            def account_check(prefs: list[dict]) -> None:              # a source with a login field says so on its button: "Sign in"
+                current = self.source.currentData()
+                if current and current["id"] == wanted_id and any(is_account_pref(p) for p in prefs):
+                    self.settings_btn.setText(tr("manga.source_login"))
+
+            run_async(self.api.source_preferences, wanted_id, on_done=account_check, on_error=lambda _e: None)
         self.panel.set_filters([])
         self.filters_btn.setEnabled(False)
         if source is None:

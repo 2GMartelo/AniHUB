@@ -8,8 +8,8 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from string import Template
 
-from PySide6.QtCore import QEvent, QObject, Qt
-from PySide6.QtGui import QColor, QFont, QIcon, QLinearGradient, QPainter, QPalette, QPixmap
+from PySide6.QtCore import QEvent, QObject, QRectF, Qt
+from PySide6.QtGui import QColor, QFont, QIcon, QImage, QLinearGradient, QPainter, QPainterPath, QPalette, QPixmap, QRadialGradient
 from PySide6.QtWidgets import QApplication, QMainWindow, QWidget
 
 from anihub.core.config import config_dir
@@ -498,15 +498,110 @@ class _Margins(ctypes.Structure):
     _fields_ = [("left", ctypes.c_int), ("right", ctypes.c_int), ("top", ctypes.c_int), ("bottom", ctypes.c_int)]
 
 
-def paint_glass(widget: QWidget) -> None:
-    """The translucent violet gradient over the Windows backdrop (call from the main window's paintEvent)."""
-    t = _current
-    gradient = QLinearGradient(0, 0, widget.width(), widget.height())
-    for position, color in t.window_glass:
-        gradient.setColorAt(position, css_color(color))
-    painter = QPainter(widget)
-    painter.fillRect(widget.rect(), gradient)
+_STOP = re.compile(r"stop:\s*([\d.]+)\s+(#[0-9a-fA-F]{6})")
+_backdrop_cache: dict[tuple, QPixmap] = {}
+_noise_tile: QPixmap | None = None
+SPARKLES = ((0.94, 0.30, 7), (0.975, 0.38, 4), (0.905, 0.42, 3), (0.975, 0.78, 5), (0.925, 0.93, 4), (0.70, 0.955, 3))
+
+
+def _smooth_stops(stops: list[tuple[float, QColor]], steps: int = 14) -> list[tuple[float, QColor]]:
+    """The gradient's few stops resampled with an ease in between: two- and three-stop gradients show visible bands (and a hard edge at
+    every stop), an eased one with many stops does not."""
+    stops = sorted(stops, key=lambda s: s[0])
+    out = []
+    for i in range(steps + 1):
+        pos = i / steps
+        lo = max((s for s in stops if s[0] <= pos), key=lambda s: s[0], default=stops[0])
+        hi = min((s for s in stops if s[0] >= pos), key=lambda s: s[0], default=stops[-1])
+        span = hi[0] - lo[0]
+        f = 0.0 if span <= 0 else (pos - lo[0]) / span
+        f = f * f * (3 - 2 * f)                                       # smoothstep
+        mix_ = lambda a, b: round(a + (b - a) * f)                    # noqa: E731
+        out.append((pos, QColor(mix_(lo[1].red(), hi[1].red()), mix_(lo[1].green(), hi[1].green()), mix_(lo[1].blue(), hi[1].blue()),
+                                mix_(lo[1].alpha(), hi[1].alpha()))))
+    return out
+
+
+def _noise() -> QPixmap:
+    """A tile of almost invisible noise: laid over the gradient it breaks up the 8-bit steps (dithering)."""
+    global _noise_tile
+    if _noise_tile is None:
+        import random
+
+        rnd = random.Random(7)
+        img = QImage(128, 128, QImage.Format.Format_ARGB32)
+        for y in range(128):
+            for x in range(128):
+                v = 255 if rnd.random() < 0.5 else 0
+                img.setPixelColor(x, y, QColor(v, v, v, rnd.randint(0, 5)))
+        _noise_tile = QPixmap.fromImage(img)
+    return _noise_tile
+
+
+def _backdrop(t: Tokens, w: int, h: int, glass: bool, dpr: float) -> QPixmap:
+    pm = QPixmap(int(w * dpr), int(h * dpr))
+    pm.setDevicePixelRatio(dpr)
+    pm.fill(Qt.GlobalColor.transparent)
+    stops = [(p, css_color(c)) for p, c in t.window_glass] if glass else [(float(p), QColor(c)) for p, c in _STOP.findall(t.window)] or \
+        [(0.0, QColor(t.bg)), (1.0, QColor(t.bg))]
+    painter = QPainter(pm)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    gradient = QLinearGradient(0, 0, w, h)
+    for pos, color in _smooth_stops(stops):
+        gradient.setColorAt(pos, color)
+    painter.fillRect(QRectF(0, 0, w, h), gradient)
+    # two soft glows of the accent colour: the light comes from the corners, the middle stays calm
+    accent, end = QColor(t.accent), QColor(t.accent_end)
+    for (cx, cy), radius, color, alpha in (((0.06, 0.0), 0.75, accent, 0.20 if t.dark else 0.10), ((1.0, 1.0), 0.6, end, 0.13 if t.dark else 0.07)):
+        glow = QRadialGradient(w * cx, h * cy, max(w, h) * radius)
+        for k in range(9):
+            f = k / 8
+            c = QColor(color)
+            c.setAlphaF(alpha * (1 - f) ** 2.2)                       # a long, gentle fall-off
+            glow.setColorAt(f, c)
+        painter.fillRect(QRectF(0, 0, w, h), glow)
+    # a few tiny sparkles near the corners: the small detail that makes the empty space feel finished
+    spark = QColor(t.accent_text if t.dark else t.accent)
+    painter.setPen(Qt.PenStyle.NoPen)
+    for x, y, size in SPARKLES:
+        c = QColor(spark)
+        c.setAlphaF(0.20 if t.dark else 0.16)
+        painter.setBrush(c)
+        cx, cy, r = w * x, h * y, size
+        star = QPainterPath()
+        star.moveTo(cx, cy - r)
+        for dx, dy in ((r * 0.16, -r * 0.16), (r, 0), (r * 0.16, r * 0.16), (0, r), (-r * 0.16, r * 0.16), (-r, 0), (-r * 0.16, -r * 0.16)):
+            star.lineTo(cx + dx, cy + dy)
+        star.closeSubpath()
+        painter.drawPath(star)
+    painter.setOpacity(0.55)
+    painter.drawTiledPixmap(QRectF(0, 0, w, h).toRect(), _noise())
     painter.end()
+    return pm
+
+
+def paint_backdrop(widget: QWidget) -> None:
+    """The window background: the theme's gradient (eased and dithered, so it is smooth), soft glows of the accent colour and a few
+    sparkles. Opaque, or translucent over the Windows backdrop in glass mode. Rendered once per size and theme, then just copied."""
+    t, glass = _current, _glass
+    w, h = widget.width(), widget.height()
+    dpr = widget.devicePixelRatioF()
+    key = (t.name, t.bg, t.accent, t.accent_end, t.window, t.window_glass, glass, w, h, dpr)
+    pm = _backdrop_cache.get(key)
+    if pm is None:
+        if len(_backdrop_cache) > 6:
+            _backdrop_cache.clear()
+        pm = _backdrop_cache[key] = _backdrop(t, w, h, glass, dpr)
+    painter = QPainter(widget)
+    if not glass:
+        painter.fillRect(widget.rect(), QColor(t.bg))                  # the glass mode's alpha must not pile up on an old frame
+    painter.drawPixmap(0, 0, pm)
+    painter.end()
+
+
+def paint_glass(widget: QWidget) -> None:
+    """Kept for the callers that used the glass painting by name."""
+    paint_backdrop(widget)
 
 
 def apply_backdrop(window: QWidget, kind: int | None = None) -> bool:

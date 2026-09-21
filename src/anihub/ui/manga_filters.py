@@ -1,7 +1,7 @@
 """Source filters (genres, tags, status, sort...) as a side panel, and the source settings / login dialog."""
 from __future__ import annotations
 
-from PySide6.QtCore import QPoint, QRect, QSize, Qt, Signal
+from PySide6.QtCore import QPoint, QRect, QSize, Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFormLayout, QFrame, QHBoxLayout, QLabel, QLayout, QLayoutItem,
     QLineEdit, QPushButton, QScrollArea, QSizePolicy, QToolButton, QVBoxLayout, QWidget,
@@ -311,6 +311,14 @@ class FilterPanel(QFrame):
             section.flow.invalidate()
 
 
+ACCOUNT_WORDS = ("login", "user", "email", "e-mail", "mail", "pass", "token", "cookie", "account", "логин", "пользоват", "почт", "парол", "аккаунт")
+
+
+def is_account_pref(pref: dict) -> bool:
+    """A setting that is about signing in (login, password, token, cookie): shown first, under "Account"."""
+    return pref["kind"] == "text" and any(w in f"{pref['key']} {pref['title']}".lower() for w in ACCOUNT_WORDS)
+
+
 class SourceSettingsDialog(QDialog):
     """The source's own settings: this is where login / password, quality and mirror options of an extension live."""
 
@@ -328,19 +336,47 @@ class SourceSettingsDialog(QDialog):
         self.form = QFormLayout()
         self.form.setLabelAlignment(Qt.AlignmentFlag.AlignTop)
         self.form.setVerticalSpacing(10)
+        self.fields: list[tuple[dict, QLineEdit]] = []
+        self.sign_in = style.primary(QPushButton(tr("srcset.sign_in")), "user")
+        self.sign_in.setToolTip(tr("srcset.sign_in_tip"))
+        self.sign_in.hide()
+        self.sign_in.clicked.connect(self._sign_in)
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
         buttons.rejected.connect(self.accept)
+        bottom = QHBoxLayout()
+        bottom.addWidget(self.sign_in)
+        bottom.addStretch(1)
+        bottom.addWidget(buttons)
         layout = QVBoxLayout(self)
         layout.addWidget(self.hint)
         layout.addLayout(self.form)
         layout.addWidget(self.status)
-        layout.addWidget(buttons)
+        layout.addLayout(bottom)
         run_async(api.source_preferences, source["id"], on_done=self._loaded,
                   on_error=lambda exc: self.status.setText(tr("status.error", msg=str(exc))))
 
+    def _sign_in(self) -> None:
+        """Saves what is typed in the account fields (Enter was never pressed in them) and closes: the caller reloads the source."""
+        for pref, edit in self.fields:
+            self._save_text(pref, edit)
+        self.changed = True
+        QTimer.singleShot(250, self.accept)                      # the saves run in the background; let them leave before the window goes
+
+    def _heading(self, text: str) -> None:
+        label = QLabel(text)
+        label.setStyleSheet("font-weight: 600; font-size: 14px; padding-top: 6px;")
+        self.form.addRow(label)
+
     def _loaded(self, prefs: list[dict]) -> None:
         self.status.setText("" if prefs else tr("srcset.none"))
-        for pref in prefs:
+        account = [p for p in prefs if is_account_pref(p)]
+        prefs = account + [p for p in prefs if not is_account_pref(p)]                 # the way in first, the rest after it
+        self.sign_in.setVisible(bool(account))
+        for i, pref in enumerate(prefs):
+            if account and i == 0:
+                self._heading(tr("srcset.account"))
+            elif account and i == len(account):
+                self._heading(tr("srcset.other"))
             widget = self._widget_for(pref)
             label = QLabel(pref["title"])
             label.setWordWrap(True)
@@ -379,6 +415,8 @@ class SourceSettingsDialog(QDialog):
                 edit.setEchoMode(QLineEdit.EchoMode.Password)
             edit.editingFinished.connect(lambda p=pref, e=edit: self._save_text(p, e))
             edit._last = edit.text()  # type: ignore[attr-defined]
+            if is_account_pref(pref):
+                self.fields.append((pref, edit))
             return edit
         if kind == "list":
             combo = QComboBox()

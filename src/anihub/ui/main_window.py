@@ -27,7 +27,7 @@ from anihub.ui.settings import SettingsPage
 from anihub.ui.navrail import NavRail
 from anihub.ui import style
 from anihub.ui.style import EmptyState, state_color
-from anihub.ui.theme import apply_backdrop, is_glass, make_app_icon, paint_glass
+from anihub.ui.theme import apply_backdrop, is_glass, make_app_icon, paint_backdrop
 from anihub.ui import cookie_import
 from anihub.ui.close_dialog import CloseDialog
 from anihub.ui.tutorial import Step, TutorialOverlay
@@ -407,10 +407,7 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(500, self.maybe_install_forge)
 
     def paintEvent(self, event) -> None:  # noqa: N802
-        if is_glass():
-            paint_glass(self)                                      # translucent gradient over Mica
-        else:
-            super().paintEvent(event)                              # the stylesheet's opaque gradient
+        paint_backdrop(self)                                       # smooth gradient, glows and sparkles (translucent over Mica in glass mode)
 
     def _ask_close(self) -> tuple[str, bool] | None:
         """The first time the window is closed: quit for good or keep running in the tray? -> (action, remember) or None (cancel)."""

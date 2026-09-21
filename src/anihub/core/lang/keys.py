@@ -1271,4 +1271,9 @@ watch.shelf_empty
 watch.shelf_saved
 watch.shelf_removed
 watch.shelf_no_source
+srcset.sign_in
+srcset.sign_in_tip
+srcset.account
+srcset.other
+manga.source_login
 """.split("\n") if k]
