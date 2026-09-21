@@ -309,3 +309,26 @@ def test_build_index_reads_extension_dicts_without_running_the_files(tmp_path):
     item = index["extensions"][0]
     assert item["id"] == "demo_src" and item["file"] == "demo_src.py" and len(item["sha256"]) == 64
     assert parse_index(index, "https://h/index.json")[0].lang == "en"
+
+
+def test_the_bundled_m3u_extension_loads_reads_a_playlist_and_is_in_the_index(tmp_path):
+    from pathlib import Path
+
+    from anihub.sources.anime import load_plugins
+
+    folder = Path(__file__).resolve().parents[1] / "extensions"
+    classes = load_plugins(folder)
+    assert [c.name for c in classes] == ["m3u_playlist"]
+    playlist = tmp_path / "list.m3u"
+    playlist.write_text('#EXTM3U\n#EXTINF:-1 group-title="Show A",Show A - 02\nhttp://h/2.mp4\n'
+                        '#EXTINF:-1 group-title="Show A",Show A - 01\nhttp://h/1.mp4\n#EXTINF:-1,Other - 07\nhttp://h/o.mp4\n', encoding="utf-8")
+    cfg = cfg_in(tmp_path, sources__m3u_playlist__url=str(playlist))
+    src = classes[0](None, cfg)
+    entries, more = src.search("")
+    assert sorted(e.title for e in entries) == ["Other", "Show A"] and not more
+    assert [e.title for e in src.search("show")[0]] == ["Show A"]
+    eps = src.episodes(next(e for e in entries if e.title == "Show A"))
+    assert [e.number for e in eps] == [1.0, 2.0] and src.streams(entries[0], eps[0])[0].url == "http://h/1.mp4"
+    index = json.loads((folder / "index.json").read_text(encoding="utf-8")) if (folder / "index.json").exists() else build_index(folder)
+    assert index["extensions"][0]["id"] == "m3u_playlist"
+    assert build_index(folder)["extensions"] == index["extensions"], "extensions/index.json is stale: run tools/make_index.py"

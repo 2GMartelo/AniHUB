@@ -24,6 +24,7 @@ from anihub.net.http import HttpClient, HttpError
 
 KINDS = ("anime", "novel")
 FOLDERS = {"anime": "anime", "novel": "novels"}
+CRLF, LF = bytes([13, 10]), bytes([10])
 ID_RE = re.compile(r"^[a-z][a-z0-9_]{1,39}$")
 DEFAULT_REPOS = ["https://raw.githubusercontent.com/2GMartelo/AniHUB/main/extensions/index.json"]
 
@@ -175,5 +176,6 @@ def build_index(folder: Path, name: str = "AniHUB extensions") -> dict:
     items = []
     for file in sorted(Path(folder).glob("*.py")):
         meta = read_meta(file)
-        items.append({**meta, "file": file.name, "sha256": hashlib.sha256(file.read_bytes()).hexdigest()})
+        data = file.read_bytes().replace(CRLF, LF)            # what the repository serves, whatever the checkout's line endings
+        items.append({**meta, "file": file.name, "sha256": hashlib.sha256(data).hexdigest()})
     return {"name": name, "extensions": items}

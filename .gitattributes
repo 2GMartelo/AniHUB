@@ -1,0 +1,2 @@
+extensions/*.py text eol=lf
+extensions/*.json text eol=lf

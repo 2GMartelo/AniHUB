@@ -1,0 +1,15 @@
+{
+  "name": "AniHUB extensions",
+  "extensions": [
+    {
+      "id": "m3u_playlist",
+      "kind": "anime",
+      "name": "M3U playlist",
+      "lang": "multi",
+      "version": "1.0",
+      "description": "Your own M3U/M3U8 playlist (media server, NAS or a service you subscribe to). Set its address in the extension settings.",
+      "file": "m3u_playlist.py",
+      "sha256": "f6bbe2d9719420b28a6c6d0bbcfec8da4548f7c59a9b1548ddc96f04f2a4c7af"
+    }
+  ]
+}
