@@ -101,7 +101,7 @@ def test_custom_theme_applies_to_the_application_and_survives_switching(qapp):
     theme.apply_theme(qapp, "light")
     assert theme.current().name == "light" and theme.logo_colors()[1] == "#c93d7b"
     theme.apply_theme(qapp, "dark")
-    assert theme.logo_colors() == ("#9b7bff", "#5a3ee8")
+    assert theme.logo_colors() == ("#b07bff", "#7a38d8")
     theme.set_custom_colors(None)
     assert theme.custom_colors() == theme.DEFAULT_CUSTOM
 

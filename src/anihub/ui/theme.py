@@ -57,18 +57,18 @@ class Tokens:
 
 
 DARK = Tokens(
-    "dark", bg="#13121c", rail="#100f18", surface="#1b1a26", surface2="#232230", surface3="#2f2e3d", card="#1d1c29",
-    border="#2a2938", border_hover="#413f55", text="#eceaf4", dim="#aeabc0", muted="#726f86",
-    accent="#7658f7", accent_hover="#6d50ec", accent_press="#6046dc", accent_text="#b3a3ff",
-    soft="rgba(124, 92, 255, 0.22)", on_accent="#ffffff", success="#34d399", warning="#fbbf24", danger="#f87171",
-    danger_soft="rgba(248, 113, 113, 0.14)", scroll="#3a3950",
-    window="qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #1d1736, stop:0.5 #13121c, stop:1 #0e0e15)",
-    window_glass=((0.0, "rgba(86, 60, 196, 0.30)"), (0.5, "rgba(22, 18, 40, 0.42)"), (1.0, "rgba(10, 10, 18, 0.58)")),
-    dialog="qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #1b1633, stop:1 #12111a)",
-    popup="#1c1a2a",
-    qss=dict(rail="rgba(255, 255, 255, 0.025)", surface="rgba(255, 255, 255, 0.045)", surface2="rgba(255, 255, 255, 0.07)",
-             surface3="rgba(255, 255, 255, 0.115)", border="rgba(255, 255, 255, 0.075)", border_hover="rgba(255, 255, 255, 0.2)",
-             scroll="rgba(255, 255, 255, 0.2)"))
+    "dark", bg="#14101d", rail="#110d19", surface="#1c1727", surface2="#251f32", surface3="#31293f", card="#1e1929",
+    border="#2c2439", border_hover="#453a58", text="#efe9f7", dim="#b4aac6", muted="#7a6f8c",
+    accent="#8f48e0", accent_hover="#8340d3", accent_press="#7538c2", accent_text="#cfa9ff",
+    soft="rgba(143, 72, 224, 0.24)", on_accent="#ffffff", success="#34d399", warning="#fbbf24", danger="#f87171",
+    danger_soft="rgba(248, 113, 113, 0.14)", scroll="#3d3450", accent_end="#6a30b5",
+    window="qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #2a1745, stop:0.5 #14101d, stop:1 #0f0b16)",
+    window_glass=((0.0, "rgba(112, 50, 190, 0.30)"), (0.5, "rgba(26, 16, 42, 0.42)"), (1.0, "rgba(12, 8, 20, 0.58)")),
+    dialog="qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #261340, stop:1 #130f1b)",
+    popup="#201a2d",
+    qss=dict(rail="rgba(222, 200, 255, 0.03)", surface="rgba(222, 200, 255, 0.05)", surface2="rgba(222, 200, 255, 0.08)",
+             surface3="rgba(222, 200, 255, 0.125)", border="rgba(222, 200, 255, 0.085)", border_hover="rgba(222, 200, 255, 0.22)",
+             scroll="rgba(222, 200, 255, 0.22)"))
 
 LIGHT = Tokens(
     "light", bg="#fdf2f7", rail="#fceaf2", surface="#fff7fa", surface2="#f8e4ee", surface3="#f0d6e4", card="#ffffff",
@@ -194,7 +194,7 @@ def logo_colors() -> tuple[str, str]:
         return "#f59bc0", "#c93d7b"
     if t.name == "custom":
         return mix(t.accent, "#ffffff", 0.25), t.accent
-    return "#9b7bff", "#5a3ee8"
+    return "#b07bff", "#7a38d8"
 
 
 _current: Tokens = DARK
@@ -440,7 +440,7 @@ def apply_theme(app: QApplication, mode: str, glass: bool | None = None) -> None
     app.setStyle("Fusion")
     app.setPalette(_palette(t))
     font = app.font()
-    font.setFamilies(["Segoe UI Variable Text", "Segoe UI", "Inter", "Arial"])
+    font.setFamilies(["Segoe UI Variable Text", "Segoe UI", "Inter", "Yu Gothic UI", "Microsoft YaHei UI", "Malgun Gothic", "Arial"])
     font.setPointSizeF(10.0)
     font.setStyleStrategy(QFont.StyleStrategy.PreferAntialias)
     app.setFont(font)
@@ -558,8 +558,8 @@ def make_app_icon(colors: tuple[str, str] | None = None) -> QIcon:
         painter = QPainter(pm)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         gradient = QLinearGradient(0, 0, size, size)
-        gradient.setColorAt(0, QColor((colors or ("#9b7bff", "#5a3ee8"))[0]))
-        gradient.setColorAt(1, QColor((colors or ("#9b7bff", "#5a3ee8"))[1]))
+        gradient.setColorAt(0, QColor((colors or ("#b07bff", "#7a38d8"))[0]))
+        gradient.setColorAt(1, QColor((colors or ("#b07bff", "#7a38d8"))[1]))
         painter.setBrush(gradient)
         painter.setPen(Qt.PenStyle.NoPen)
         radius = size * 0.24

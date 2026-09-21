@@ -126,6 +126,20 @@ class EmptyState(QWidget):
     def refresh(self) -> None:
         self.icon_label.setPixmap(icons.pixmap(self._icon_name, theme.current().muted, 48, 1.6))
 
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        self._fit_text()
+
+    def showEvent(self, event) -> None:  # noqa: N802
+        super().showEvent(event)
+        self._fit_text()
+
+    def _fit_text(self) -> None:
+        """A wrapped label inside a centring layout gets no height-for-width from Qt: give it the height its text needs."""
+        width = max(min(self.text.maximumWidth(), self.width() - 40), 120)
+        self.text.setFixedWidth(width)
+        self.text.setFixedHeight(self.text.heightForWidth(width))
+
     # duck-typed hook used by refresh_icons()
     _icon_spec = ("", "", 0)
 

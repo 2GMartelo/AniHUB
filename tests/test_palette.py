@@ -70,7 +70,7 @@ def test_providers_work_on_a_real_main_window(qapp, tmp_path):
     assert len(names) >= 20
     section = next(e for e in providers[0]("") if e.title.endswith(win.ctx and "Ranobe") or "Ранобэ" in e.title or "Novels" in e.title)
     section.action()
-    assert win.nav.currentRow() == 4
+    assert win.nav.currentRow() == win.rows["novels"]
     tag = next(e for e in providers[2]("lan") if e.title.startswith("landscape"))
     tag.action()
     assert win.nav.currentRow() == 0 and win.library.query.text() == "landscape"

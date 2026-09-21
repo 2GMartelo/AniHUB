@@ -76,6 +76,12 @@ class AppContext:
         ctx.refresh_filter()
         return ctx
 
+    @property
+    def sd_enabled(self) -> bool:
+        """False on a computer the first-run check found unsuitable for Stable Diffusion: the generation section is hidden.
+        Old configs have no such key and keep generation."""
+        return self.cfg.get("sd.enabled", True) is not False
+
     def reload_extensions(self) -> None:
         """Re-read the plugin folders (after an extension was installed, updated or removed)."""
         fresh = build_anime_sources(self.http, self.cfg, self.paths.anime, config_dir() / "plugins" / "anime")

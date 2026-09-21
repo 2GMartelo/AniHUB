@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
 
 from anihub.context import AppContext
 from anihub.core import agemode
-from anihub.core.i18n import tr
+from anihub.core.i18n import LANGUAGES, tr
 from anihub.services.autotag import download_model
 from anihub.services.backends import gpu_list
 from anihub.ui.workers import run_async
@@ -38,8 +38,8 @@ class SettingsPage(QWidget):
         self.backup = BackupBox(ctx)
 
         self.lang = QComboBox()
-        self.lang.addItem("Русский", "ru")
-        self.lang.addItem("English", "en")
+        for code, name in LANGUAGES.items():
+            self.lang.addItem(name, code)
         self.lang.setCurrentIndex(self.lang.findData(cfg.get("language")))
         self.theme = QComboBox()
         for key in ("system", "light", "dark", "custom"):
@@ -245,7 +245,12 @@ class SettingsPage(QWidget):
         cl = QVBoxLayout(content)
         cl.setContentsMargins(0, 0, 8, 12)
         cl.setSpacing(6)
-        for box in (look_box, age_box, storage_box, network_box, creds_box, forge_box, gen_box, manga_box, lib_box, tag_box, self.backup, self.about):
+        self.sd_box = self._build_sd_box()
+        boxes = [look_box, age_box, storage_box, network_box, creds_box, self.sd_box]
+        if ctx.sd_enabled:
+            boxes += [forge_box, gen_box]                                # hidden together with the whole section when the PC cannot run Forge
+        boxes += [manga_box, lib_box, tag_box, self.backup, self.about]
+        for box in boxes:
             cl.addWidget(box)
         cl.addStretch(1)
         holder = QWidget()
@@ -351,6 +356,67 @@ class SettingsPage(QWidget):
 
     def _confirm_adult(self) -> bool:
         return QMessageBox.question(self, "AniHUB", tr("age.confirm18")) == QMessageBox.StandardButton.Yes
+
+    # --- Stable Diffusion availability ---------------------------------------------------------------------
+
+    def _build_sd_box(self) -> QGroupBox:
+        self.sd_status = style.role(QLabel(), "dim")
+        self.sd_status.setWordWrap(True)
+        self.sd_check_btn = style.secondary(QPushButton(tr("sd.check.button")), "refresh")
+        self.sd_download_btn = style.secondary(QPushButton(tr("sd.download.button")), "download")
+        self.sd_check_btn.clicked.connect(self._recheck_pc)
+        self.sd_download_btn.clicked.connect(self._download_forge)
+        self.sd_download_btn.setVisible(self.ctx.sd_enabled)
+        self._show_sd_state()
+        row = QHBoxLayout()
+        row.addWidget(self.sd_check_btn)
+        row.addWidget(self.sd_download_btn)
+        row.addStretch(1)
+        layout = QVBoxLayout()
+        layout.addWidget(self.sd_status)
+        layout.addLayout(row)
+        box = QGroupBox(tr("sd.check.title"))
+        box.setLayout(layout)
+        return box
+
+    def _show_sd_state(self, detail: str = "") -> None:
+        base = tr("sd.check.enabled") if self.ctx.cfg.get("sd.enabled", True) is not False else tr("sd.check.disabled")
+        self.sd_status.setText(base + ("\n" + detail if detail else ""))
+
+    def _recheck_pc(self) -> None:
+        """Measure the computer again (a new graphics card, more memory): switches the generation section on or off."""
+        from anihub.services import sysreq
+
+        self.sd_check_btn.setEnabled(False)
+        self.sd_status.setText(tr("status.loading"))
+
+        def done(a) -> None:
+            self.sd_check_btn.setEnabled(True)
+            was = self.ctx.cfg.get("sd.enabled", True) is not False
+            self.ctx.cfg.set("sd.enabled", a.suitable)
+            report = tr("sys.forge.gpu", d=a.gpu, gb=f"{a.vram_gb:.0f}") if a.gpu else tr("sys.forge.no_gpu")
+            report += f" · {tr('sys.forge.ram', gb=f'{a.ram_gb:.0f}')} · {tr('sys.forge.disk', gb=f'{a.disk_gb:.0f}')}"
+            if a.problems:
+                report += "\n" + "\n".join("• " + tr(p) for p in a.problems)
+            if was != a.suitable:
+                report += "\n" + tr("sd.check.restart")
+            self._show_sd_state(report)
+
+        run_async(sysreq.assess_forge, on_done=done,
+                  on_error=lambda exc: (self.sd_check_btn.setEnabled(True), self.sd_status.setText(tr("status.error", msg=str(exc)))))
+
+    def _download_forge(self) -> None:
+        from pathlib import Path
+
+        from anihub.ui.forge_install_dialog import ForgeInstallDialog
+
+        folder = QFileDialog.getExistingDirectory(self, tr("sd.download.button"), str(Path.home()))
+        if not folder:
+            return
+        dlg = ForgeInstallDialog(self.ctx, Path(folder) / "AniHUB-Forge", self)
+        dlg.exec()
+        if dlg.installed is not None:
+            self.forge_path.setText(str(dlg.installed))
 
     def _pick_forge(self) -> None:
         folder = QFileDialog.getExistingDirectory(self, tr("settings.forge_path"), self.forge_path.text())

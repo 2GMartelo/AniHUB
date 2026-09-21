@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QCheckBox, QGroupBox, QHBoxLayout, QLabel, QPushButton, QVBoxLayout
+from PySide6.QtWidgets import QCheckBox, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QPushButton, QVBoxLayout
 
 from anihub import __version__
 from anihub.context import AppContext
@@ -34,10 +34,13 @@ class AboutBox(QGroupBox):
         self.status = QLabel()
         style.role(self.status, "dim")
         self.status.setWordWrap(True)
-        row = QHBoxLayout()
-        for w in (self.check_btn, self.versions_btn, self.report_btn, self.tutorial_btn, self.logs_btn):
-            row.addWidget(w)
-        row.addStretch(1)
+        row = QGridLayout()                                   # three per line: long translations must not squeeze the buttons
+        row.setHorizontalSpacing(8)
+        row.setVerticalSpacing(8)
+        for i, w in enumerate((self.check_btn, self.versions_btn, self.report_btn, self.tutorial_btn, self.logs_btn)):
+            w.setMinimumWidth(w.sizeHint().width())
+            row.addWidget(w, i // 3, i % 3)
+        row.setColumnStretch(3, 1)
         layout = QVBoxLayout(self)
         for w in (self.version, self.auto):
             layout.addWidget(w)

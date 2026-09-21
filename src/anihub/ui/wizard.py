@@ -5,14 +5,14 @@ import os
 from pathlib import Path
 
 from PySide6.QtWidgets import (
-    QApplication, QCheckBox, QRadioButton, QComboBox, QFileDialog, QFormLayout, QHBoxLayout, QLabel, QLineEdit,
+    QApplication, QButtonGroup, QCheckBox, QRadioButton, QComboBox, QFileDialog, QFormLayout, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QVBoxLayout, QWidget, QWizard, QWizardPage,
 )
 
 from anihub.core import agemode
 from anihub.core.config import Config
-from anihub.core.i18n import set_language, tr
-from anihub.services import sysreq
+from anihub.core.i18n import LANGUAGES, set_language, tr
+from anihub.services import forge_install, sysreq
 from anihub.ui.theme import apply_theme
 
 
@@ -35,9 +35,9 @@ class LanguagePage(QWizardPage):
         self.setSubTitle("Language / Язык, Theme / Тема")
         form = QFormLayout(self)
         self.lang = QComboBox()
-        self.lang.addItem("Русский", "ru")
-        self.lang.addItem("English", "en")
-        self.lang.setCurrentIndex(0 if cfg.get("language") == "ru" else 1)
+        for code, name in LANGUAGES.items():
+            self.lang.addItem(name, code)
+        self.lang.setCurrentIndex(max(self.lang.findData(cfg.get("language")), 0))
         self.theme = QComboBox()
         for key in ("system", "light", "dark"):
             self.theme.addItem(key, key)
@@ -150,16 +150,108 @@ class SystemPage(QWizardPage):
         lines = []
         java = sysreq.check_java()
         lines.append(("✔ " if java.ok else "✖ ") + (tr("sys.java.ok", d=java.detail) if java.ok else tr("sys.java.no")))
-        gpu = sysreq.check_gpu()
-        if not gpu.ok:
-            lines.append("✖ " + tr("sys.gpu.no"))
-        elif gpu.value < 6:
-            lines.append("⚠ " + tr("sys.gpu.low", d=gpu.detail))
-        else:
-            lines.append("✔ " + tr("sys.gpu.ok", d=gpu.detail))
         disk = sysreq.check_disk(self.library_page.edit.text())
         lines.append(("✔ " + tr("sys.disk.ok", gb=disk.value)) if disk.ok else ("⚠ " + tr("sys.disk.low", gb=disk.value)))
         self.report.setText("\n\n".join(lines))
+
+
+class ForgePage(QWizardPage):
+    """Does this computer suit Stable Diffusion Forge? If yes: download it, point to an installed one, or decide later.
+    If not, the whole generation section is switched off (config `sd.enabled`)."""
+
+    def __init__(self, cfg: Config, library_page: LibraryPage):
+        super().__init__()
+        self.cfg, self.library_page = cfg, library_page
+        self.assessment: sysreq.ForgeAssessment | None = None
+        self.label = QLabel()
+        self.label.setWordWrap(True)
+        self.report = QLabel()
+        self.report.setWordWrap(True)
+        self.verdict = QLabel()
+        self.verdict.setWordWrap(True)
+        self.download = QRadioButton()
+        self.existing = QRadioButton()
+        self.later = QRadioButton()
+        group = QButtonGroup(self)
+        for b in (self.download, self.existing, self.later):
+            group.addButton(b)
+        self.install_dir = QLineEdit(str(Path.home() / "AniHUB-Forge"))
+        self.existing_dir = QLineEdit(str(cfg.get("forge.path") or ""))
+        self.install_browse = QPushButton()
+        self.existing_browse = QPushButton()
+        self.hint = QLabel()
+        self.hint.setWordWrap(True)
+        self.options = QWidget()
+        grid = QVBoxLayout(self.options)
+        grid.setContentsMargins(0, 0, 0, 0)
+        for radio, edit, browse in ((self.download, self.install_dir, self.install_browse),
+                                    (self.existing, self.existing_dir, self.existing_browse)):
+            grid.addWidget(radio)
+            row = QHBoxLayout()
+            row.setContentsMargins(26, 0, 0, 0)
+            row.addWidget(edit, 1)
+            row.addWidget(browse)
+            grid.addLayout(row)
+        grid.addWidget(self.later)
+        layout = QVBoxLayout(self)
+        for w in (self.label, self.report, self.verdict, self.options, self.hint):
+            layout.addWidget(w)
+        self.install_browse.clicked.connect(lambda: self._browse(self.install_dir))
+        self.existing_browse.clicked.connect(lambda: self._browse(self.existing_dir))
+        for b in (self.download, self.existing, self.later):
+            b.toggled.connect(self._sync)
+
+    def _browse(self, edit: QLineEdit) -> None:
+        folder = QFileDialog.getExistingDirectory(self, tr("wizard.browse"), edit.text())
+        if folder:
+            edit.setText(os.path.normpath(folder))
+
+    def _sync(self) -> None:
+        self.install_dir.setEnabled(self.download.isChecked())
+        self.install_browse.setEnabled(self.download.isChecked())
+        self.existing_dir.setEnabled(self.existing.isChecked())
+        self.existing_browse.setEnabled(self.existing.isChecked())
+
+    def initializePage(self) -> None:
+        self.setTitle(tr("wizard.forge.title"))
+        self.label.setText(tr("wizard.forge.text"))
+        for b, key in ((self.download, "wizard.forge.download"), (self.existing, "wizard.forge.existing"),
+                       (self.later, "wizard.forge.later")):
+            b.setText(tr(key))
+        self.install_browse.setText(tr("wizard.browse"))
+        self.existing_browse.setText(tr("wizard.browse"))
+        a = self.assessment = sysreq.assess_forge(self.install_dir.text())
+        lines = [("✔ " if a.vram_gb >= sysreq.MIN_VRAM_GB else "✖ ") + (tr("sys.forge.gpu", d=a.gpu, gb=f"{a.vram_gb:.0f}") if a.gpu else tr("sys.forge.no_gpu")),
+                 ("✔ " if a.ram_gb >= sysreq.MIN_RAM_GB or not a.ram_gb else "✖ ") + tr("sys.forge.ram", gb=f"{a.ram_gb:.0f}"),
+                 ("✔ " if a.disk_gb >= sysreq.MIN_DISK_GB else "⚠ ") + tr("sys.forge.disk", gb=f"{a.disk_gb:.0f}")]
+        self.report.setText("\n".join(lines))
+        weak = "\n".join("• " + tr(p) for p in a.problems)
+        if not a.suitable:
+            self.verdict.setText(tr("wizard.forge.no") + "\n" + weak)
+        elif a.level == "low":
+            self.verdict.setText(tr("wizard.forge.low") + "\n" + weak)
+        else:
+            self.verdict.setText(tr("wizard.forge.ok"))
+        self.options.setVisible(a.suitable)
+        self.hint.setText(tr("wizard.forge.rtx50") if "RTX 50" in a.gpu.upper() else "")
+        self.download.setChecked(True)
+        self._sync()
+
+    def validatePage(self) -> bool:
+        a = self.assessment
+        if a is None or not a.suitable:
+            self.cfg.set("sd.enabled", False, save=False)               # no generation on this computer: the section is hidden
+            return True
+        self.cfg.set("sd.enabled", True, save=False)
+        if self.existing.isChecked():
+            path = forge_install.forge_path_of(self.existing_dir.text().strip()) if self.existing_dir.text().strip() else None
+            if path is None:
+                self.hint.setText(tr("wizard.forge.bad_folder"))
+                return False
+            self.cfg.set("forge.path", str(path), save=False)
+        elif self.download.isChecked():
+            self.cfg.set("sd.install_pending", self.install_dir.text().strip(), save=False)     # the main window downloads it
+        return True
 
 
 class DonePage(QWizardPage):
@@ -186,7 +278,7 @@ class SetupWizard(QWizard):
                             (QWizard.WizardButton.FinishButton, "wizard.finish"), (QWizard.WizardButton.CancelButton, "wizard.cancel")):
             self.setButtonText(button, tr(key))
         library_page = LibraryPage(cfg)
-        for page in (LanguagePage(cfg), library_page, RatingPage(cfg), SystemPage(cfg, library_page), DonePage()):
+        for page in (LanguagePage(cfg), library_page, RatingPage(cfg), SystemPage(cfg, library_page), ForgePage(cfg, library_page), DonePage()):
             self.addPage(page)
 
     def initializePage(self, page_id: int) -> None:  # noqa: N802

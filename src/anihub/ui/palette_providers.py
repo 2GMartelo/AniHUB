@@ -21,27 +21,28 @@ def sections(win) -> list[Entry]:
     s = tr("palette.section")
     out: list[Entry] = []
 
-    def go(row: int, tabs=None, widget=None):
+    def go(section: str, tabs=None, widget=None):
         def action() -> None:
-            win.nav.setCurrentRow(row)
+            win.go(section)
             if tabs is not None and widget is not None:
                 tabs.setCurrentWidget(widget)
         return action
 
-    out += [Entry(f"{tr('nav.arts')} · {tr('tab.browse')}", go(0, win.arts, win.browse), s, "sites booru"),
-            Entry(f"{tr('nav.arts')} · {tr('tab.library')}", go(0, win.arts, win.library), s, "library"),
-            Entry(tr("nav.manga"), go(1), s, "manga"),
-            Entry(f"{tr('nav.manga')} · {tr('manga.tab.browse')}", go(1, win.manga_page.tabs, win.manga_page.browse), s, "catalog"),
-            Entry(f"{tr('nav.manga')} · {tr('manga.tab.library')}", go(1, win.manga_page.tabs, win.manga_page.library), s),
-            Entry(tr("nav.sd"), go(2), s, "stable diffusion forge generate"),
-            Entry(f"{tr('nav.sd')} · CivitAI", go(2, win.sd_page.tabs, win.sd_page.civitai), s),
-            Entry(tr("nav.anime"), go(3), s, "anime"),
-            Entry(f"{tr('nav.anime')} · {tr('anime.tab.season')}", go(3, win.anime_page.tabs, win.anime_page.season), s, "season calendar"),
-            Entry(f"{tr('nav.anime')} · {tr('anime.tab.list')}", go(3, win.anime_page.tabs, win.anime_page.mylist), s, "list tracker"),
-            Entry(f"{tr('nav.anime')} · {tr('anime.tab.watch')}", go(3, win.anime_page.tabs, win.anime_page.watch), s, "watch player"),
-            Entry(f"{tr('nav.anime')} · {tr('anime.tab.music')}", go(3, win.anime_page.tabs, win.anime_page.music_hub), s, "music ost soundtrack"),
-            Entry(tr("nav.novels"), go(4), s, "novels books ranobe"),
-            Entry(tr("nav.settings"), go(5), s, "settings")]
+    out += [Entry(f"{tr('nav.arts')} · {tr('tab.browse')}", go("arts", win.arts, win.browse), s, "sites booru"),
+            Entry(f"{tr('nav.arts')} · {tr('tab.library')}", go("arts", win.arts, win.library), s, "library"),
+            Entry(tr("nav.manga"), go("manga"), s, "manga"),
+            Entry(f"{tr('nav.manga')} · {tr('manga.tab.browse')}", go("manga", win.manga_page.tabs, win.manga_page.browse), s, "catalog"),
+            Entry(f"{tr('nav.manga')} · {tr('manga.tab.library')}", go("manga", win.manga_page.tabs, win.manga_page.library), s),
+            Entry(tr("nav.anime"), go("anime"), s, "anime"),
+            Entry(f"{tr('nav.anime')} · {tr('anime.tab.season')}", go("anime", win.anime_page.tabs, win.anime_page.season), s, "season calendar"),
+            Entry(f"{tr('nav.anime')} · {tr('anime.tab.list')}", go("anime", win.anime_page.tabs, win.anime_page.mylist), s, "list tracker"),
+            Entry(f"{tr('nav.anime')} · {tr('anime.tab.watch')}", go("anime", win.anime_page.tabs, win.anime_page.watch), s, "watch player"),
+            Entry(f"{tr('nav.anime')} · {tr('anime.tab.music')}", go("anime", win.anime_page.tabs, win.anime_page.music_hub), s, "music ost soundtrack"),
+            Entry(tr("nav.novels"), go("novels"), s, "novels books ranobe"),
+            Entry(tr("nav.settings"), go("settings"), s, "settings")]
+    if win.sd_enabled:
+        out += [Entry(tr("nav.sd"), go("sd"), s, "stable diffusion forge generate"),
+                Entry(f"{tr('nav.sd')} · CivitAI", go("sd", win.sd_page.tabs, win.sd_page.civitai), s)]
     return out
 
 
@@ -56,14 +57,14 @@ def actions(win) -> list[Entry]:
 
     def library_tool(method: str):
         def run() -> None:
-            win.nav.setCurrentRow(0)
+            win.go("arts")
             win.arts.setCurrentWidget(win.library)
             getattr(win.library, method)()
         return run
 
     return [
-        Entry(tr("palette.check_updates"), lambda: (win.nav.setCurrentRow(5), win.settings.about.check_now()), a, "update version"),
-        Entry(tr("palette.backup_now"), lambda: (win.nav.setCurrentRow(5), win.settings.backup.backup_now()), a, "backup copy"),
+        Entry(tr("palette.check_updates"), lambda: (win.go("settings"), win.settings.about.check_now()), a, "update version"),
+        Entry(tr("palette.backup_now"), lambda: (win.go("settings"), win.settings.backup.backup_now()), a, "backup copy"),
         Entry(tr("palette.downloads"), lambda: (win.downloads_btn.show(), win.downloads_btn.open_window()), a, "downloads queue"),
         Entry(tr("palette.offline"), win.offline_btn.toggle, a, "offline online network"),
         Entry(tr("palette.theme"), toggle_theme, a, "theme dark light"),
@@ -88,7 +89,7 @@ def library_search(win, query: str) -> list[Entry]:
 
     def search(text: str):
         def run() -> None:
-            win.nav.setCurrentRow(0)
+            win.go("arts")
             win.arts.setCurrentWidget(win.library)
             win.library.query.setText(text)
             win.library.reload()
@@ -106,7 +107,7 @@ def novels(win, query: str) -> list[Entry]:
     if len(q) < 2:
         return []
     return [Entry(row["title"] + (f" — {row['author']}" if row["author"] else ""),
-                  (lambda r=dict(row): (win.nav.setCurrentRow(4), win.novels_page.open_book(r))), tr("palette.book"), "")
+                  (lambda r=dict(row): (win.go("novels"), win.novels_hub.setCurrentWidget(win.novels_page), win.novels_page.open_book(r))), tr("palette.book"), "")
             for row in win.ctx.db.novels(q)[:8]]
 
 
@@ -117,7 +118,7 @@ def anime_list(win, query: str) -> list[Entry]:
     out = []
     for row in win.ctx.db.anime_entries():
         if q in (row["title"] or "").lower() or q in (row["title_native"] or "").lower():
-            out.append(Entry(row["title"], (lambda r=row: (win.nav.setCurrentRow(3), win.anime_page.show_media(media_from_row(r)))),
+            out.append(Entry(row["title"], (lambda r=row: (win.go("anime"), win.anime_page.show_media(media_from_row(r)))),
                              tr("palette.anime"), ""))
         if len(out) >= 8:
             break

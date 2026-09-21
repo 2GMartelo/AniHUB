@@ -358,6 +358,39 @@ STRINGS: dict[str, dict[str, str]] = {
         "settings.custom.accent": "Accent",
         "settings.custom.reset": "Reset",
         "settings.smooth": "Smooth mouse-wheel scrolling",
+        "wizard.forge.title": "Image generation (Stable Diffusion)",
+        "wizard.forge.text": "The Generation section runs on Stable Diffusion Forge and needs an NVIDIA graphics card. Checking your computer:",
+        "wizard.forge.ok": "Your computer is suitable. What should be done about Forge?",
+        "wizard.forge.low": "Your computer is suitable, with limits:",
+        "wizard.forge.no": "Your computer is not suitable for Stable Diffusion Forge, so the Generation section and every function tied to it will be hidden. You can check again later in Settings.",
+        "wizard.forge.download": "Download Forge (about 1.8 GB) into the folder:",
+        "wizard.forge.existing": "Forge is already downloaded — choose its folder:",
+        "wizard.forge.later": "Decide later (the section stays, set the path in Settings)",
+        "wizard.forge.bad_folder": "There is no Forge in this folder (webui\\webui.bat not found). Pick the Forge package folder or its webui subfolder.",
+        "wizard.forge.rtx50": "RTX 50 cards need a recent PyTorch: the downloadable package may not support them. With an RTX 50 it is better to point to a Forge you have already set up.",
+        "sys.forge.gpu": "Graphics card: {d} ({gb} GB of video memory)",
+        "sys.forge.ram": "Memory: {gb} GB",
+        "sys.forge.disk": "Free disk space: {gb} GB",
+        "sys.forge.no_gpu": "No NVIDIA graphics card found (CUDA is required)",
+        "sys.forge.small_gpu": "Less than 4 GB of video memory",
+        "sys.forge.weak_gpu": "4–6 GB of video memory: light models and small sizes only",
+        "sys.forge.small_ram": "Less than 8 GB of memory",
+        "sys.forge.weak_ram": "Less than 16 GB of memory: expect slowdowns",
+        "sys.forge.low_disk": "Less than 15 GB free: pick another drive for Forge",
+        "sd.check.title": "Image generation",
+        "sd.check.button": "Check the computer again",
+        "sd.download.button": "Download Forge…",
+        "sd.check.enabled": "The Generation section is on.",
+        "sd.check.disabled": "The Generation section is off: this computer is not suitable for Stable Diffusion Forge.",
+        "sd.check.restart": "Restart AniHUB for the change to take effect.",
+        "forge.install.title": "Installing Stable Diffusion Forge",
+        "forge.install.text": "Downloading Forge (about 1.8 GB) and unpacking it into:\n{dest}",
+        "forge.install.release": "Looking for the latest version…",
+        "forge.install.download": "Downloaded {done} of {total} MB",
+        "forge.install.extract": "Unpacking (a few minutes)…",
+        "forge.install.done": "Done. Forge is installed: {path}",
+        "forge.install.failed": "Failed: {msg}",
+        "forge.install.close": "Close",
         "viewer.unsupported": "Cannot display {name}. Open the page in a browser: {url}",
         "tagcat.artist": "Artist", "tagcat.copyright": "Copyright", "tagcat.character": "Characters",
         "tagcat.general": "Tags", "tagcat.meta": "Meta",
@@ -904,6 +937,39 @@ STRINGS: dict[str, dict[str, str]] = {
         "settings.custom.accent": "Акцент",
         "settings.custom.reset": "Сбросить",
         "settings.smooth": "Плавная прокрутка колесом мыши",
+        "wizard.forge.title": "Генерация изображений (Stable Diffusion)",
+        "wizard.forge.text": "Раздел «Генерация» работает через Stable Diffusion Forge и требует видеокарту NVIDIA. Проверяю ваш компьютер:",
+        "wizard.forge.ok": "Компьютер подходит. Что сделать с Forge?",
+        "wizard.forge.low": "Компьютер подходит, но с ограничениями:",
+        "wizard.forge.no": "Компьютер не подходит для Stable Diffusion Forge, поэтому раздел «Генерация» и все связанные с ним функции будут скрыты. Позже это можно проверить снова в Настройках.",
+        "wizard.forge.download": "Скачать Forge (около 1,8 ГБ) в папку:",
+        "wizard.forge.existing": "Forge уже скачан — указать папку:",
+        "wizard.forge.later": "Решу позже (раздел останется, путь можно указать в Настройках)",
+        "wizard.forge.bad_folder": "В этой папке нет Forge (не найден webui\\webui.bat). Укажите папку пакета Forge или его подпапку webui.",
+        "wizard.forge.rtx50": "Видеокарты RTX 50 требуют свежий PyTorch: пакет для скачивания может их не поддерживать. Если у вас RTX 50, лучше указать уже настроенный Forge.",
+        "sys.forge.gpu": "Видеокарта: {d} ({gb} ГБ видеопамяти)",
+        "sys.forge.ram": "Оперативная память: {gb} ГБ",
+        "sys.forge.disk": "Свободно на диске: {gb} ГБ",
+        "sys.forge.no_gpu": "Видеокарта NVIDIA не найдена (нужна для CUDA)",
+        "sys.forge.small_gpu": "Видеопамяти меньше 4 ГБ",
+        "sys.forge.weak_gpu": "Видеопамяти 4–6 ГБ: подойдут лёгкие модели и небольшие размеры",
+        "sys.forge.small_ram": "Оперативной памяти меньше 8 ГБ",
+        "sys.forge.weak_ram": "Оперативной памяти меньше 16 ГБ: возможны подтормаживания",
+        "sys.forge.low_disk": "Свободного места меньше 15 ГБ: выберите другой диск для Forge",
+        "sd.check.title": "Генерация изображений",
+        "sd.check.button": "Проверить компьютер заново",
+        "sd.download.button": "Скачать Forge…",
+        "sd.check.enabled": "Раздел «Генерация» включён.",
+        "sd.check.disabled": "Раздел «Генерация» отключён: компьютер не подходит для Stable Diffusion Forge.",
+        "sd.check.restart": "Перезапустите AniHUB, чтобы изменение вступило в силу.",
+        "forge.install.title": "Установка Stable Diffusion Forge",
+        "forge.install.text": "Скачиваю Forge (около 1,8 ГБ) и распаковываю в:\n{dest}",
+        "forge.install.release": "Ищу последнюю версию…",
+        "forge.install.download": "Скачано {done} из {total} МБ",
+        "forge.install.extract": "Распаковка (несколько минут)…",
+        "forge.install.done": "Готово. Forge установлен: {path}",
+        "forge.install.failed": "Не удалось: {msg}",
+        "forge.install.close": "Закрыть",
         "viewer.unsupported": "Не удаётся показать {name}. Откройте страницу в браузере: {url}",
         "tagcat.artist": "Автор", "tagcat.copyright": "Тайтл", "tagcat.character": "Персонажи",
         "tagcat.general": "Теги", "tagcat.meta": "Мета",
@@ -1100,8 +1166,43 @@ STRINGS: dict[str, dict[str, str]] = {
 }
 
 
+# Languages beyond the two hand-maintained tables above live in core/lang/<code>_*.py as "<key number>|<text>" lines: the number is
+# the position in core/lang/keys.py (frozen). A key that a language lacks falls back to English.
+LANGUAGES = {"ru": "Русский", "en": "English", "ja": "日本語", "zh": "简体中文", "es": "Español", "pt": "Português",
+             "fr": "Français", "de": "Deutsch"}
+EXTRA = ("ja", "zh", "es", "pt", "fr", "de")
+_PARTS = ("a", "b")
+
+
+def parse_table(data: str, keys: list[str]) -> dict[str, str]:
+    r"""'12|text' lines -> {key: text}; a backslash-n in a text is a line break; lines that do not parse are skipped."""
+    table: dict[str, str] = {}
+    for line in data.splitlines():
+        number, _, text = line.partition("|")
+        if number.strip().isdigit() and text and int(number) < len(keys):
+            table[keys[int(number)]] = text.replace("\\n", "\n")
+    return table
+
+
+def _load_extra(code: str) -> dict[str, str]:
+    import importlib
+
+    from anihub.core.lang.keys import KEYS
+
+    table: dict[str, str] = {}
+    for part in _PARTS:
+        try:
+            module = importlib.import_module(f"anihub.core.lang.{code}_{part}")
+        except ImportError:
+            continue
+        table.update(parse_table(module.DATA, KEYS))
+    return table
+
+
 def set_language(lang: str) -> None:
     global _lang
+    if lang in EXTRA and lang not in STRINGS:
+        STRINGS[lang] = _load_extra(lang)
     _lang = lang if lang in STRINGS else "en"
 
 

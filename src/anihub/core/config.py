@@ -31,6 +31,7 @@ DEFAULTS: dict[str, Any] = {
     "manga": {"port": 4567, "autostart": False, "poll_minutes": 30, "seen_chapter_id": -1,
               "reader": {"mode": "paged", "rtl": True, "double": False}},
     "browse": {"last_source": "danbooru", "page_size": 40},
+    "sd": {"enabled": True, "install_pending": ""},         # enabled: False = this PC cannot run Forge, the section is hidden
     "ui": {"thumb_size": 180, "confirm_trash": True, "glass": True, "smooth_scroll": True, "close_action": ""},   # close_action: "" = ask | tray | quit
     "library": {"near_dedup": "warn", "near_threshold": 6, "trash_days": 7},
     "autotag": {"enabled": False, "general_threshold": 0.35, "character_threshold": 0.85},

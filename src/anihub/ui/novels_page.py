@@ -22,7 +22,7 @@ from anihub.ui.grid import ThumbGrid, image_to_thumb
 from anihub.ui.workers import run_async
 
 THEMES = {  # reading themes: (background, text, link)
-    "dark": ("#15181e", "#d8dce4", "#a996ff"),
+    "dark": ("#17131f", "#ddd8e6", "#cfa9ff"),
     "light": ("#fbfbf9", "#1e2230", "#a8285f"),
     "sepia": ("#f4ecd8", "#3b2f22", "#8a4b12"),
 }

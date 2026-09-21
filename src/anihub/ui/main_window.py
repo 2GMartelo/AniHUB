@@ -56,24 +56,30 @@ class MainWindow(QMainWindow):
         self.browse.subscribed.connect(self.subscriptions.reload)
         self.subscriptions.changed.connect(self._update_subscription_badge)
 
-        self.forge = ForgeController(
-            ctx.forge, idle_minutes=lambda: int(ctx.cfg.get("forge.idle_minutes", 0) or 0), parent=self)
-        # one controller per backend: the primary Forge plus optional extra instances (multi-GPU)
-        self.sd_controllers = {"main": self.forge}
-        for backend in ctx.backends[1:]:
-            self.sd_controllers[backend.name] = ForgeController(
-                backend, idle_minutes=lambda: int(ctx.cfg.get("forge.idle_minutes", 0) or 0), parent=self)
-            self.sd_controllers[backend.name].poll()
-        self.sd_page = SDPage(ctx, self.forge, self.sd_controllers)
-        self.forge.state_changed.connect(self._on_forge_state)
-        self.forge_status = QLabel()
-        self.statusBar().addPermanentWidget(self.forge_status)
-        self._on_forge_state(self.forge.state.value)
-        self.forge.poll()  # attach to an already running Forge, if any
+        self.sd_enabled = ctx.sd_enabled
+        self.forge = None
+        self.sd_page = None
+        self.forge_status = None
+        self.sd_controllers: dict = {}
+        if self.sd_enabled:
+            self.forge = ForgeController(
+                ctx.forge, idle_minutes=lambda: int(ctx.cfg.get("forge.idle_minutes", 0) or 0), parent=self)
+            # one controller per backend: the primary Forge plus optional extra instances (multi-GPU)
+            self.sd_controllers = {"main": self.forge}
+            for backend in ctx.backends[1:]:
+                self.sd_controllers[backend.name] = ForgeController(
+                    backend, idle_minutes=lambda: int(ctx.cfg.get("forge.idle_minutes", 0) or 0), parent=self)
+                self.sd_controllers[backend.name].poll()
+            self.sd_page = SDPage(ctx, self.forge, self.sd_controllers)
+            self.forge.state_changed.connect(self._on_forge_state)
+            self.forge_status = QLabel()
+            self.statusBar().addPermanentWidget(self.forge_status)
+            self._on_forge_state(self.forge.state.value)
+            self.forge.poll()  # attach to an already running Forge, if any
 
-        # library -> img2img bridge (ТЗ 5.3)
-        self.library.send_to_img2img.connect(self._to_img2img)
-        self.sd_page.saved.send_to_img2img.connect(self._to_img2img)
+            # library -> img2img bridge (ТЗ 5.3)
+            self.library.send_to_img2img.connect(self._to_img2img)
+            self.sd_page.saved.send_to_img2img.connect(self._to_img2img)
         self.manga_ctrl = MangaController(ctx, parent=self)
         self.manga_page = MangaPage(ctx, self.manga_ctrl)
         self.manga_ctrl.new_chapters.connect(self._on_new_chapters)
@@ -91,15 +97,17 @@ class MainWindow(QMainWindow):
         self.settings.saved.connect(self.library.reload)
 
         self.pages = QStackedWidget()
-        sections = [
-            (tr("nav.arts"), arts), (tr("nav.manga"), self.manga_page), (tr("nav.sd"), self.sd_page),
-            (tr("nav.anime"), self.anime_page), (tr("nav.novels"), self.novels_hub),
-            (tr("nav.settings"), self.settings),
-        ]
+        # (key, title, page, icon): manga, then light novels right under it; generation only where Forge can run
+        sections = [("arts", tr("nav.arts"), arts, "image"), ("manga", tr("nav.manga"), self.manga_page, "book"),
+                    ("novels", tr("nav.novels"), self.novels_hub, "file-text")]
+        if self.sd_enabled:
+            sections.append(("sd", tr("nav.sd"), self.sd_page, "sparkles"))
+        sections += [("anime", tr("nav.anime"), self.anime_page, "tv"), ("settings", tr("nav.settings"), self.settings, "sliders")]
         self.nav = NavRail()
-        nav_icons = ["image", "book", "sparkles", "tv", "file-text", "sliders"]
-        for i, ((title, page), icon_name) in enumerate(zip(sections, nav_icons)):
-            self.nav.add_item(title, icon_name, bottom=(i == len(sections) - 1))  # settings sit at the bottom
+        self.rows: dict[str, int] = {}
+        for i, (key, title, page, icon_name) in enumerate(sections):
+            self.rows[key] = i
+            self.nav.add_item(title, icon_name, bottom=(key == "settings"))  # settings sit at the bottom
             self.pages.addWidget(page)
         self.nav.currentRowChanged.connect(self.pages.setCurrentIndex)
         self.nav.setCurrentRow(0)
@@ -265,10 +273,11 @@ class MainWindow(QMainWindow):
         if value and manga_tabs.currentWidget() in (self.manga_page.browse, self.manga_page.extensions):
             manga_tabs.setCurrentWidget(self.manga_page.library)
         self.anime_page.set_offline(bool(value))
-        sd_tabs = self.sd_page.tabs
-        sd_tabs.setTabEnabled(sd_tabs.indexOf(self.sd_page.civitai), not value)
-        if value and sd_tabs.currentWidget() is self.sd_page.civitai:
-            sd_tabs.setCurrentWidget(self.sd_page.generate)
+        if self.sd_page is not None:
+            sd_tabs = self.sd_page.tabs
+            sd_tabs.setTabEnabled(sd_tabs.indexOf(self.sd_page.civitai), not value)
+            if value and sd_tabs.currentWidget() is self.sd_page.civitai:
+                sd_tabs.setCurrentWidget(self.sd_page.generate)
 
     @staticmethod
     def _scrollable(widget: QWidget) -> QScrollArea:
@@ -295,13 +304,19 @@ class MainWindow(QMainWindow):
     def _on_forge_state(self, state: str) -> None:
         self.forge_status.setText(f'<span style="color:{state_color(state)}">●</span>&nbsp; Forge: {tr(f"forge.state.{state}")}')
 
+    def go(self, section: str) -> None:
+        """Switch to a section by name ("arts", "manga", "novels", "sd", "anime", "settings"); a hidden one is ignored."""
+        row = self.rows.get(section)
+        if row is not None:
+            self.nav.setCurrentRow(row)
+
     def _to_img2img(self, row: dict) -> None:
         """Open the SD section with the chosen library picture as the img2img source."""
         from pathlib import Path
         from anihub.ui.library_view import row_prompt
         path = self.ctx.paths.root / (row["trash_path"] if row.get("trashed_at") and row.get("trash_path") else row["path"])
         prompt, negative = row_prompt(self.ctx, row)
-        self.nav.setCurrentRow(2)
+        self.go("sd")
         self.sd_page.show_generate_tab()
         self.sd_page.generate.use_as_init(Path(path), prompt, negative)
 
@@ -329,32 +344,49 @@ class MainWindow(QMainWindow):
     # --- first-run tutorial ---------------------------------------------------------------------------------
 
     def tutorial_steps(self) -> list[Step]:
-        def section(row: int, tab: int | None = None):
+        def section(name: str, tab: int | None = None):
             def go() -> None:
-                self.nav.setCurrentRow(row)
+                self.go(name)
                 if tab is not None:
                     self.arts.setCurrentIndex(tab)
             return go
 
-        rail = lambda i: (lambda: self.nav._buttons[i])
-        return [
-            Step("welcome", None, section(0, 0)),
-            Step("nav_arts", rail(0), section(0, 0)),
-            Step("tabs", self.arts.tabBar, section(0, 0)),
-            Step("source", lambda: self.browse.source, section(0, 0)),
-            Step("search", lambda: self.browse.query, section(0, 0)),
-            Step("save", lambda: self.browse.save_btn, section(0, 0)),
-            Step("subscribe", lambda: self.browse.subscribe_btn, section(0, 0)),
-            Step("nav_manga", rail(1), section(1)),
-            Step("nav_sd", rail(2), section(2)),
-            Step("nav_anime", rail(3), section(3)),
-            Step("anime_tabs", self.anime_page.tabs.tabBar, section(3)),
-            Step("nav_novels", rail(4), section(4)),
-            Step("novels_tabs", self.novels_hub.tabBar, section(4)),
-            Step("age", lambda: self.settings.age_mode, section(5)),
-            Step("offline", lambda: self.offline_btn, section(5)),
-            Step("finish", None, section(0, 0)),
+        rail = lambda name: (lambda: self.nav._buttons[self.rows[name]])
+        steps = [
+            Step("welcome", None, section("arts", 0)),
+            Step("nav_arts", rail("arts"), section("arts", 0)),
+            Step("tabs", self.arts.tabBar, section("arts", 0)),
+            Step("source", lambda: self.browse.source, section("arts", 0)),
+            Step("search", lambda: self.browse.query, section("arts", 0)),
+            Step("save", lambda: self.browse.save_btn, section("arts", 0)),
+            Step("subscribe", lambda: self.browse.subscribe_btn, section("arts", 0)),
+            Step("nav_manga", rail("manga"), section("manga")),
+            Step("nav_novels", rail("novels"), section("novels")),
+            Step("novels_tabs", self.novels_hub.tabBar, section("novels")),
         ]
+        if self.sd_enabled:
+            steps.append(Step("nav_sd", rail("sd"), section("sd")))
+        steps += [
+            Step("nav_anime", rail("anime"), section("anime")),
+            Step("anime_tabs", self.anime_page.tabs.tabBar, section("anime")),
+            Step("age", lambda: self.settings.age_mode, section("settings")),
+            Step("offline", lambda: self.offline_btn, section("settings")),
+            Step("finish", None, section("arts", 0)),
+        ]
+        return steps
+
+    def maybe_install_forge(self) -> None:
+        """The first-run wizard chose "download Forge": do it now (once), with a progress window."""
+        dest = str(self.ctx.cfg.get("sd.install_pending") or "")
+        if not dest or not self.sd_enabled or self._tutorial is not None:
+            return
+        from anihub.ui.forge_install_dialog import ForgeInstallDialog
+
+        self.ctx.cfg.set("sd.install_pending", "")
+        dlg = ForgeInstallDialog(self.ctx, Path(dest), self)
+        dlg.exec()
+        if dlg.installed is not None:
+            self.settings.forge_path.setText(str(dlg.installed))
 
     def start_tutorial(self) -> None:
         """The guided tour (after the first run, or from Settings / the command palette)."""
@@ -367,8 +399,9 @@ class MainWindow(QMainWindow):
     def _tutorial_done(self, _completed: bool) -> None:
         self._tutorial = None
         self.ctx.cfg.set("tutorial.pending", False)
-        self.nav.setCurrentRow(0)
+        self.go("arts")
         self.arts.setCurrentIndex(0)
+        QTimer.singleShot(500, self.maybe_install_forge)
 
     def paintEvent(self, event) -> None:  # noqa: N802
         if is_glass():

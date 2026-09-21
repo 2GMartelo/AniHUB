@@ -81,7 +81,7 @@ class LibraryView(QWidget):
             self.sort.addItem(tr(f"sort.{key}"), key)
         self.sort.setCurrentIndex(max(self.sort.findData(cfg.get("library.sort", "added")), 0))
         self.order_btn = QPushButton("↓" if cfg.get("library.desc", True) else "↑")
-        self.order_btn.setFixedWidth(34)
+        self.order_btn.setFixedWidth(44)
         self.order_btn.setToolTip(tr("sort.order"))
         self.stars_filter = QComboBox()
         self.stars_filter.addItem(tr("lib.any_stars"), 0)
@@ -563,7 +563,8 @@ class LibraryView(QWidget):
         export.addAction(tr("export.pack"), lambda: self._export(ids, "pack"))
         export.addAction(tr("export.html"), lambda: self._export(ids, "html"))
         if len(rows) == 1:
-            menu.addAction(tr("lib.to_img2img"), lambda: self.send_to_img2img.emit(dict(rows[0])))
+            if self.ctx.sd_enabled:                                     # no generation on this computer: no img2img
+                menu.addAction(tr("lib.to_img2img"), lambda: self.send_to_img2img.emit(dict(rows[0])))
             menu.addAction(tr("lib.show_folder"), lambda: os.startfile(self._file_of(rows[0]).parent))
         menu.addSeparator()
         menu.addAction(tr("lib.trash_action"), lambda: self._trash(ids))
