@@ -816,7 +816,7 @@ class PromptBuilder(QWidget):
                 if self._cancel_previews:
                     break
                 self._preview_progress.emit(i, len(rows), row["text"])
-                prompt, negative = pb.preview_prompt(row["slot"], row["text"])
+                prompt, negative = pb.preview_prompt(row["slot"], row["text"], (self.book.node(row["group_id"]) or {}).get("key") or "")
                 tmp = Path(tempfile.mkdtemp(prefix="anihub_pb_"))
                 try:
                     results = run_generation(api, GenParams(prompt=prompt, negative_prompt=negative, steps=20, width=size, height=size,

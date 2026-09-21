@@ -27,5 +27,6 @@ where = ["src"]
 anihub = ["data/*"]
 
 [tool.pytest.ini_options]
+markers = ["shipped_pack: the test uses the real picture pack that ships with the app"]
 testpaths = ["tests"]
 pythonpath = ["src"]

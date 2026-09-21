@@ -245,3 +245,50 @@ def test_automatic_pack_respects_what_the_user_did(book, tmp_path):
     (tmp_path / "bad.zip").write_bytes(b"not a zip")
     assert fresh.apply_pack(tmp_path / "bad.zip") == 0
     db2.close()
+
+
+def test_preview_prompts_follow_the_category_and_stay_safe():
+    def shot(slot, tag, cat=""):
+        return pb.preview_prompt(slot, tag, cat)[0]
+    assert "sfw" in shot("clothing", "bikini") and "nsfw" in pb.preview_prompt("clothing", "bikini")[1]
+    assert "full body" in shot("clothing", "boots", "clothing.footwear") and "cowboy shot" in shot("clothing", "shirt", "clothing.tops")
+    assert "upper body" in shot("clothing", "hat", "clothing.headwear") and "portrait" in shot("appearance", "cat ears", "appearance.features")
+    assert "upper body" in shot("pose", "peace sign", "pose.hands") and "full body" in shot("pose", "sitting", "pose.body_pose")
+    assert "2girls" in shot("pose", "hugging", "pose.action") and "1girl, solo" not in shot("pose", "hugging", "pose.action")
+    assert "no humans" in shot("lighting", "rain", "lighting.time") and "1girl" in shot("background", "white background", "background.simple")
+    assert "1girl" not in shot("subject", "2girls", "subject.count") and "1girl, 1boy" not in shot("subject", "1boy", "subject.count")
+    assert shot("camera", "full body", "camera.shot").count("full body") == 1                      # the tag is not fought by a shot of its own
+    assert shot("character", "hatsune miku", "character.popular").startswith("masterpiece") and "solo" in shot("character", "hatsune miku")
+
+
+def test_preview_prompts_for_styles_bodies_and_standing_shots():
+    p = pb.preview_prompt
+    style = p("style", "watercolor (medium)", "style.medium")[0]
+    assert style.startswith(r"(watercolor \(medium\):1.4)") and "very aesthetic" not in style               # the style comes first and is stressed
+    assert "standing, full body" in p("clothing", "thighhighs", "clothing.legwear")[0] and "sitting" in p("clothing", "thighhighs", "clothing.legwear")[1]
+    assert "sitting, full body" in p("pose", "sitting", "pose.body_pose")[0] and "denim shorts" in p("pose", "sitting", "pose.body_pose")[0]
+    assert "portrait" in p("appearance", "tan", "appearance.body")[0] and "standing, full body" in p("appearance", "tall", "appearance.body")[0]
+    assert "upper body" in p("camera", "from below", "camera.angle")[0]
+    assert pb.NO_PICTURE_SLOTS == {"quality", "extra"}
+
+
+@pytest.mark.shipped_pack
+def test_the_shipped_pack_matches_the_catalogue(tmp_path):
+    import json
+    import zipfile
+
+    assert pb.PACK_FILE.is_file(), "src/anihub/data/promptbook_pack.zip is missing"
+    with zipfile.ZipFile(pb.PACK_FILE) as zf:
+        pictures = json.loads(zf.read("index.json"))["pictures"]
+        assert all(name in zf.namelist() for name in pictures.values())
+    keys = {f"{c['key']}.{text}" for c in parse_catalog() for text, _l in c["tags"]}
+    assert set(pictures) <= keys, sorted(set(pictures) - keys)[:5]                                        # every picture belongs to a real tag
+    assert len(pictures) > 500
+    quality = {k for k in pictures if k.startswith(("quality.", "extra.", "neg_"))}
+    assert not quality, "pictures that cannot show anything should not ship"
+    db = Database(tmp_path / "lib.db")
+    book = PromptBook(db, tmp_path)
+    book.seed()                                                                                            # applies the pack by itself
+    assert sum(1 for t in book.tags() if t["image"]) == len(pictures)
+    assert all(book.image_path(t).exists() for t in book.tags() if t["image"])
+    db.close()

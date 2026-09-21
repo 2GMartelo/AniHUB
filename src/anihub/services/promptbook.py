@@ -186,19 +186,83 @@ def parse_prompt(text: str, lookup: dict[str, tuple[str, str]], negative: bool =
     return doc
 
 
-def preview_prompt(slot: str, tag: str) -> tuple[str, str]:
-    """What to generate for a tag's picture: the tag on a plain subject in the shot that shows it best."""
-    quality = "masterpiece, best quality"
-    negative = "lowres, bad anatomy, bad hands, text, watermark, worst quality"
-    if slot in ("background",):
-        return f"{quality}, no humans, scenery, {tag}", negative
-    if slot in ("clothing", "pose"):
-        return f"{quality}, 1girl, solo, {tag}, full body, simple background", negative
-    if slot in ("appearance", "expression", "character"):
-        return f"{quality}, 1girl, solo, {tag}, portrait, simple background", negative
-    if slot in ("camera", "lighting", "style"):
-        return f"{quality}, 1girl, solo, {tag}, standing, outdoors", negative
-    return f"{quality}, 1girl, solo, {tag}, upper body, simple background", negative
+PREVIEW_QUALITY = "masterpiece, best quality, very aesthetic, sfw"
+PREVIEW_NEGATIVE = "lowres, bad anatomy, bad hands, text, error, worst quality, jpeg artifacts, signature, watermark, nsfw"
+FULL_BODY = {"clothing.outfit", "clothing.footwear", "clothing.legwear", "clothing.swimwear", "appearance.body", "pose.body_pose", "pose.action"}
+WAIST_UP = {"clothing.tops", "clothing.bottoms"}
+PORTRAIT = {"appearance.hair_color", "appearance.hair_length", "appearance.hairstyle", "appearance.eye_color", "appearance.eye_shape",
+            "appearance.features", "appearance.age", "expression.mood", "expression.eyes_state"}
+CHEST_TAGS = {"flat chest", "small breasts", "medium breasts", "large breasts"}
+SKIN_TAGS = {"pale skin", "tan", "dark skin", "freckles", "mole", "mole under eye", "scar"}
+NEEDS_PARTNER = {"hugging", "holding hands"}
+SUBJECT_ITSELF = re.compile(r"^\d|^multiple |^crowd$|^no humans$")
+NO_PICTURE_SLOTS = {"quality", "extra"}       # "masterpiece" or "BREAK" cannot be shown: every picture would look the same
+
+
+def _plain_look(slot: str, category: str) -> str:
+    """A plain girl to show a tag on, so the tiles look alike: every part of her look is left out when the tag itself is about that part."""
+    parts = []
+    if not category.startswith("appearance.hair") and category != "appearance.features":
+        parts.append("short brown hair")
+    if category not in ("appearance.eye_color", "appearance.eye_shape", "expression.eyes_state"):
+        parts.append("brown eyes")
+    if slot != "clothing" or category in ("clothing.headwear", "clothing.accessories", "clothing.bottoms"):
+        parts.append("white t-shirt")
+    if category in ("clothing.footwear", "clothing.legwear"):
+        parts.append("white t-shirt, pleated skirt")
+    elif category == "clothing.tops":
+        parts.append("pleated skirt")
+    elif category in ("pose.body_pose", "pose.action"):
+        parts.append("denim shorts")
+    return "".join(", " + p for p in parts)
+
+
+def _escape(tag: str) -> str:
+    return tag.replace("(", "\\(").replace(")", "\\)")
+
+
+def preview_prompt(slot: str, tag: str, category: str = "") -> tuple[str, str]:
+    """What to generate for a tag's picture: the tag on a plain subject in the shot that shows it best. `category` (the built-in
+    category key, e.g. "clothing.footwear") refines the shot; without it the slot decides."""
+    q, negative = PREVIEW_QUALITY, PREVIEW_NEGATIVE
+    if category not in ("appearance.body", "clothing.swimwear"):
+        negative += ", cleavage, large breasts"
+    if tag == "no humans":
+        return f"{q}, no humans, scenery, nature", negative
+    if slot == "background" and category != "background.simple" or category == "lighting.time":
+        return f"{q}, no humans, scenery, {tag}", negative
+    if slot == "subject":
+        if SUBJECT_ITSELF.search(tag):
+            look = "" if tag in ("crowd", "no humans") else ", brown hair, white t-shirt"
+            return f"{q}, {tag}{look}, {'street, ' if tag == 'crowd' else ''}upper body, simple background", negative
+        return f"{q}, 1girl, {tag}{_plain_look(slot, category)}, upper body, simple background", negative
+    if slot == "character":
+        return f"{q}, {tag}, solo, upper body, simple background", negative
+    if slot == "style":                       # the art style has to win over the usual polished look: first, stressed, no booster tags
+        return f"({_escape(tag)}:1.4), sfw, best quality, 1girl, solo{_plain_look(slot, category)}, upper body", negative
+    who = "2girls" if tag in NEEDS_PARTNER else "1girl, solo"
+    who += _plain_look(slot, category)
+    if tag == "from below":
+        return f"{q}, {who}, {tag}, upper body, outdoors", negative + ", underwear, crotch"
+    if category == "camera.shot":
+        return f"{q}, {who}, {tag}, standing, outdoors", negative
+    standing = ""
+    if tag in CHEST_TAGS or tag in SKIN_TAGS:
+        shot, bg = ("upper body" if tag in CHEST_TAGS else "portrait"), "simple background"
+    elif category in FULL_BODY or (not category and slot in ("clothing", "pose")):
+        shot, bg = "full body", "simple background"
+        if not category.startswith("pose."):
+            standing = "standing, "
+            negative += ", sitting, spread legs, squatting"
+    elif category in WAIST_UP:
+        shot, bg = "cowboy shot", "simple background"
+    elif category in PORTRAIT or (not category and slot in ("appearance", "expression")):
+        shot, bg = "portrait", "simple background"
+    elif slot in ("camera", "lighting"):
+        return f"{q}, {who}, {tag}, standing, outdoors", negative
+    else:
+        shot, bg = "upper body", "simple background"
+    return f"{q}, {who}, {tag}, {standing}{shot}, {bg}", negative
 
 
 # --- the catalogue in the database ---------------------------------------------------------------------------------------
