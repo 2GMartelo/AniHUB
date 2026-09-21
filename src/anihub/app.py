@@ -32,6 +32,13 @@ def main() -> int:
             return 0
         apply_theme(app, cfg.get("theme"))
 
+    from pathlib import Path
+
+    from anihub.core.paths import LibraryPaths
+    from anihub.services.backup import apply_pending_restore
+
+    if apply_pending_restore(LibraryPaths(Path(cfg.get("library_path")))):      # a restore chosen in Settings; must run before the DB opens
+        cfg.set("backup.restored_notice", True)
     ctx = AppContext.build(cfg)
     window = MainWindow(ctx)
     window.show()

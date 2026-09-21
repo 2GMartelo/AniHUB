@@ -127,6 +127,10 @@ class MainWindow(QMainWindow):
         self.statusBar().insertPermanentWidget(0, self.update_btn)
         self.settings.about.update_found.connect(self._update_found)
         QTimer.singleShot(6000, self._auto_check_updates)          # after startup, in the background
+        QTimer.singleShot(20000, self._auto_backup)
+        if ctx.cfg.get("backup.restored_notice", False):
+            ctx.cfg.set("backup.restored_notice", False)
+            QTimer.singleShot(1500, lambda: self.statusBar().showMessage(tr("backup.restored"), 15000))
 
         self.offline_btn = QToolButton()
         self.offline_btn.setObjectName("offlineToggle")
@@ -146,6 +150,11 @@ class MainWindow(QMainWindow):
         self.browse.on_batch(tr("dl.batch_status", details=summary_text(result.counts)))
         if result.total >= int(self.ctx.cfg.get("downloads.notify_min", 10)) and getattr(self, "tray", None) is not None:
             self.tray.showMessage(APP_NAME, notify_text(result), QSystemTrayIcon.MessageIcon.Information, 6000)
+
+    def _auto_backup(self) -> None:
+        from anihub.services import backup
+
+        run_async(lambda: backup.run_if_due(self.ctx.paths, self.ctx.cfg), on_error=lambda exc: None)
 
     def _auto_check_updates(self) -> None:
         if self.ctx.cfg.get("network.offline", False):

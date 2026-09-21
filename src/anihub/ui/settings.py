@@ -17,6 +17,7 @@ from anihub.sources.base import RATINGS
 from anihub.ui.workers import run_async
 from anihub.ui import style
 from anihub.ui.about_box import AboutBox
+from anihub.ui.backup_box import BackupBox
 from anihub.ui.theme import apply_theme
 
 
@@ -29,6 +30,7 @@ class SettingsPage(QWidget):
         self.ctx = ctx
         cfg = ctx.cfg
         self.about = AboutBox(ctx, quit_app)
+        self.backup = BackupBox(ctx)
 
         self.lang = QComboBox()
         self.lang.addItem("Русский", "ru")
@@ -198,7 +200,7 @@ class SettingsPage(QWidget):
         cl = QVBoxLayout(content)
         cl.setContentsMargins(0, 0, 8, 12)
         cl.setSpacing(6)
-        for box in (look_box, storage_box, network_box, creds_box, forge_box, gen_box, manga_box, lib_box, tag_box, self.about):
+        for box in (look_box, storage_box, network_box, creds_box, forge_box, gen_box, manga_box, lib_box, tag_box, self.backup, self.about):
             cl.addWidget(box)
         cl.addStretch(1)
         holder = QWidget()
