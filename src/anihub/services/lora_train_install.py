@@ -19,15 +19,14 @@ REPO_ZIP_URL = "https://github.com/kohya-ss/sd-scripts/archive/refs/heads/main.z
 NEED_FREE_GB = 12.0                          # source + venv + torch/xformers wheels
 MIN_PY, MAX_PY = (3, 10), (3, 12)            # sd-scripts' own documented range (3.10 required, 3.11/3.12 "will work")
 
-# driver CUDA version -> (index tag, torch version, torchvision version); highest first. From sd-scripts' own Windows
-# install instructions (cu124 is what it documents by default; cu128 added there for RTX 50-series cards).
-CUDA_TORCH = [
-    (12.8, "cu128", "2.8.0", "0.23.0"),
-    (12.4, "cu124", "2.6.0", "0.21.0"),
-    (12.1, "cu121", "2.6.0", "0.21.0"),
-    (11.8, "cu118", "2.6.0", "0.21.0"),
-]
-DEFAULT_TORCH = ("cu121", "2.6.0", "0.21.0")   # the driver's CUDA version could not be read: a widely-compatible pick
+# driver CUDA version -> PyTorch wheel index tag, highest first. No exact torch/torchvision version is pinned here on
+# purpose: an exact pin (what this used to do) goes stale the moment PyTorch stops publishing wheels for it under a
+# given CUDA tag -- cu121, for one, is frozen at torch 2.5.1, already below sd-scripts' own stated 2.6.0 minimum, and
+# pinning to 2.6.0 there made every install fail outright. `install()` instead asks pip for "torch>=2.6.0" and an
+# unpinned torchvision, so it keeps resolving to whatever that channel's actual latest is.
+MIN_TORCH = "2.6.0"                    # sd-scripts' own stated minimum
+CUDA_TAGS = [(12.9, "cu129"), (12.8, "cu128"), (12.6, "cu126"), (12.4, "cu124"), (11.8, "cu118")]
+DEFAULT_CUDA_TAG = "cu124"             # the driver's CUDA version could not be read: sd-scripts' own documented default
 
 
 class InstallError(Exception):
@@ -47,13 +46,14 @@ def driver_cuda_version() -> float | None:
     return float(m.group(1)) if m else None
 
 
-def pick_torch(cuda_version: float | None) -> tuple[str, str, str]:
+def pick_torch(cuda_version: float | None) -> str:
+    """The PyTorch wheel index tag (e.g. "cu124") to install from."""
     if cuda_version is None:
-        return DEFAULT_TORCH
-    for needs, tag, torch_v, vision_v in CUDA_TORCH:
+        return DEFAULT_CUDA_TAG
+    for needs, tag in CUDA_TAGS:
         if cuda_version >= needs:
-            return tag, torch_v, vision_v
-    return DEFAULT_TORCH
+            return tag
+    return DEFAULT_CUDA_TAG
 
 
 def find_system_python() -> list[str] | None:
@@ -168,8 +168,8 @@ def install(http: HttpClient, dest_dir: Path, progress: Callable[[str, int, int]
     check_cancel()
 
     report("torch")
-    tag, torch_v, vision_v = pick_torch(driver_cuda_version())
-    _run_step([str(venv_python), "-m", "pip", "install", f"torch=={torch_v}", f"torchvision=={vision_v}",
+    tag = pick_torch(driver_cuda_version())
+    _run_step([str(venv_python), "-m", "pip", "install", f"torch>={MIN_TORCH}", "torchvision",
               "--index-url", f"https://download.pytorch.org/whl/{tag}"], dest_dir, log_path, cancelled)
     check_cancel()
 

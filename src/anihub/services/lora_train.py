@@ -44,14 +44,30 @@ def find_python(sd_scripts_dir: Path) -> Path | None:
     return None
 
 
+def torch_importable(python_exe: Path, timeout: int = 20) -> bool:
+    """Whether `python_exe -c "import torch"` actually works. A venv existing is not enough on its own: the torch
+    install step (services/lora_train_install.py) can fail on its own (wrong CUDA wheel, no matching version, no
+    network) while everything before it -- the venv itself -- still succeeded, which used to let training start
+    against a venv with no torch in it at all, crashing minutes later with a bare traceback."""
+    try:
+        result = subprocess.run([str(python_exe), "-c", "import torch"], capture_output=True, timeout=timeout,
+                                creationflags=NO_WINDOW)
+        return result.returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
 def check_install(sd_scripts_dir: Path) -> str | None:
-    """Error message, or None when the folder looks usable (has either training script and a venv Python)."""
+    """Error message, or None when the folder looks usable (training script, venv Python, and torch importable in it)."""
     if not sd_scripts_dir.is_dir():
         return "err.train.no_folder"
     if find_script(sd_scripts_dir, True) is None and find_script(sd_scripts_dir, False) is None:
         return "err.train.no_script"
-    if find_python(sd_scripts_dir) is None:
+    python_exe = find_python(sd_scripts_dir)
+    if python_exe is None:
         return "err.train.no_venv"
+    if not torch_importable(python_exe):
+        return "err.train.no_torch"
     return None
 
 

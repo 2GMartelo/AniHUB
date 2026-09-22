@@ -37,7 +37,7 @@ def test_list_checkpoints_reads_the_forge_stable_diffusion_folder(tmp_path):
     assert lt.list_checkpoints(FakeCfg(str(tmp_path / "missing"))) == []
 
 
-def test_find_script_and_python_and_check_install(tmp_path):
+def test_find_script_and_python_and_check_install(tmp_path, monkeypatch):
     root = tmp_path / "sd-scripts"
     root.mkdir()
     assert lt.check_install(tmp_path / "missing") == "err.train.no_folder"
@@ -49,7 +49,24 @@ def test_find_script_and_python_and_check_install(tmp_path):
     venv_py.parent.mkdir(parents=True)
     venv_py.write_bytes(b"")
     assert lt.find_python(root) == venv_py
+
+    monkeypatch.setattr(lt, "torch_importable", lambda p: False)
+    assert lt.check_install(root) == "err.train.no_torch"
+    monkeypatch.setattr(lt, "torch_importable", lambda p: True)
     assert lt.check_install(root) is None
+
+
+def test_torch_importable_is_false_for_a_real_python_without_torch():
+    """AniHUB's own interpreter is a real, working Python -- just one without torch installed, which is exactly the
+    "venv exists but the install of it failed partway" case this exists to catch."""
+    assert lt.torch_importable(Path(sys.executable)) is False
+
+
+def test_torch_importable_is_false_for_a_nonexistent_or_bogus_executable(tmp_path):
+    assert lt.torch_importable(tmp_path / "does-not-exist.exe") is False
+    bogus = tmp_path / "not_really_an_exe.exe"
+    bogus.write_bytes(b"not a real executable")
+    assert lt.torch_importable(bogus) is False
 
 
 # --- captions and the dataset folder --------------------------------------------------------------------------------------------

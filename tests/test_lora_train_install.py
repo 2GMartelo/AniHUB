@@ -11,12 +11,12 @@ from anihub.services import lora_train_install as ti
 # --- picking the right PyTorch build -----------------------------------------------------------------------------------
 
 def test_pick_torch_matches_the_newest_supported_cuda():
-    assert ti.pick_torch(12.9) == ("cu128", "2.8.0", "0.23.0")
-    assert ti.pick_torch(12.4) == ("cu124", "2.6.0", "0.21.0")
-    assert ti.pick_torch(12.2) == ("cu121", "2.6.0", "0.21.0")     # between tiers: the next one down
-    assert ti.pick_torch(11.8) == ("cu118", "2.6.0", "0.21.0")
-    assert ti.pick_torch(10.0) == ti.DEFAULT_TORCH                  # too old for anything listed
-    assert ti.pick_torch(None) == ti.DEFAULT_TORCH
+    assert ti.pick_torch(12.9) == "cu129"
+    assert ti.pick_torch(12.4) == "cu124"
+    assert ti.pick_torch(12.5) == "cu124"          # between tiers: the next one down
+    assert ti.pick_torch(11.8) == "cu118"
+    assert ti.pick_torch(10.0) == ti.DEFAULT_CUDA_TAG   # too old for anything listed
+    assert ti.pick_torch(None) == ti.DEFAULT_CUDA_TAG
 
 
 def test_driver_cuda_version_reads_nvidia_smis_header(monkeypatch):
