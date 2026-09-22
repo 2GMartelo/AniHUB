@@ -7,6 +7,7 @@ import json
 import re
 import shutil
 import zipfile
+import zlib
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -530,6 +531,10 @@ class PromptBook:
     def applied_file(self) -> Path:
         return self.root / "promptbook" / "pack_applied.json"
 
+    @staticmethod
+    def _crc32_of(path: Path) -> int:
+        return zlib.crc32(path.read_bytes())
+
     def export_pack(self, dest: Path) -> int:
         """Writes the pictures of all built-in tags to a zip (`index.json`: tag key -> file). This is the file that is shipped with the app
         as `data/promptbook_pack.zip`. Returns the number of pictures."""
@@ -571,8 +576,9 @@ class PromptBook:
                     row = rows.get(key)
                     if row is None:
                         continue
-                    data = zf.read(member)
-                    digest = hashlib.sha1(data).hexdigest()
+                    # CRC32 from the zip's central directory identifies the picture without decompressing it: on a normal, already-applied
+                    # startup every key matches its stored digest and the loop below never has to read a single picture.
+                    digest = f"{zf.getinfo(member).CRC:08x}"
                     dest = self.image_dir / f"{row['id']}.jpg"
                     previous = applied.get(key)
                     if not overwrite:
@@ -582,9 +588,9 @@ class PromptBook:
                             if row["image"]:                                          # the user's own picture: never replaced
                                 applied[key], changed = "", True
                                 continue
-                        elif not (row["image"] and dest.is_file() and hashlib.sha1(dest.read_bytes()).hexdigest() == previous):
+                        elif not (row["image"] and dest.is_file() and f"{self._crc32_of(dest):08x}" == previous):
                             continue                                                # changed or removed by the user since
-                    dest.write_bytes(data)
+                    dest.write_bytes(zf.read(member))
                     with self.conn:
                         self.conn.execute("UPDATE pb_tags SET image=? WHERE id=?", (dest.relative_to(self.root).as_posix(), row["id"]))
                     applied[key], changed = digest, True

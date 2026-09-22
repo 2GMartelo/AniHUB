@@ -185,7 +185,7 @@ def test_online_tab_hides_titles_above_the_age_mode_and_the_hub_lists_both_tabs(
 
 def test_watch_tab_filters_sources_by_language_and_hides_adult_ones(qapp, tmp_path):
     from anihub.sources.anime.base import AnimeSource
-    from anihub.ui.anime_watch import WatchTab
+    from anihub.ui.anime_watch import SAVED, WatchTab
 
     class EnSrc(AnimeSource):
         name, title, lang = "en_src", "EnSite", "en"
@@ -207,10 +207,10 @@ def test_watch_tab_filters_sources_by_language_and_hides_adult_ones(qapp, tmp_pa
     ctx.anime_sources["adult_src"] = Adult(ctx.http, ctx.cfg)
     tab = WatchTab(ctx)
     names = lambda: [tab.source_box.itemData(i) for i in range(tab.source_box.count())]
-    assert names() == ["local", "anilibria", "en_src"]                                             # adult one hidden at 12+
+    assert names() == [SAVED, "local", "anilibria", "anime365", "en_src"]                          # adult one hidden at 12+
     ctx.cfg.set("anime.langs", ["ru"], save=False)
     tab.reload_sources()
-    assert names() == ["local", "anilibria"]                                                       # only Russian (and local)
+    assert names() == [SAVED, "local", "anilibria", "anime365"]                                    # only Russian (and local, and the shelf)
     ctx.cfg.set("anime.langs", [], save=False)
     agemode.apply_mode(ctx.cfg, "18", save=False)
     tab.reload_sources()

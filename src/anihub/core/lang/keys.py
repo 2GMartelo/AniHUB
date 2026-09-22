@@ -1276,4 +1276,16 @@ srcset.sign_in_tip
 srcset.account
 srcset.other
 manga.source_login
+tutorial.sd_generate.title
+tutorial.sd_generate.text
+tutorial.sd_builder.title
+tutorial.sd_builder.text
+tutorial.sd_lora.title
+tutorial.sd_lora.text
+tutorial.sd_character.title
+tutorial.sd_character.text
+tutorial.anime_shelf.title
+tutorial.anime_shelf.text
+tutorial.logins.title
+tutorial.logins.text
 """.split("\n") if k]

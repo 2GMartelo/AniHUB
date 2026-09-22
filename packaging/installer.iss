@@ -32,6 +32,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
+Name: "musicicon"; Description: "{cm:MusicShortcut}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
 Source: "..\dist\AniHUB\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
@@ -39,6 +40,8 @@ Source: "..\dist\AniHUB\*"; DestDir: "{app}"; Flags: recursesubdirs createallsub
 [Icons]
 Name: "{group}\AniHUB"; Filename: "{app}\AniHUB.exe"
 Name: "{autodesktop}\AniHUB"; Filename: "{app}\AniHUB.exe"; Tasks: desktopicon
+Name: "{group}\AniHUB Music"; Filename: "{app}\AniHUB Music.exe"
+Name: "{autodesktop}\AniHUB Music"; Filename: "{app}\AniHUB Music.exe"; Tasks: musicicon
 
 [Run]
 Filename: "{app}\AniHUB.exe"; Description: "{cm:LaunchProgram,AniHUB}"; Flags: nowait postinstall skipifsilent
@@ -48,6 +51,8 @@ russian.DeleteLibrary=Удалить и папку библиотеки?%n%n%1%n
 english.DeleteLibrary=Also delete the library folder?%n%n%1%n%nIt holds your arts, manga, books and the database. This cannot be undone.
 russian.DeleteSettings=Удалить настройки, логи и скачанные обновления AniHUB (%APPDATA%\AniHUB)?
 english.DeleteSettings=Delete AniHUB settings, logs and downloaded updates (%APPDATA%\AniHUB)?
+russian.MusicShortcut=Ярлык "AniHUB Music" (сразу открывает Аниме → Музыка)
+english.MusicShortcut=An "AniHUB Music" shortcut (opens straight on Anime > Music)
 
 [Code]
 { The library folder is chosen by the user and stored in config.json ("library_path"). Uninstalling keeps everything unless the

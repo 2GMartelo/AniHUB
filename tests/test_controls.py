@@ -251,8 +251,9 @@ def test_source_settings_dialog_saves_changes(qapp):
             qapp.processEvents()
             time.sleep(0.01)
 
-    pump(lambda: dialog.form.rowCount() == 2)
-    assert dialog.form.rowCount() == 2
+    pump(lambda: dialog.form.rowCount() == 4)
+    assert dialog.form.rowCount() == 4                              # a "password" field is grouped under an Account heading, "hq" under Other
+    assert not dialog.sign_in.isHidden()                             # an account field: the dialog offers its own "Sign in" button
     edit = dialog.findChild(QLineEdit)
     assert edit.echoMode() == QLineEdit.EchoMode.Password           # passwords are masked
     edit.setText("secret")

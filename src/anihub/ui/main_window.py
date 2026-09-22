@@ -313,6 +313,11 @@ class MainWindow(QMainWindow):
         if row is not None:
             self.nav.setCurrentRow(row)
 
+    def open_music(self) -> None:
+        """Jumps straight to Anime > Music (the "AniHUB Music" launcher's whole purpose)."""
+        self.go("anime")
+        self.anime_page.tabs.setCurrentWidget(self.anime_page.music_hub)
+
     def _to_img2img(self, row: dict) -> None:
         """Open the SD section with the chosen library picture as the img2img source."""
         from pathlib import Path
@@ -368,10 +373,19 @@ class MainWindow(QMainWindow):
             Step("novels_tabs", self.novels_hub.tabBar, section("novels")),
         ]
         if self.sd_enabled:
-            steps.append(Step("nav_sd", rail("sd"), section("sd")))
+            sd_tab = lambda index: (lambda: (self.go("sd"), self.sd_page.tabs.setCurrentIndex(index)))    # noqa: E731
+            steps += [
+                Step("nav_sd", rail("sd"), section("sd")),
+                Step("sd_generate", lambda: self.sd_page.generate.generate_btn, sd_tab(0)),
+                Step("sd_builder", self.sd_page.tabs.tabBar, sd_tab(self.sd_page.tabs.indexOf(self.sd_page.builder))),
+                Step("sd_lora", self.sd_page.tabs.tabBar, sd_tab(self.sd_page.tabs.indexOf(self.sd_page.lora))),
+                Step("sd_character", self.sd_page.tabs.tabBar, sd_tab(self.sd_page.tabs.indexOf(self.sd_page.character))),
+            ]
         steps += [
             Step("nav_anime", rail("anime"), section("anime")),
             Step("anime_tabs", self.anime_page.tabs.tabBar, section("anime")),
+            Step("anime_shelf", lambda: self.anime_page.watch.source_box, lambda: (self.go("anime"), self.anime_page.tabs.setCurrentWidget(self.anime_page.watch))),
+            Step("logins", lambda: self.settings.import_btn, section("settings")),
             Step("age", lambda: self.settings.age_mode, section("settings")),
             Step("offline", lambda: self.offline_btn, section("settings")),
             Step("finish", None, section("arts", 0)),

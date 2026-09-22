@@ -226,7 +226,7 @@ class SettingsPage(QWidget):
                 hint = style.role(QLabel(help_text), "dim")
                 hint.setWordWrap(True)
                 creds.addRow("", hint)
-        import_btn = style.secondary(QPushButton(tr("cookies.import")), "upload")
+        self.import_btn = import_btn = style.secondary(QPushButton(tr("cookies.import")), "upload")
         import_btn.clicked.connect(lambda: cookie_import.pick_and_import(ctx, self))
         forget_btn = style.ghost(QPushButton(tr("cookies.clear")), "trash")
         forget_btn.clicked.connect(lambda: cfg.set("cookie.jar", {}))
