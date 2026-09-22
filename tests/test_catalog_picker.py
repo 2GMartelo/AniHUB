@@ -178,3 +178,16 @@ def test_on_position_formats_the_time_label(qapp, tmp_path):
     viewer._on_position(65_000)
     assert viewer.time_label.text() == "1:05 / 0:00"
     viewer.close()
+
+
+# --- regression: clicking the real Qt button must not leak the "checked" bool into the tag name -----------------------------------
+
+def test_clicking_the_real_button_reaches_on_constructor_with_the_tag_name(qapp, env, monkeypatch):
+    """clicked(bool) must not land in on_constructor's captured tag name (it did once: 'bool' object has no attribute 'strip')."""
+    seen = []
+    monkeypatch.setattr(Viewer, "_on_constructor", lambda self, name: seen.append(name))
+    viewer = Viewer([ViewItem("t", "i", lambda: env.tmp_path / "x.png", tags=[("blue hair", "general")])], 0, ctx=env.ctx)
+    row = rows_of(viewer)[0]
+    row.constructor_btn.click()
+    assert seen == ["blue hair"]
+    viewer.close()

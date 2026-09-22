@@ -75,7 +75,9 @@ class TagRow(QWidget):
             self.constructor_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
             style.bind_icon(self.constructor_btn, icon, mode, 13)
             if on_constructor is not None:
-                self.constructor_btn.clicked.connect(on_constructor)
+                # clicked(bool checked) would otherwise land in on_constructor's own default argument, exactly like the
+                # captured tag name did here: wrap it in a slot that takes nothing, the same way plus/minus do above.
+                self.constructor_btn.clicked.connect(lambda: on_constructor())
         row = QHBoxLayout(self)
         row.setContentsMargins(4, 0, 2, 0)
         row.setSpacing(4)

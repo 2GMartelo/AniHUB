@@ -269,3 +269,24 @@ def test_character_tab_saves_its_settings(qapp, tmp_path):
     assert tab.hair.text() == "short brown hair"
     tab.test()                                                                          # no Forge: it says so instead of crashing
     assert tab.message.text() == tr("pb.need_forge")
+
+
+# --- regression: a real QAction click in the shelf menu must reach _set_shelf with the real status --------------------------------
+# (QMenu.addAction(text, slot)'s triggered(bool) does NOT land in a slot's own default argument the way a button's clicked(bool)
+# does -- confirmed by hand -- but this exercises the real, un-mocked menu end to end anyway.)
+
+def test_anime_shelf_menu_survives_a_real_trigger(qapp, tmp_path):
+    from tests.test_anime_watch import wait, watch_ctx
+
+    from anihub.ui.anime_watch import SHELF, WatchTab
+
+    ctx = watch_ctx(tmp_path, ["Frieren/Frieren - 01.mkv"])
+    tab = WatchTab(ctx)
+    tab.ensure_loaded()
+    wait(qapp, lambda: tab.grid.count() == 1)
+    entry = tab.grid.item(0).data(Qt.ItemDataRole.UserRole)
+    tab.select_entry(entry)
+    tab._build_shelf_menu()
+    action = next(a for a in tab.shelf_menu.actions() if a.text() == tr(dict(SHELF)["watching"]))
+    action.trigger()
+    assert ctx.db.saved_get("local", "Frieren")["status"] == "watching"
