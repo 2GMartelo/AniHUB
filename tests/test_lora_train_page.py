@@ -1,0 +1,145 @@
+from PySide6.QtGui import QColor, QImage
+
+from anihub.context import AppContext
+from anihub.core.config import Config
+from anihub.services import lora as lo
+from anihub.services import lora_train as lt
+from anihub.ui.lora_train_page import ImageRow, LoraTrainPage
+
+
+def picture(tmp_path, name, color="#3366ff"):
+    img = QImage(32, 32, QImage.Format.Format_RGB32)
+    img.fill(QColor(color))
+    path = tmp_path / name
+    img.save(str(path))
+    return path
+
+
+def make_ctx(tmp_path, **cfg_values):
+    cfg = Config.load(tmp_path / "c.json")
+    cfg.set("library_path", str(tmp_path / "lib"), save=False)
+    cfg.set("lora_train.enabled", True, save=False)
+    for k, v in cfg_values.items():
+        cfg.set(k, v, save=False)
+    return AppContext.build(cfg)
+
+
+# --- ImageRow: the per-picture caption editor --------------------------------------------------------------------
+
+def test_image_row_tags_are_deduplicated_and_editable(tmp_path, qapp):
+    path = picture(tmp_path, "a.png")
+    row = ImageRow(path, ["blue hair", "blue hair", " smile "])
+    assert row.tags == ["blue hair", "smile"]
+    assert row.caption() == "blue hair, smile"
+
+    row.add_line.setText("blue hair")     # already present: no duplicate
+    row._add_tag()
+    assert row.tags == ["blue hair", "smile"]
+
+    row.add_line.setText("1girl")
+    row._add_tag()
+    assert row.tags == ["blue hair", "smile", "1girl"]
+
+    row._remove_tag("smile")
+    assert row.tags == ["blue hair", "1girl"]
+
+
+def test_image_row_set_tags_replaces_and_dedupes(tmp_path, qapp):
+    row = ImageRow(picture(tmp_path, "a.png"), [])
+    seen = []
+    row.changed.connect(lambda: seen.append(1))
+    row.set_tags(["a", "a", "b", ""])
+    assert row.tags == ["a", "b"] and seen
+
+
+# --- the page: checkpoint discovery, add/remove images, start-time validation --------------------------------------
+
+def test_checkpoint_discovery_follows_forge_path(tmp_path, qapp):
+    forge = tmp_path / "forge"
+    models = forge / "models" / "Stable-diffusion"
+    models.mkdir(parents=True)
+    (models / "illustrious.safetensors").write_bytes(b"")
+    ctx = make_ctx(tmp_path, **{"forge.path": str(forge)})
+    page = LoraTrainPage(ctx)
+    assert page._checkpoint_paths == {"illustrious": models / "illustrious.safetensors"}
+    assert page._checkpoint_path == models / "illustrious.safetensors"
+
+
+def test_start_refuses_with_too_few_images(tmp_path, qapp):
+    ctx = make_ctx(tmp_path)
+    page = LoraTrainPage(ctx)
+    page.name_edit.setText("X")
+    page._start()
+    assert page.trainer is None and tr_contains(page.status_label.text(), "2")
+
+
+def test_start_refuses_without_a_name(tmp_path, qapp):
+    ctx = make_ctx(tmp_path)
+    page = LoraTrainPage(ctx)
+    for i in range(2):
+        row = ImageRow(picture(tmp_path, f"{i}.png"), ["x"])
+        page.rows.append(row)
+    page._start()
+    assert page.trainer is None
+
+
+def test_start_refuses_without_a_checkpoint(tmp_path, qapp):
+    ctx = make_ctx(tmp_path)          # no forge.path -> no checkpoints found
+    page = LoraTrainPage(ctx)
+    for i in range(2):
+        page.rows.append(ImageRow(picture(tmp_path, f"{i}.png"), ["x"]))
+    page.name_edit.setText("MyLora")
+    page._start()
+    assert page.trainer is None and page._checkpoint_path is None
+
+
+def tr_contains(text: str, needle: str) -> bool:
+    return needle in text
+
+
+# --- finishing a (simulated) successful run: moving the file and writing the LoRA card -----------------------------
+
+def test_finish_success_moves_the_file_and_writes_the_card(tmp_path, qapp):
+    ctx = make_ctx(tmp_path, **{"lora.dir": str(tmp_path / "loras")})
+    page = LoraTrainPage(ctx)
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    out_file = out_dir / f"{lt.sanitize_name('My LoRA')}.safetensors"
+    out_file.write_bytes(b"weights")
+
+    page._pending_cfg = lt.TrainConfig(name="My LoRA", trigger="mytrig", negative="bad hands")
+    page._output_file = out_file
+    page.weight.setValue(0.75)
+    page._finish_success()
+
+    dest = tmp_path / "loras" / "My LoRA.safetensors"
+    assert page._trained_path == dest and dest.is_file() and not out_file.exists()
+    card = lo.load(dest, tmp_path / "loras")
+    assert card.keywords == "mytrig" and card.negative == "bad hands" and card.weight == 0.75
+
+
+def test_finish_success_avoids_overwriting_an_existing_lora(tmp_path, qapp):
+    ctx = make_ctx(tmp_path, **{"lora.dir": str(tmp_path / "loras")})
+    page = LoraTrainPage(ctx)
+    loras = tmp_path / "loras"
+    loras.mkdir()
+    (loras / "My LoRA.safetensors").write_bytes(b"already here")
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    out_file = out_dir / "My LoRA.safetensors"
+    out_file.write_bytes(b"new weights")
+
+    page._pending_cfg = lt.TrainConfig(name="My LoRA")
+    page._output_file = out_file
+    page._finish_success()
+    assert page._trained_path == loras / "My LoRA (2).safetensors"
+    assert (loras / "My LoRA.safetensors").read_bytes() == b"already here"
+
+
+def test_finish_success_reports_a_missing_output_file(tmp_path, qapp):
+    ctx = make_ctx(tmp_path)
+    page = LoraTrainPage(ctx)
+    page._pending_cfg = lt.TrainConfig(name="Ghost")
+    page._output_file = tmp_path / "does-not-exist.safetensors"
+    page._finish_success()
+    assert page._trained_path is None

@@ -99,12 +99,22 @@ class MainWindow(QMainWindow):
         self.settings = SettingsPage(ctx, quit_app=self.quit_app)
         self.settings.saved.connect(self.library.reload)
 
+        self.lora_train_enabled = ctx.lora_train_enabled
+        self.lora_train_page = None
+        if self.lora_train_enabled:
+            from anihub.ui.lora_train_page import LoraTrainPage
+
+            self.lora_train_page = LoraTrainPage(ctx)
+            self.settings.saved.connect(self.lora_train_page.reload_checkpoints)
+
         self.pages = QStackedWidget()
         # (key, title, page, icon): manga, then light novels right under it; generation only where Forge can run
         sections = [("arts", tr("nav.arts"), arts, "image"), ("manga", tr("nav.manga"), self.manga_page, "book"),
                     ("novels", tr("nav.novels"), self.novels_hub, "file-text")]
         if self.sd_enabled:
             sections.append(("sd", tr("nav.sd"), self.sd_page, "sparkles"))
+        if self.lora_train_enabled:
+            sections.append(("lora_train", tr("nav.lora_train"), self.lora_train_page, "layers"))
         sections += [("anime", tr("nav.anime"), self.anime_page, "tv"), ("settings", tr("nav.settings"), self.settings, "sliders")]
         self.nav = NavRail()
         self.rows: dict[str, int] = {}
@@ -388,6 +398,8 @@ class MainWindow(QMainWindow):
                 Step("sd_lora", self.sd_page.tabs.tabBar, sd_tab(self.sd_page.tabs.indexOf(self.sd_page.lora))),
                 Step("sd_character", self.sd_page.tabs.tabBar, sd_tab(self.sd_page.tabs.indexOf(self.sd_page.character))),
             ]
+        if self.lora_train_enabled:
+            steps.append(Step("nav_lora_train", rail("lora_train"), section("lora_train")))
         steps += [
             Step("nav_anime", rail("anime"), section("anime")),
             Step("anime_tabs", self.anime_page.tabs.tabBar, section("anime")),

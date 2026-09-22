@@ -43,6 +43,8 @@ def sections(win) -> list[Entry]:
     if win.sd_enabled:
         out += [Entry(tr("nav.sd"), go("sd"), s, "stable diffusion forge generate"),
                 Entry(f"{tr('nav.sd')} · CivitAI", go("sd", win.sd_page.tabs, win.sd_page.civitai), s)]
+    if win.lora_train_enabled:
+        out.append(Entry(tr("nav.lora_train"), go("lora_train"), s, "lora training kohya sd-scripts"))
     return out
 
 

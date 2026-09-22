@@ -57,7 +57,30 @@ def check_install(sd_scripts_dir: Path) -> str | None:
     return None
 
 
+CHECKPOINT_EXTS = (".safetensors", ".ckpt")
+
+
+def list_checkpoints(cfg) -> list[Path]:
+    """Checkpoints already installed for Forge (`<forge.path>/models/Stable-diffusion`): trains from the same files
+    Forge draws with, nothing is downloaded separately."""
+    forge = cfg.get("forge.path") or ""
+    folder = Path(forge) / "models" / "Stable-diffusion" if forge else None
+    if not folder or not folder.is_dir():
+        return []
+    return sorted((p for p in folder.rglob("*") if p.suffix.lower() in CHECKPOINT_EXTS and p.is_file()),
+                  key=lambda p: p.stem.lower())
+
+
 # --- the dataset: images + captions in the layout sd-scripts expects --------------------------------------------------------------
+
+BAD_FS_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+
+
+def sanitize_name(name: str) -> str:
+    """A LoRA name turned into a safe file/folder name: the same rule is used for the dataset folder and the trained
+    file's --output_name, so the UI can predict the finished .safetensors' path before training even starts."""
+    return BAD_FS_CHARS.sub("_", name).strip(" .") or "lora"
+
 
 def caption_text(trigger: str, body: str) -> str:
     """The trigger word(s) always come first, then the rest of the caption; no dangling comma either way."""
@@ -69,7 +92,7 @@ def build_dataset(images: list[tuple[Path, str]], dest: Path, name: str, repeats
     """`dest/img/<repeats>_<name>/0001.ext` + a same-named `.txt` caption per image (the kohya-ss folder convention: the
     leading number is how many times each image is shown per epoch). Returns the `img` folder (sd-scripts' train_data_dir).
     Existing contents of that one subfolder are replaced, so training again after editing captions does not pile up old files."""
-    safe = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", name).strip(" .") or "lora"
+    safe = sanitize_name(name)
     folder = dest / "img" / f"{max(1, int(repeats))}_{safe}"
     if folder.is_dir():
         shutil.rmtree(folder)
@@ -109,7 +132,7 @@ def build_command(python_exe: Path, script: Path, cfg: TrainConfig, train_data_d
             "--pretrained_model_name_or_path", cfg.base_model,
             "--train_data_dir", str(train_data_dir),
             "--output_dir", str(output_dir),
-            "--output_name", re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", cfg.name).strip(" .") or "lora",
+            "--output_name", sanitize_name(cfg.name),
             "--resolution", f"{cfg.resolution},{cfg.resolution}",
             "--network_module", "networks.lora",
             "--network_dim", str(cfg.network_dim),

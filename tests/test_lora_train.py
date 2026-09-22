@@ -18,6 +18,25 @@ def picture(tmp_path, name, color="#3366ff") -> Path:
 
 # --- sd-scripts detection -----------------------------------------------------------------------------------------------------
 
+def test_list_checkpoints_reads_the_forge_stable_diffusion_folder(tmp_path):
+    class FakeCfg:
+        def __init__(self, forge_path):
+            self.forge_path = forge_path
+
+        def get(self, key, default=None):
+            return self.forge_path if key == "forge.path" else default
+
+    assert lt.list_checkpoints(FakeCfg("")) == []
+    forge = tmp_path / "forge"
+    models = forge / "models" / "Stable-diffusion"
+    models.mkdir(parents=True)
+    (models / "b.safetensors").write_bytes(b"")
+    (models / "a.ckpt").write_bytes(b"")
+    (models / "notes.txt").write_bytes(b"")
+    assert lt.list_checkpoints(FakeCfg(str(forge))) == [models / "a.ckpt", models / "b.safetensors"]
+    assert lt.list_checkpoints(FakeCfg(str(tmp_path / "missing"))) == []
+
+
 def test_find_script_and_python_and_check_install(tmp_path):
     root = tmp_path / "sd-scripts"
     root.mkdir()
