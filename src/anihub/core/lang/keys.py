@@ -1288,4 +1288,26 @@ tutorial.anime_shelf.title
 tutorial.anime_shelf.text
 tutorial.logins.title
 tutorial.logins.text
+catpick.title
+catpick.pick
+catpick.hint
+catpick.use_picture
+catpick.add_tip
+catpick.set_picture_tip
+catpick.present_tip
+catpick.set_picture
+tutorial.tag_constructor.title
+tutorial.tag_constructor.text
+tutorial.library2.title
+tutorial.library2.text
+tutorial.downloads.title
+tutorial.downloads.text
+tutorial.reader.title
+tutorial.reader.text
+tutorial.appearance.title
+tutorial.appearance.text
+tutorial.palette.title
+tutorial.palette.text
+tutorial.close.title
+tutorial.close.text
 """.split("\n") if k]

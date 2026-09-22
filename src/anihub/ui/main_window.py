@@ -367,8 +367,15 @@ class MainWindow(QMainWindow):
             Step("source", lambda: self.browse.source, section("arts", 0)),
             Step("search", lambda: self.browse.query, section("arts", 0)),
             Step("save", lambda: self.browse.save_btn, section("arts", 0)),
+        ]
+        if self.sd_enabled:
+            steps.append(Step("tag_constructor", None, section("arts", 0)))
+        steps += [
             Step("subscribe", lambda: self.browse.subscribe_btn, section("arts", 0)),
+            Step("library2", lambda: self.library.side, section("arts", 1)),
+            Step("downloads", lambda: self.downloads_btn, section("arts", 0)),
             Step("nav_manga", rail("manga"), section("manga")),
+            Step("reader", None, section("manga")),
             Step("nav_novels", rail("novels"), section("novels")),
             Step("novels_tabs", self.novels_hub.tabBar, section("novels")),
         ]
@@ -386,8 +393,11 @@ class MainWindow(QMainWindow):
             Step("anime_tabs", self.anime_page.tabs.tabBar, section("anime")),
             Step("anime_shelf", lambda: self.anime_page.watch.source_box, lambda: (self.go("anime"), self.anime_page.tabs.setCurrentWidget(self.anime_page.watch))),
             Step("logins", lambda: self.settings.import_btn, section("settings")),
+            Step("appearance", lambda: self.settings.theme, section("settings")),
             Step("age", lambda: self.settings.age_mode, section("settings")),
             Step("offline", lambda: self.offline_btn, section("settings")),
+            Step("palette", None, section("arts", 0)),
+            Step("close", None, section("arts", 0)),
             Step("finish", None, section("arts", 0)),
         ]
         return steps

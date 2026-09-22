@@ -807,7 +807,7 @@ class GenerateView(QWidget):
         return ViewItem(res.path.name, info, lambda: res.path, "", tags, res)
 
     def _open_viewer(self, item) -> None:
-        viewer = Viewer([self._view_item(r) for r in self.grid.payloads()], self.grid.row(item), self._save_from_viewer)
+        viewer = Viewer([self._view_item(r) for r in self.grid.payloads()], self.grid.row(item), self._save_from_viewer, ctx=self.ctx)
         viewer.destroyed.connect(lambda: self._viewers.remove(viewer) if viewer in self._viewers else None)
         self._viewers.append(viewer)
         viewer.show()

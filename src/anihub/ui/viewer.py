@@ -10,12 +10,14 @@ from PySide6.QtGui import QAction, QBrush, QColor, QGuiApplication, QImageReader
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtWidgets import (
-    QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QMenu, QSizePolicy, QSlider, QStackedWidget, QToolButton,
+    QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QMenu, QMessageBox, QSizePolicy, QSlider, QStackedWidget, QToolButton,
     QVBoxLayout, QWidget,
 )
 
 from anihub.core.i18n import tr
+from anihub.services import promptbook as pb
 from anihub.ui import style
+from anihub.ui.catalog_picker import CatalogPickerDialog
 from anihub.ui.zoomview import ZoomLabel
 from anihub.ui.workers import run_async
 
@@ -36,10 +38,17 @@ class ViewItem:
     stars: int = 0
 
 
-class TagRow(QWidget):
-    """A tag with its own buttons: the name searches for it alone, + adds it to the current search, − excludes it."""
+CONSTRUCTOR_LOOK = {"absent": ("layers", "normal", "catpick.add_tip"), "no_picture": ("check", "accent", "catpick.set_picture_tip"),
+                    "present": ("check", "accent", "catpick.present_tip")}
 
-    def __init__(self, name: str, color: str | None, on_action: Callable[[str], None], parent=None):
+
+class TagRow(QWidget):
+    """A tag with its own buttons: the name searches for it alone, + adds it to the current search, minus excludes it.
+    `constructor_state` (see CONSTRUCTOR_LOOK) adds a fourth button that adds the tag to the prompt builder's catalogue, or
+    shows that it is already there; None leaves that button out entirely (sections that have no prompt builder)."""
+
+    def __init__(self, name: str, color: str | None, on_action: Callable[[str], None], parent=None,
+                 constructor_state: str | None = None, on_constructor: Callable[[], None] | None = None):
         super().__init__(parent)
         self.name = name
         self.label = QLabel(name)
@@ -48,27 +57,36 @@ class TagRow(QWidget):
         if color:
             self.label.setStyleSheet(f"color: {color};")
         self.plus = QToolButton(text="+")
-        self.minus = QToolButton(text="−")
+        self.minus = QToolButton(text="\u2212")
         for button, key in ((self.plus, "tag.add"), (self.minus, "tag.exclude")):
             button.setProperty("tagbtn", True)
             button.setToolTip(tr(key))
             button.setCursor(Qt.CursorShape.PointingHandCursor)
             button.setFixedSize(22, 22)
             button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.constructor_btn = None
+        if constructor_state is not None:
+            icon, mode, tip_key = CONSTRUCTOR_LOOK[constructor_state]
+            self.constructor_btn = QToolButton()
+            self.constructor_btn.setProperty("tagbtn", True)
+            self.constructor_btn.setToolTip(tr(tip_key))
+            self.constructor_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            self.constructor_btn.setFixedSize(22, 22)
+            self.constructor_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            style.bind_icon(self.constructor_btn, icon, mode, 13)
+            if on_constructor is not None:
+                self.constructor_btn.clicked.connect(on_constructor)
         row = QHBoxLayout(self)
         row.setContentsMargins(4, 0, 2, 0)
         row.setSpacing(4)
         row.addWidget(self.label, 1)
         row.addWidget(self.plus)
         row.addWidget(self.minus)
+        if self.constructor_btn is not None:
+            row.addWidget(self.constructor_btn)
         self.plus.clicked.connect(lambda: on_action("add"))
         self.minus.clicked.connect(lambda: on_action("exclude"))
         self.label.mousePressEvent = lambda e: on_action("search")          # type: ignore[method-assign]
-
-
-def fmt_time(ms: int) -> str:
-    s = max(ms, 0) // 1000
-    return f"{s // 60}:{s % 60:02d}"
 
 
 class Viewer(QWidget):
@@ -77,10 +95,16 @@ class Viewer(QWidget):
 
     def __init__(self, items: list[ViewItem], index: int, on_save: Callable[[ViewItem], None] | None = None,
                  parent=None, on_favorite: Callable[[ViewItem, bool], None] | None = None,
-                 on_stars: Callable[[ViewItem, int], None] | None = None):
+                 on_stars: Callable[[ViewItem, int], None] | None = None, ctx=None):
         super().__init__(parent, Qt.WindowType.Window)
         self.items, self.index, self.on_save = items, index, on_save
         self.on_favorite, self.on_stars = on_favorite, on_stars
+        # a real tag seen on an art can be added to the prompt builder's catalogue straight from here, instead of typing it in
+        # (only where generation is available at all: ctx is only passed by callers that show art/generation tags)
+        self.book = None
+        if ctx is not None and ctx.sd_enabled:
+            self.book = pb.PromptBook(ctx.db, ctx.paths.root)
+            self.book.seed()
         self._pixmap: QPixmap | None = None
         self._movie: QMovie | None = None
         self._movie_size = QSize()
@@ -370,6 +394,14 @@ class Viewer(QWidget):
 
     # --- tags --------------------------------------------------------------------
 
+    def _constructor_state(self, name: str) -> str | None:
+        if self.book is None:
+            return None
+        row = self.book.find_tag(name)
+        if row is None:
+            return "absent"
+        return "present" if row["image"] else "no_picture"
+
     def _fill_tags(self, tags: list[tuple[str, str]]) -> None:
         self.tags.clear()
         groups: dict[str, list[str]] = {}
@@ -391,7 +423,27 @@ class Viewer(QWidget):
                 item.setSizeHint(QSize(0, 30))
                 self.tags.addItem(item)
                 self.tags.setItemWidget(item, TagRow(name, CATEGORY_COLORS.get(category),
-                                                     lambda mode, n=name: self.tag_action.emit(n, mode)))
+                                                     lambda mode, n=name: self.tag_action.emit(n, mode),
+                                                     constructor_state=self._constructor_state(name),
+                                                     on_constructor=lambda n=name: self._on_constructor(n)))
+
+    def _on_constructor(self, name: str) -> None:
+        """The tag panel's fourth button: add a real tag straight into the prompt builder's catalogue, in a category you pick."""
+        if self.book is None:
+            return
+        existing = self.book.find_tag(name)
+        if existing is not None:
+            if not existing["image"] and self._pixmap is not None:
+                if QMessageBox.question(self, tr("catpick.title"), tr("catpick.set_picture", tag=name)) == QMessageBox.StandardButton.Yes:
+                    self.book.set_image(existing["id"], self._pixmap.toImage())
+                    self._fill_tags(self.items[self.index].tags)
+            return
+        dlg = CatalogPickerDialog(self.book, name, has_picture=self._pixmap is not None, parent=self)
+        if dlg.exec() and dlg.chosen_node_id is not None:
+            tag_id = self.book.add_tag(dlg.chosen_node_id, dlg.text.text(), dlg.label.text())
+            if tag_id and self._pixmap is not None and dlg.use_picture.isChecked():
+                self.book.set_image(tag_id, self._pixmap.toImage())
+            self._fill_tags(self.items[self.index].tags)
 
     def _emit_tag(self, item: QListWidgetItem, mode: str) -> None:
         tag = item.data(Qt.ItemDataRole.UserRole)

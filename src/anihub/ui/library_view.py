@@ -688,7 +688,7 @@ class LibraryView(QWidget):
             self.ctx.db.set_field([view_item.payload["id"]], "stars", value)
             dirty.append(1)
 
-        viewer = Viewer([self._view_item(r) for r in rows], self.grid.row(item), on_favorite=favorite, on_stars=stars)
+        viewer = Viewer([self._view_item(r) for r in rows], self.grid.row(item), on_favorite=favorite, on_stars=stars, ctx=self.ctx)
         viewer.tag_action.connect(lambda tag, mode: self._tag_from_viewer(viewer, tag, mode))
         viewer.destroyed.connect(lambda: self._viewer_closed(viewer, bool(dirty)))
         self._viewers.append(viewer)

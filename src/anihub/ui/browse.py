@@ -178,7 +178,7 @@ class BrowseView(QWidget):
 
     def _open_viewer(self, item: QListWidgetItem) -> None:
         posts = self.grid.payloads()
-        viewer = Viewer([self._view_item(p) for p in posts], self.grid.row(item), self._save_from_viewer)
+        viewer = Viewer([self._view_item(p) for p in posts], self.grid.row(item), self._save_from_viewer, ctx=self.ctx)
         viewer.tag_action.connect(lambda tag, mode: self._tag_from_viewer(viewer, tag, mode))
         viewer.destroyed.connect(lambda: self._viewers.remove(viewer) if viewer in self._viewers else None)
         self._viewers.append(viewer)

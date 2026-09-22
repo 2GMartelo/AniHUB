@@ -171,7 +171,7 @@ class HistoryView(QWidget):
         if not self._file(rows[index]).exists():
             self.status.setText(tr("hist.file_missing", name=self._file(rows[index]).name))
             return
-        viewer = Viewer([self._view_item(r) for r in rows], index, self._save_from_viewer)
+        viewer = Viewer([self._view_item(r) for r in rows], index, self._save_from_viewer, ctx=self.ctx)
         viewer.destroyed.connect(lambda: self._viewers.remove(viewer) if viewer in self._viewers else None)
         self._viewers.append(viewer)
         viewer.show()

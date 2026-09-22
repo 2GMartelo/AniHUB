@@ -392,6 +392,12 @@ class PromptBook:
                                 "JOIN pb_nodes n ON n.id=t.node_id WHERE t.id=?", (tag_id,)).fetchone()
         return dict(row) if row else None
 
+    def find_tag(self, text: str) -> dict | None:
+        """The catalogue tag whose text matches `text` exactly (case/spacing insensitive), or None: lets a caller that has a real
+        tag from somewhere else (an art's own tags) know whether it is already in the catalogue before offering to add it."""
+        needle = norm(text)
+        return next((r for r in self.tags(query=text) if norm(r["text"]) == needle), None)
+
     def lookup(self) -> dict[str, tuple[str, str]]:
         """normalised tag text -> (slot, group id as text) over the whole catalogue, the first slot in writing order winning."""
         order = {k: i for i, k in enumerate(SLOT_KEYS)}
