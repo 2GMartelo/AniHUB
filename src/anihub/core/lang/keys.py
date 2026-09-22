@@ -1362,4 +1362,16 @@ lt.no_output
 lt.done
 tutorial.nav_lora_train.title
 tutorial.nav_lora_train.text
+train.install
+train_install.title
+train_install.text
+train_install.preflight
+train_install.download
+train_install.extract
+train_install.venv
+train_install.pip
+train_install.torch
+train_install.requirements
+train_install.accelerate
+train_install.done
 """.split("\n") if k]

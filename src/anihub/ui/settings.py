@@ -164,11 +164,16 @@ class SettingsPage(QWidget):
         self.train_status.setWordWrap(True)
         self.train_check_btn = style.secondary(QPushButton(tr("train.check")), "refresh")
         self.train_check_btn.clicked.connect(self._recheck_train)
+        self.train_download_btn = style.secondary(QPushButton(tr("train.install")), "download")
+        self.train_download_btn.clicked.connect(self._download_train_scripts)
+        train_btn_row = QHBoxLayout()
+        train_btn_row.addWidget(self.train_check_btn)
+        train_btn_row.addWidget(self.train_download_btn)
         train_form = QFormLayout()
         train_form.addRow("", self.train_enabled)
         train_form.addRow(train_hint)
         train_form.addRow(tr("train.path"), train_row)
-        train_form.addRow(self.train_check_btn)
+        train_form.addRow(train_btn_row)
         train_form.addRow(self.train_status)
         self.train_box = QGroupBox(tr("train.group"))
         self.train_box.setLayout(train_form)
@@ -509,6 +514,17 @@ class SettingsPage(QWidget):
 
         run_async(sysreq.assess_training, path, on_done=done,
                   on_error=lambda exc: (self.train_check_btn.setEnabled(True), self.train_status.setText(tr("status.error", msg=str(exc)))))
+
+    def _download_train_scripts(self) -> None:
+        from anihub.ui.lora_train_install_dialog import LoraTrainInstallDialog
+
+        folder = QFileDialog.getExistingDirectory(self, tr("train.install"), str(Path.home()))
+        if not folder:
+            return
+        dlg = LoraTrainInstallDialog(self.ctx, Path(folder) / "AniHUB-sd-scripts", self)
+        dlg.exec()
+        if dlg.installed is not None:
+            self.train_path.setText(str(dlg.installed))
 
     def _save(self) -> None:
         cfg = self.ctx.cfg
