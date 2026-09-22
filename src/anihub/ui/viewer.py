@@ -89,6 +89,11 @@ class TagRow(QWidget):
         self.label.mousePressEvent = lambda e: on_action("search")          # type: ignore[method-assign]
 
 
+def fmt_time(ms: int) -> str:
+    s = max(ms, 0) // 1000
+    return f"{s // 60}:{s % 60:02d}"
+
+
 class Viewer(QWidget):
     SLIDESHOW_MS = 4000
     tag_action = Signal(str, str)  # (tag, 'search' | 'add' | 'exclude')

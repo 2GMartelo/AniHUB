@@ -169,3 +169,12 @@ def test_clicking_present_with_a_picture_does_nothing(qapp, env, monkeypatch):
     viewer._on_constructor("blue hair")
     assert not asked                                                                                        # nothing to offer: it already has one
     viewer.close()
+
+
+# --- regression: fmt_time must stay defined and reachable by _on_position --------------------------------------------------------
+
+def test_on_position_formats_the_time_label(qapp, tmp_path):
+    viewer = Viewer([ViewItem("t", "i", lambda: tmp_path / "x.png")], 0)
+    viewer._on_position(65_000)
+    assert viewer.time_label.text() == "1:05 / 0:00"
+    viewer.close()
