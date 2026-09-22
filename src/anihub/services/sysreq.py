@@ -151,3 +151,52 @@ def assess_forge(install_path: str | Path = "") -> ForgeAssessment:
     disk = check_disk(install_path)
     name = re.sub(r"\s*\(\d+ GB\)", "", gpu.detail) if gpu.ok else ""            # the memory is shown separately
     return judge_forge(name, gpu.value if gpu.ok else 0.0, total_ram_gb(), disk.value)
+
+
+# --- LoRA training: heavier than plain generation (a training batch has no hires fix / low-VRAM fallback) --------------------------
+
+TRAIN_MIN_VRAM_GB = 6.0        # an SD 1.5 LoRA trains, slowly, from here
+TRAIN_GOOD_VRAM_GB = 12.0      # comfortable for an SDXL / Illustrious LoRA (fp16, gradient checkpointing)
+TRAIN_MIN_DISK_GB = 10.0       # the dataset, checkpoints already installed for Forge are reused, not copied
+
+
+@dataclass
+class TrainAssessment:
+    suitable: bool
+    level: str                       # "ok" | "low" | "no"
+    gpu: str = ""
+    vram_gb: float = 0.0
+    ram_gb: float = 0.0
+    disk_gb: float = 0.0
+    problems: tuple[str, ...] = ()   # sys.train.* i18n keys
+
+
+def judge_training(gpu: str, vram_gb: float, ram_gb: float, disk_gb: float) -> TrainAssessment:
+    """Same shape as judge_forge, with LoRA training's own (higher) VRAM bar: training keeps activations for the backward
+    pass in memory too, so it needs noticeably more headroom than just running the same model for inference."""
+    problems: list[str] = []
+    fatal = False
+    if vram_gb <= 0:
+        problems.append("sys.train.no_gpu")
+        fatal = True
+    elif vram_gb < TRAIN_MIN_VRAM_GB:
+        problems.append("sys.train.small_gpu")
+        fatal = True
+    elif vram_gb < TRAIN_GOOD_VRAM_GB:
+        problems.append("sys.train.weak_gpu")
+    if ram_gb and ram_gb < MIN_RAM_GB:
+        problems.append("sys.forge.small_ram")
+        fatal = True
+    elif ram_gb and ram_gb < GOOD_RAM_GB:
+        problems.append("sys.forge.weak_ram")
+    if disk_gb < TRAIN_MIN_DISK_GB:
+        problems.append("sys.train.low_disk")
+    level = "no" if fatal else ("low" if problems else "ok")
+    return TrainAssessment(not fatal, level, gpu, vram_gb, ram_gb, disk_gb, tuple(problems))
+
+
+def assess_training(dataset_path: str | Path = "") -> TrainAssessment:
+    gpu = check_gpu()
+    disk = check_disk(dataset_path)
+    name = re.sub(r"\s*\(\d+ GB\)", "", gpu.detail) if gpu.ok else ""
+    return judge_training(name, gpu.value if gpu.ok else 0.0, total_ram_gb(), disk.value)

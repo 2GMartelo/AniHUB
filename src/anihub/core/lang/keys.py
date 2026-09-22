@@ -1310,4 +1310,16 @@ tutorial.palette.title
 tutorial.palette.text
 tutorial.close.title
 tutorial.close.text
+train.group
+train.enable
+train.hint
+train.path
+train.check
+err.train.no_folder
+err.train.no_script
+err.train.no_venv
+sys.train.no_gpu
+sys.train.small_gpu
+sys.train.weak_gpu
+sys.train.low_disk
 """.split("\n") if k]

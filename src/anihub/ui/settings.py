@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
@@ -149,6 +150,29 @@ class SettingsPage(QWidget):
         gen_box = QGroupBox(tr("settings.gen_group"))
         gen_box.setLayout(gen_form)
 
+        # training your own LoRA (services/lora_train.py): off by default, needs a separate sd-scripts install
+        self.train_enabled = QCheckBox(tr("train.enable"), checked=bool(cfg.get("lora_train.enabled", False)))
+        self.train_path = QLineEdit(str(cfg.get("lora_train.sd_scripts_path") or ""))
+        browse_train = QPushButton(tr("wizard.browse"))
+        browse_train.clicked.connect(self._pick_train_path)
+        train_row = QHBoxLayout()
+        train_row.addWidget(self.train_path, 1)
+        train_row.addWidget(browse_train)
+        train_hint = style.role(QLabel(tr("train.hint")), "dim")
+        train_hint.setWordWrap(True)
+        self.train_status = style.role(QLabel(), "dim")
+        self.train_status.setWordWrap(True)
+        self.train_check_btn = style.secondary(QPushButton(tr("train.check")), "refresh")
+        self.train_check_btn.clicked.connect(self._recheck_train)
+        train_form = QFormLayout()
+        train_form.addRow("", self.train_enabled)
+        train_form.addRow(train_hint)
+        train_form.addRow(tr("train.path"), train_row)
+        train_form.addRow(self.train_check_btn)
+        train_form.addRow(self.train_status)
+        self.train_box = QGroupBox(tr("train.group"))
+        self.train_box.setLayout(train_form)
+
         self.manga_port = QSpinBox(minimum=1024, maximum=65535, value=int(cfg.get("manga.port", 4567)))
         self.manga_poll = QSpinBox(minimum=1, maximum=1440, value=int(cfg.get("manga.poll_minutes", 30)))
         manga = QFormLayout()
@@ -240,7 +264,7 @@ class SettingsPage(QWidget):
         creds.addRow(import_hint)
         creds_box = QGroupBox(tr("settings.creds"))
         creds_box.setLayout(creds)
-        for group in (forge_box, manga_box, gen_box, lib_box, tag_box):
+        for group in (forge_box, manga_box, gen_box, self.train_box, lib_box, tag_box):
             lay = group.layout()
             if isinstance(lay, QFormLayout):
                 lay.setHorizontalSpacing(18)
@@ -260,7 +284,7 @@ class SettingsPage(QWidget):
         self.sd_box = self._build_sd_box()
         boxes = [look_box, age_box, storage_box, network_box, creds_box, self.sd_box]
         if ctx.sd_enabled:
-            boxes += [forge_box, gen_box]                                # hidden together with the whole section when the PC cannot run Forge
+            boxes += [forge_box, gen_box, self.train_box]                # hidden together with the whole section when the PC cannot run Forge
         boxes += [manga_box, lib_box, tag_box, self.backup, self.about]
         for box in boxes:
             cl.addWidget(box)
@@ -460,6 +484,32 @@ class SettingsPage(QWidget):
         if folder:
             self.forge_path.setText(os.path.normpath(folder))
 
+    def _pick_train_path(self) -> None:
+        folder = QFileDialog.getExistingDirectory(self, tr("train.path"), self.train_path.text())
+        if folder:
+            self.train_path.setText(os.path.normpath(folder))
+
+    def _recheck_train(self) -> None:
+        from anihub.services import lora_train, sysreq
+
+        path = self.train_path.text().strip()
+        problem = lora_train.check_install(Path(path)) if path else "err.train.no_folder"
+        self.train_check_btn.setEnabled(False)
+        self.train_status.setText(tr("status.loading"))
+
+        def done(a) -> None:
+            self.train_check_btn.setEnabled(True)
+            report = tr("sys.forge.gpu", d=a.gpu, gb=f"{a.vram_gb:.0f}") if a.gpu else tr("sys.forge.no_gpu")
+            report += f" · {tr('sys.forge.ram', gb=f'{a.ram_gb:.0f}')} · {tr('sys.forge.disk', gb=f'{a.disk_gb:.0f}')}"
+            if problem:
+                report += "\n• " + tr(problem)
+            for p in a.problems:
+                report += "\n• " + tr(p)
+            self.train_status.setText(report)
+
+        run_async(sysreq.assess_training, path, on_done=done,
+                  on_error=lambda exc: (self.train_check_btn.setEnabled(True), self.train_status.setText(tr("status.error", msg=str(exc)))))
+
     def _save(self) -> None:
         cfg = self.ctx.cfg
         cfg.set("language", self.lang.currentData(), save=False)
@@ -494,6 +544,8 @@ class SettingsPage(QWidget):
         cfg.set("autotag.character_threshold", self.tag_char.value(), save=False)
         cfg.set("civitai.token", self.civitai_token.text().strip(), save=False)
         cfg.set("forge.backends", self._backend_entries(), save=False)
+        cfg.set("lora_train.enabled", self.train_enabled.isChecked(), save=False)
+        cfg.set("lora_train.sd_scripts_path", self.train_path.text().strip(), save=False)
         cfg.set("manga.port", self.manga_port.value(), save=False)
         cfg.set("manga.poll_minutes", self.manga_poll.value(), save=False)
         cfg.save()

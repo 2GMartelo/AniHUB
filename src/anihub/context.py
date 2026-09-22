@@ -82,6 +82,12 @@ class AppContext:
         Old configs have no such key and keep generation."""
         return self.cfg.get("sd.enabled", True) is not False
 
+    @property
+    def lora_train_enabled(self) -> bool:
+        """Off by default (unlike sd_enabled): training needs a separate program (sd-scripts) nobody has installed by
+        chance, so the tab only appears once the user turns it on in Settings -- same switch either way, "Обучение LoRA"."""
+        return self.sd_enabled and bool(self.cfg.get("lora_train.enabled", False))
+
     def reload_extensions(self) -> None:
         """Re-read the plugin folders (after an extension was installed, updated or removed)."""
         fresh = build_anime_sources(self.http, self.cfg, self.paths.anime, config_dir() / "plugins" / "anime")
