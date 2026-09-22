@@ -66,7 +66,8 @@ class NavButton(QAbstractButton):
         p.setFont(font)
         p.setPen(_css_color(t.accent_text if checked else (t.text if hover else t.dim)))
         label = QRectF(0, top + size + 3, self.width(), self.height() - top - size - 5)
-        p.drawText(label, Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop, self.text())
+        text = p.fontMetrics().elidedText(self.text(), Qt.TextElideMode.ElideRight, int(label.width()) - 4)
+        p.drawText(label, Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop, text)
 
     def enterEvent(self, event) -> None:  # noqa: N802
         self.update()
