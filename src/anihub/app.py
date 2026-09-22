@@ -16,8 +16,25 @@ from anihub.ui.theme import apply_theme, make_app_icon, set_custom_colors
 from anihub.ui.wizard import SetupWizard
 
 
+def set_taskbar_identity() -> None:
+    """Windows groups taskbar buttons and pinned shortcuts by "AppUserModelID", not by window icon. Without setting
+    one explicitly, a window launched via python.exe (a dev run) or even the packaged .exe can end up grouped under
+    python.exe's own identity/icon instead of AniHUB's -- this makes the running window's identity match the desktop
+    shortcut regardless of how it was started. Must run before QApplication() creates the first window."""
+    if sys.platform != "win32":
+        return
+    import ctypes
+
+    aumid = "AniHUB.Music" if "--music" in sys.argv else "AniHUB.App"
+    try:
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(aumid)
+    except (AttributeError, OSError):
+        pass
+
+
 def main() -> int:
     setup_logging()
+    set_taskbar_identity()
     app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
     app.setWindowIcon(make_app_icon())
