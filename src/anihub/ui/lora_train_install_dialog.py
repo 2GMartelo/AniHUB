@@ -1,4 +1,4 @@
-"""Downloads sd-scripts and builds its own venv (torch, xformers, its requirements) with a progress bar; the result becomes
+"""Downloads sd-scripts and builds its own venv (torch, its requirements) with a progress bar; the result becomes
 `lora_train.sd_scripts_path`. Mirrors ForgeInstallDialog -- same shape, its own stages (this one has several slow ones, not
 just a single download)."""
 from __future__ import annotations

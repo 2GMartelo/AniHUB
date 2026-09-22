@@ -1,5 +1,5 @@
 """Training your own LoRA from a handful of arts: builds a kohya-ss (sd-scripts) dataset from captioned images and runs its
-training script as a subprocess. AniHUB does not train anything itself (that needs PyTorch, xformers, a CUDA build...): it drives
+training script as a subprocess. AniHUB does not train anything itself (that needs PyTorch, a CUDA build...): it drives
 sd-scripts the same way it drives Forge and Suwayomi -- an external program the user points it at, in Settings.
 
 sd-scripts: https://github.com/kohya-ss/sd-scripts -- its own folder with its own Python (a venv with torch et al.), a plain git
@@ -36,7 +36,7 @@ def find_script(sd_scripts_dir: Path, sdxl: bool) -> Path | None:
 
 
 def find_python(sd_scripts_dir: Path) -> Path | None:
-    """sd-scripts needs its OWN Python (a venv with torch/xformers/etc.): AniHUB's own interpreter has none of that."""
+    """sd-scripts needs its OWN Python (a venv with torch and its other requirements): AniHUB's own interpreter has none of that."""
     for rel in ("venv/Scripts/python.exe", ".venv/Scripts/python.exe", "venv/bin/python", ".venv/bin/python"):
         candidate = sd_scripts_dir / rel
         if candidate.is_file():
@@ -160,7 +160,7 @@ def build_command(python_exe: Path, script: Path, cfg: TrainConfig, train_data_d
             "--save_model_as", "safetensors",
             "--cache_latents",
             "--gradient_checkpointing",
-            "--xformers",
+            "--sdpa",                  # PyTorch's own attention, not xformers: needs no extra install, torch >= 2.0 has it built in
             "--lr_scheduler", "cosine_with_restarts",
             "--optimizer_type", "AdamW8bit"]
     if cfg.save_every_n_epochs > 0:

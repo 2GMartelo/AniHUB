@@ -118,6 +118,7 @@ def test_build_command_has_the_right_flags_and_output_name():
     assert cmd[cmd.index("--network_dim") + 1] == "16" and cmd[cmd.index("--resolution") + 1] == "896,896"
     assert cmd[cmd.index("--pretrained_model_name_or_path") + 1] == "D:/ckpt.safetensors"
     assert "--save_last_n_epochs" in cmd and "--save_every_n_epochs" not in cmd
+    assert "--sdpa" in cmd and "--xformers" not in cmd    # needs no extra install, unlike xformers (a real user hit this)
 
 
 def test_build_command_uses_save_every_n_epochs_when_set():

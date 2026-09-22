@@ -16,7 +16,7 @@ from anihub.net.http import HttpClient, HttpError
 from anihub.services.procservice import NEW_GROUP, NO_WINDOW
 
 REPO_ZIP_URL = "https://github.com/kohya-ss/sd-scripts/archive/refs/heads/main.zip"
-NEED_FREE_GB = 12.0                          # source + venv + torch/xformers wheels
+NEED_FREE_GB = 12.0                          # source + venv + torch wheels
 MIN_PY, MAX_PY = (3, 10), (3, 12)            # sd-scripts' own documented range (3.10 required, 3.11/3.12 "will work")
 
 # driver CUDA version -> PyTorch wheel index tag, highest first. No exact torch/torchvision version is pinned here on
@@ -58,7 +58,7 @@ def pick_torch(cuda_version: float | None) -> str:
 
 def find_system_python() -> list[str] | None:
     """The command prefix for a Python sd-scripts can build its own venv from (3.10-3.12). AniHUB's own bundled interpreter
-    is never offered here: reusing it would mix a heavy ML stack (torch, xformers...) into AniHUB's own runtime."""
+    is never offered here: reusing it would mix a heavy ML stack (torch et al.) into AniHUB's own runtime."""
     candidates: list[list[str]] = []
     launcher = shutil.which("py")
     if launcher:
