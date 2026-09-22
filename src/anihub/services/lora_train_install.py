@@ -34,7 +34,10 @@ class InstallError(Exception):
 
 
 def driver_cuda_version() -> float | None:
-    """The CUDA version an installed NVIDIA driver supports, read from `nvidia-smi`'s own header line."""
+    """The CUDA version an installed NVIDIA driver supports, read from `nvidia-smi`'s own header line. Older drivers
+    print "CUDA Version: 12.8"; newer ones (seen on a real RTX 50-series/Blackwell machine) print "CUDA UMD Version:
+    13.4" instead -- matching only the former silently fell back to a default torch build with no compiled kernels
+    for that GPU's architecture at all ("CUDA error: no kernel image is available for execution on the device")."""
     exe = shutil.which("nvidia-smi")
     if not exe:
         return None
@@ -42,7 +45,7 @@ def driver_cuda_version() -> float | None:
         out = subprocess.run([exe], capture_output=True, text=True, timeout=10, creationflags=NO_WINDOW).stdout
     except (OSError, subprocess.SubprocessError):
         return None
-    m = re.search(r"CUDA Version:\s*([\d.]+)", out)
+    m = re.search(r"CUDA (?:UMD )?Version:\s*([\d.]+)", out)
     return float(m.group(1)) if m else None
 
 
@@ -85,7 +88,8 @@ def _run_step(cmd: list[str], cwd: Path, log_path: Path, cancelled: Callable[[],
         log.write((" ".join(cmd) + "\r\n").encode("utf-8", errors="replace"))
         log.flush()
         proc = subprocess.Popen(cmd, cwd=str(cwd), stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
-                                env={**os.environ, "PYTHONUNBUFFERED": "1"}, creationflags=NO_WINDOW | NEW_GROUP)
+                                env={**os.environ, "PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"},
+                                creationflags=NO_WINDOW | NEW_GROUP)
         while proc.poll() is None:
             if cancelled and cancelled():
                 subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"], capture_output=True, creationflags=NO_WINDOW)

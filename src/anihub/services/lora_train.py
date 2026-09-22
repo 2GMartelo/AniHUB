@@ -205,7 +205,9 @@ class Trainer:
 
     def start(self, cmd: list[str], cwd: Path, env: dict | None = None) -> None:
         self.log_file.parent.mkdir(parents=True, exist_ok=True)
-        full_env = {**os.environ, "PYTHONUNBUFFERED": "1", **(env or {})}
+        # sd-scripts logs bilingual EN/JA lines; without this, printing them crashes outright on a non-UTF-8 system
+        # locale (e.g. cp1251 on a Russian Windows install) the moment a Japanese character shows up.
+        full_env = {**os.environ, "PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1", **(env or {})}
         with self.log_file.open("wb") as fh:
             fh.write((" ".join(cmd) + "\r\n\r\n").encode("utf-8", errors="replace"))
         log_fh = self.log_file.open("ab")

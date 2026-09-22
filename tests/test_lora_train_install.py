@@ -26,6 +26,18 @@ def test_driver_cuda_version_reads_nvidia_smis_header(monkeypatch):
     assert ti.driver_cuda_version() == 12.4
 
 
+def test_driver_cuda_version_reads_the_newer_umd_header_too(monkeypatch):
+    """A real RTX 5070 (Blackwell) machine's nvidia-smi prints "CUDA UMD Version:", not "CUDA Version:" -- matching
+    only the classic wording silently returned None, which made pick_torch() default to a build with no compiled
+    kernels for that GPU's architecture at all (real crash: "no kernel image is available for execution on the
+    device")."""
+    monkeypatch.setattr(ti.shutil, "which", lambda name: "nvidia-smi.exe" if name == "nvidia-smi" else None)
+    monkeypatch.setattr(ti.subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(
+        a[0], 0, stdout="NVIDIA-SMI 616.92   KMD Version: 616.92   CUDA UMD Version: 13.4", stderr=""))
+    assert ti.driver_cuda_version() == 13.4
+    assert ti.pick_torch(13.4) == "cu129"
+
+
 def test_driver_cuda_version_none_without_nvidia_smi(monkeypatch):
     monkeypatch.setattr(ti.shutil, "which", lambda name: None)
     assert ti.driver_cuda_version() is None

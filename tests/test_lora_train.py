@@ -160,6 +160,18 @@ def test_trainer_runs_and_reports_success(tmp_path):
     assert prog["step"] == 3 and prog["total_steps"] == 3
 
 
+def test_trainer_survives_non_ascii_output_from_the_child(tmp_path):
+    """sd-scripts logs bilingual EN/JA lines (e.g. "running training / 学習開始"); on a non-UTF-8 system locale
+    (a real report: cp1251 on a Russian Windows machine) printing one used to crash the child process outright with
+    UnicodeEncodeError the moment it hit a Japanese character -- Trainer.start() must force UTF-8 I/O regardless."""
+    trainer = lt.Trainer(tmp_path / "log.txt")
+    script = tmp_path / "fake.py"
+    script.write_text("print('running training / 学習開始')\n", encoding="utf-8")
+    trainer.start([sys.executable, str(script)], cwd=tmp_path)
+    assert wait_state(trainer, "done") == "done", trainer.log_tail()
+    assert "学習開始" in trainer.log_tail()
+
+
 def test_trainer_reports_failure_and_keeps_the_log(tmp_path):
     trainer = lt.Trainer(tmp_path / "log.txt")
     script = tmp_path / "bad.py"
