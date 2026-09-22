@@ -119,6 +119,7 @@ def test_build_command_has_the_right_flags_and_output_name():
     assert cmd[cmd.index("--pretrained_model_name_or_path") + 1] == "D:/ckpt.safetensors"
     assert "--save_last_n_epochs" in cmd and "--save_every_n_epochs" not in cmd
     assert "--sdpa" in cmd and "--xformers" not in cmd    # needs no extra install, unlike xformers (a real user hit this)
+    assert cmd[cmd.index("--max_data_loader_n_workers") + 1] == "0"   # avoids a real Windows DataLoader-worker hang
 
 
 def test_build_command_uses_save_every_n_epochs_when_set():

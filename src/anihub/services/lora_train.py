@@ -161,6 +161,12 @@ def build_command(python_exe: Path, script: Path, cfg: TrainConfig, train_data_d
             "--cache_latents",
             "--gradient_checkpointing",
             "--sdpa",                  # PyTorch's own attention, not xformers: needs no extra install, torch >= 2.0 has it built in
+            "--max_data_loader_n_workers", "0",   # sd-scripts' own default (8) spawns that many worker subprocesses; Windows'
+                                                   # "spawn" multiprocessing model makes that slow to bootstrap and, in
+                                                   # practice, prone to hanging right at an epoch boundary with garbled,
+                                                   # interleaved log output from several workers writing at once -- a real
+                                                   # user hit exactly this. 0 loads data on the main process instead: a bit
+                                                   # slower per epoch, but removes this whole failure mode on Windows.
             "--lr_scheduler", "cosine_with_restarts",
             "--optimizer_type", "AdamW8bit"]
     if cfg.save_every_n_epochs > 0:
