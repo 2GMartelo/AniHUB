@@ -1,10 +1,23 @@
+import time
+
 from PySide6.QtGui import QColor, QImage
 
 from anihub.context import AppContext
 from anihub.core.config import Config
 from anihub.services import lora as lo
 from anihub.services import lora_train as lt
+from anihub.services.autotag import TagResult
 from anihub.ui.lora_train_page import ImageRow, LoraTrainPage
+
+
+def pump(app, seconds=0.0, cond=None, limit=5.0):
+    end = time.time() + (limit if cond else seconds)
+    while time.time() < end:
+        app.processEvents()
+        if cond and cond():
+            return True
+        time.sleep(0.01)
+    return True if cond is None else bool(cond())
 
 
 def picture(tmp_path, name, color="#3366ff"):
@@ -203,3 +216,78 @@ def test_quit_app_cancels_a_running_training_job(tmp_path, qapp, monkeypatch):
 
     assert trainer.state == "cancelled"
     win.close()
+
+
+# --- autotagging: one picture at a time, not a single big frozen batch ------------------------------------------------
+
+def make_page_with_rows(tmp_path, qapp, count=3, tags=None):
+    ctx = make_ctx(tmp_path)
+    page = LoraTrainPage(ctx)
+    for i in range(count):
+        row = ImageRow(picture(tmp_path, f"{i}.png"), list(tags) if tags else [])
+        page.rows.append(row)
+        page.rows_layout.insertWidget(page.rows_layout.count() - 2, row)
+    return page
+
+
+def test_autotag_all_tags_pictures_one_at_a_time_not_in_one_batch(tmp_path, qapp, monkeypatch):
+    page = make_page_with_rows(tmp_path, qapp, count=3)
+    monkeypatch.setattr(type(page.ctx.autotagger), "available", True)
+
+    seen_concurrently = []
+    in_flight = []
+
+    def fake_tag_file(path):
+        in_flight.append(path)
+        seen_concurrently.append(len(in_flight))          # how many calls were in flight at once
+        time.sleep(0.02)
+        in_flight.pop()
+        return TagResult(tags=[("blue_hair", "general"), ("1girl", "general")], rating="general")
+
+    monkeypatch.setattr(page.ctx.autotagger, "tag_file", fake_tag_file)
+
+    page._autotag_all()
+    assert page._autotagging and page.autotag_btn.text() == "Остановить"
+    assert pump(qapp, cond=lambda: not page._autotagging)
+
+    assert max(seen_concurrently) == 1                    # never two tag_file calls running at the same time
+    assert all(row.tags == ["blue hair", "1girl"] for row in page.rows)
+    assert page.autotag_btn.text() != "Остановить"
+    assert not page._autotagging
+
+
+def test_autotag_all_can_be_stopped_mid_run(tmp_path, qapp, monkeypatch):
+    page = make_page_with_rows(tmp_path, qapp, count=6)
+    monkeypatch.setattr(type(page.ctx.autotagger), "available", True)
+
+    def slow_tag_file(path):
+        time.sleep(0.05)
+        return TagResult(tags=[("tag", "general")], rating="general")
+
+    monkeypatch.setattr(page.ctx.autotagger, "tag_file", slow_tag_file)
+
+    page._autotag_all()
+    assert pump(qapp, seconds=0.06)          # let one or two finish
+    page._autotag_all()                      # clicking the button again while running: stop
+    assert page._autotag_cancelled
+    assert pump(qapp, cond=lambda: not page._autotagging)
+
+    tagged = sum(1 for row in page.rows if row.tags)
+    assert 0 < tagged < 6                    # stopped partway, not everything got tagged
+
+
+def test_autotag_all_does_nothing_without_the_model_downloaded(tmp_path, qapp, monkeypatch):
+    page = make_page_with_rows(tmp_path, qapp, count=2)
+    monkeypatch.setattr(type(page.ctx.autotagger), "available", False)
+    page._autotag_all()
+    assert not page._autotagging
+    assert page.status_label.text()
+
+
+def test_autotag_all_skips_rows_that_already_have_tags(tmp_path, qapp, monkeypatch):
+    page = make_page_with_rows(tmp_path, qapp, count=2, tags=["already", "tagged"])
+    monkeypatch.setattr(type(page.ctx.autotagger), "available", True)
+    calls = []
+    monkeypatch.setattr(page.ctx.autotagger, "tag_file", lambda path: calls.append(path))
+    page._autotag_all()
+    assert not page._autotagging and not calls    # nothing queued: every row already had tags

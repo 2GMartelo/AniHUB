@@ -137,6 +137,11 @@ class LoraTrainPage(QWidget):
         self._checkpoint_paths: dict[str, Path] = {}
         self._checkpoint_path: Path | None = None
         self._trained_path: Path | None = None
+        self._autotagging = False
+        self._autotag_cancelled = False
+        self._autotag_queue: list[ImageRow] = []
+        self._autotag_total = 0
+        self._autotag_done = 0
 
         # --- left: the dataset --------------------------------------------------------------------------------------
         self.add_btn = style.primary(QPushButton(tr("lt.add_images")), "upload")
@@ -279,40 +284,59 @@ class LoraTrainPage(QWidget):
     def _remove_row(self, row: ImageRow) -> None:
         if row in self.rows:
             self.rows.remove(row)
+            if row in self._autotag_queue:
+                self._autotag_queue.remove(row)
             row.hide()
             row.setParent(None)
             row.deleteLater()
             self._update_count()
 
     def _autotag_all(self) -> None:
+        if self._autotagging:
+            self._autotag_cancelled = True     # clicking again while running stops it after the current picture
+            return
         if not self.rows:
             return
         if not self.ctx.autotagger.available:
             self.status_label.setText(tr("lt.no_autotagger"))
             return
-        self.autotag_btn.setEnabled(False)
-        self.status_label.setText(tr("lt.autotagging"))
-        targets = [row for row in self.rows if not row.tags]
+        self._autotag_queue = [row for row in self.rows if not row.tags]
+        if not self._autotag_queue:
+            return
+        self._autotagging = True
+        self._autotag_cancelled = False
+        self._autotag_total = len(self._autotag_queue)
+        self._autotag_done = 0
+        self.autotag_btn.setText(tr("lt.autotag_stop"))
+        self._autotag_next()
 
-        def work():
-            out = []
-            for row in targets:
-                result = self.ctx.autotagger.tag_file(row.path)
-                out.append((row, [name.replace("_", " ") for name, _cat in result.tags] if result else []))
-            return out
+    def _autotag_next(self) -> None:
+        """One picture at a time, each its own background call: tagging every picture in a single big batch (the
+        original design) froze the UI for however long the whole run took and only updated the screen once it was
+        all done -- this way the app stays responsive and each row's chips appear as soon as that one picture is
+        tagged, instead of everything landing in one burst at the end."""
+        if self._autotag_cancelled or not self._autotag_queue:
+            self._autotagging = False
+            self.autotag_btn.setText(tr("lt.autotag_all"))
+            if self._autotag_done:
+                self.status_label.setText(tr("lt.autotagged", n=self._autotag_done))
+            return
+        row = self._autotag_queue.pop(0)
+        self.status_label.setText(tr("lt.autotag_progress", done=self._autotag_done, total=self._autotag_total))
 
-        def done(pairs) -> None:
-            self.autotag_btn.setEnabled(True)
-            for row, tags in pairs:
+        def done(result) -> None:
+            if result and row in self.rows:
+                tags = [name.replace("_", " ") for name, _cat in result.tags]
                 if tags:
                     row.set_tags(tags)
-            self.status_label.setText(tr("lt.autotagged", n=len(pairs)))
+            self._autotag_done += 1
+            self._autotag_next()
 
-        def failed(exc: Exception) -> None:
-            self.autotag_btn.setEnabled(True)
-            self.status_label.setText(tr("status.error", msg=str(exc)))
+        def failed(_exc: Exception) -> None:
+            self._autotag_done += 1
+            self._autotag_next()
 
-        run_async(work, on_done=done, on_error=failed)
+        run_async(lambda: self.ctx.autotagger.tag_file(row.path), on_done=done, on_error=failed)
 
     # --- checkpoint --------------------------------------------------------------------------------------------------
 

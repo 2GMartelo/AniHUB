@@ -1377,4 +1377,6 @@ train_install.done
 lt.no_lora_root
 lt.save_failed
 err.train.no_torch
+lt.autotag_stop
+lt.autotag_progress
 """.split("\n") if k]
