@@ -93,6 +93,19 @@ def test_start_refuses_without_a_checkpoint(tmp_path, qapp):
     assert page.trainer is None and page._checkpoint_path is None
 
 
+def test_start_refuses_without_a_lora_folder_configured(tmp_path, qapp):
+    """A checkpoint can come from a browsed-to file even with no Forge configured and no lora.dir set -- but then
+    there is nowhere to put the finished LoRA, so _start() must refuse before ever launching a training run."""
+    ctx = make_ctx(tmp_path)          # neither forge.path nor lora.dir set
+    page = LoraTrainPage(ctx)
+    for i in range(2):
+        page.rows.append(ImageRow(picture(tmp_path, f"{i}.png"), ["x"]))
+    page.name_edit.setText("MyLora")
+    page._checkpoint_path = tmp_path / "some_checkpoint.safetensors"    # as if picked via "Browse"
+    page._start()
+    assert page.trainer is None
+
+
 def tr_contains(text: str, needle: str) -> bool:
     return needle in text
 
@@ -143,3 +156,50 @@ def test_finish_success_reports_a_missing_output_file(tmp_path, qapp):
     page._output_file = tmp_path / "does-not-exist.safetensors"
     page._finish_success()
     assert page._trained_path is None
+
+
+def test_finish_success_reports_a_write_failure_instead_of_raising(tmp_path, qapp):
+    """The LoRA folder can't always be created or written to (permissions, a full disk, a path that turns out to be a
+    file); _finish_success() runs from a QTimer callback with no caller to catch an exception, so it must handle this
+    itself instead of crashing out of the timer."""
+    lora_dir = tmp_path / "loras"
+    lora_dir.write_bytes(b"")                     # a FILE sits where the LoRA folder should be -> mkdir() fails
+    ctx = make_ctx(tmp_path, **{"lora.dir": str(lora_dir)})
+    page = LoraTrainPage(ctx)
+    out_file = tmp_path / "out" / "X.safetensors"
+    out_file.parent.mkdir()
+    out_file.write_bytes(b"weights")
+
+    page._pending_cfg = lt.TrainConfig(name="X")
+    page._output_file = out_file
+    page._finish_success()                         # must not raise
+
+    assert page._trained_path is None
+    assert str(out_file) in page.status_label.text()   # tells the user where the raw file still is
+    assert out_file.is_file()                           # the trained file was not lost
+
+
+# --- quitting AniHUB while a training job is running ------------------------------------------------------------------
+
+def test_quit_app_cancels_a_running_training_job(tmp_path, qapp, monkeypatch):
+    """Forge and the manga service are both stopped on quit; a running "Train LoRA" job must be too, or sd-scripts is
+    left running in the background holding the GPU after AniHUB itself has closed."""
+    from PySide6.QtWidgets import QApplication
+
+    from anihub.ui.main_window import MainWindow
+
+    cfg = Config.load(tmp_path / "c.json")
+    cfg.set("library_path", str(tmp_path / "lib"), save=False)
+    cfg.set("lora_train.enabled", True, save=False)
+    win = MainWindow(AppContext.build(cfg))
+    win.tray.isVisible = lambda: True
+
+    trainer = lt.Trainer(tmp_path / "log.txt")
+    trainer.state = "running"                            # no real subprocess: proc stays None, so cancel() just marks it
+    win.lora_train_page.trainer = trainer
+
+    monkeypatch.setattr(QApplication, "quit", lambda: None)
+    win.quit_app()
+
+    assert trainer.state == "cancelled"
+    win.close()

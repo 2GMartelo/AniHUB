@@ -1374,4 +1374,6 @@ train_install.torch
 train_install.requirements
 train_install.accelerate
 train_install.done
+lt.no_lora_root
+lt.save_failed
 """.split("\n") if k]

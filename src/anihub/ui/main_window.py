@@ -356,6 +356,8 @@ class MainWindow(QMainWindow):
         for controller in self.sd_controllers.values():
             controller.stop_blocking()  # free the VRAM; only stops a Forge that AniHUB itself started
         self.manga_ctrl.stop_blocking()
+        if self.lora_train_page is not None and self.lora_train_page.trainer is not None:
+            self.lora_train_page.trainer.cancel()  # otherwise the sd-scripts subprocess is left running, holding the GPU
         self.tray.hide()
         QApplication.quit()
 

@@ -18,7 +18,6 @@ from anihub.core.config import config_dir
 from anihub.core.i18n import tr
 from anihub.services import lora as lo
 from anihub.services import lora_train as lt
-from anihub.services import sysreq
 from anihub.ui import style
 from anihub.ui.manga_filters import FlowLayout
 from anihub.ui.workers import run_async
@@ -357,6 +356,9 @@ class LoraTrainPage(QWidget):
         if self._checkpoint_path is None:
             self.status_label.setText(tr("lt.no_checkpoint"))
             return
+        if not (self.ctx.cfg.get("lora.dir") or self.ctx.cfg.get("forge.path")):
+            self.status_label.setText(tr("lt.no_lora_root"))
+            return
         sd_scripts_dir = Path(self.ctx.cfg.get("lora_train.sd_scripts_path") or "")
         problem = lt.check_install(sd_scripts_dir)
         if problem:
@@ -376,13 +378,16 @@ class LoraTrainPage(QWidget):
         self._pending_cfg = cfg
         job_dir = config_dir() / "lora_train_jobs" / lt.sanitize_name(name)
         images = [(row.path, lt.caption_text(cfg.trigger, row.caption())) for row in self.rows]
-        train_dir = lt.build_dataset(images, job_dir, name, cfg.repeats)
-        self._output_dir = job_dir / "out"
-        self._output_file = self._output_dir / f"{lt.sanitize_name(name)}.safetensors"
-
-        command = lt.build_command(python_exe, script, cfg, train_dir, self._output_dir)
-        self.trainer = lt.Trainer(job_dir / "train.log")
-        self.trainer.start(command, cwd=sd_scripts_dir)
+        try:
+            train_dir = lt.build_dataset(images, job_dir, name, cfg.repeats)
+            self._output_dir = job_dir / "out"
+            self._output_file = self._output_dir / f"{lt.sanitize_name(name)}.safetensors"
+            command = lt.build_command(python_exe, script, cfg, train_dir, self._output_dir)
+            self.trainer = lt.Trainer(job_dir / "train.log")
+            self.trainer.start(command, cwd=sd_scripts_dir)
+        except OSError as exc:
+            self.status_label.setText(tr("status.error", msg=str(exc)))
+            return
         self.start_btn.setEnabled(False)
         self.cancel_btn.setEnabled(True)
         self.progress.setVisible(True)
@@ -429,17 +434,21 @@ class LoraTrainPage(QWidget):
         if not self._output_file.is_file():
             self.status_label.setText(tr("lt.no_output"))
             return
-        dest_root = lo.root_dir(self.ctx.cfg)
-        dest_root.mkdir(parents=True, exist_ok=True)
-        stem = lt.sanitize_name(cfg.name)
-        dest = dest_root / f"{stem}.safetensors"
-        n = 2
-        while dest.exists():
-            dest = dest_root / f"{stem} ({n}).safetensors"
-            n += 1
-        shutil.move(str(self._output_file), str(dest))
-        lora_obj = lo.Lora(dest, dest_root, keywords=cfg.trigger, weight=self.weight.value(), negative=cfg.negative,
-                           template=cfg.template)
-        lo.save(lora_obj)
+        try:
+            dest_root = lo.root_dir(self.ctx.cfg)
+            dest_root.mkdir(parents=True, exist_ok=True)
+            stem = lt.sanitize_name(cfg.name)
+            dest = dest_root / f"{stem}.safetensors"
+            n = 2
+            while dest.exists():
+                dest = dest_root / f"{stem} ({n}).safetensors"
+                n += 1
+            shutil.move(str(self._output_file), str(dest))
+            lora_obj = lo.Lora(dest, dest_root, keywords=cfg.trigger, weight=self.weight.value(), negative=cfg.negative,
+                               template=cfg.template)
+            lo.save(lora_obj)
+        except (OSError, lo.LoraError) as exc:
+            self.status_label.setText(tr("lt.save_failed", msg=str(exc), path=str(self._output_file)))
+            return
         self._trained_path = dest
         self.status_label.setText(tr("lt.done", name=dest.stem))

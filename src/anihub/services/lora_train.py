@@ -10,10 +10,8 @@ import os
 import re
 import shutil
 import subprocess
-import sys
 import threading
-import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
