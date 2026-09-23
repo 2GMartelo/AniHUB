@@ -80,6 +80,20 @@ class ServiceController(QObject):
         self._busy = busy
         self.touch()
 
+    def pause_polling(self) -> None:
+        """Stops the 2-second state poll while nobody is looking at this service's tab -- skipped outright while an
+        active job is running (set_busy(True)), so progress/completion is never silently missed just because the
+        user switched away. The idle-shutdown timer (stopping a truly idle Forge) is separate and keeps running."""
+        if self._busy:
+            return
+        self.poll_timer.stop()
+
+    def resume_polling(self) -> None:
+        """The moment the tab is visible again: back to the normal cadence, plus one poll right away."""
+        if not self.poll_timer.isActive():
+            self.poll_timer.start(POLL_MS)
+            self.poll()
+
     def _check_idle(self) -> None:
         minutes = self._idle_minutes()
         if (minutes and not self._busy and self.manager.state == ForgeState.RUNNING

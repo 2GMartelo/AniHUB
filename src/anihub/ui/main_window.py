@@ -122,8 +122,13 @@ class MainWindow(QMainWindow):
             self.rows[key] = i
             self.nav.add_item(title, icon_name, bottom=(key == "settings"))  # settings sit at the bottom
             self.pages.addWidget(page)
-        self.nav.currentRowChanged.connect(self.pages.setCurrentIndex)
+        self._current_section: str | None = None
+        self._away_timers: dict[str, QTimer] = {}
+        self.nav.currentRowChanged.connect(self._on_section_changed)
         self.nav.setCurrentRow(0)
+        for key in ("sd", "manga"):                    # every section starts inactive; only the initial one (index 0) resumes
+            if key != self._current_section:
+                self._pause_section(key)
 
         self.offline_banner = QLabel(tr("offline.banner"))
         self.offline_banner.setObjectName("offlineBanner")
@@ -322,6 +327,50 @@ class MainWindow(QMainWindow):
         row = self.rows.get(section)
         if row is not None:
             self.nav.setCurrentRow(row)
+
+    # --- pausing background polling for sections nobody is looking at ------------------------------------------
+
+    IDLE_SECTION_MS = 30 * 60_000  # how long a section can sit unseen before its background polling is paused
+
+    def _on_section_changed(self, index: int) -> None:
+        self.pages.setCurrentIndex(index)
+        key = next((k for k, i in self.rows.items() if i == index), None)
+        if key == self._current_section:
+            return
+        if self._current_section is not None:
+            self._schedule_pause(self._current_section)
+        self._current_section = key
+        self._cancel_pause(key)
+        self._resume_section(key)
+
+    def _resume_section(self, key: str | None) -> None:
+        """Only Forge's/Suwayomi's own 2-second state poll is paused/resumed for now (services/queues that make no
+        sense to keep refreshing on a tab nobody is looking at) -- other sections have nothing worth pausing yet."""
+        if key == "sd":
+            for controller in self.sd_controllers.values():
+                controller.resume_polling()
+        elif key == "manga" and self.manga_ctrl is not None:
+            self.manga_ctrl.service.resume_polling()
+
+    def _pause_section(self, key: str) -> None:
+        if key == "sd":
+            for controller in self.sd_controllers.values():
+                controller.pause_polling()
+        elif key == "manga" and self.manga_ctrl is not None:
+            self.manga_ctrl.service.pause_polling()
+
+    def _schedule_pause(self, key: str) -> None:
+        self._cancel_pause(key)
+        timer = QTimer(self)
+        timer.setSingleShot(True)
+        timer.timeout.connect(lambda: self._pause_section(key))
+        timer.start(self.IDLE_SECTION_MS)
+        self._away_timers[key] = timer
+
+    def _cancel_pause(self, key: str | None) -> None:
+        timer = self._away_timers.pop(key, None) if key else None
+        if timer is not None:
+            timer.stop()
 
     def open_music(self) -> None:
         """Jumps straight to Anime > Music (the "AniHUB Music" launcher's whole purpose)."""
