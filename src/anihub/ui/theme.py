@@ -8,8 +8,8 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from string import Template
 
-from PySide6.QtCore import QEvent, QObject, QRectF, Qt
-from PySide6.QtGui import QColor, QFont, QIcon, QImage, QLinearGradient, QPainter, QPainterPath, QPalette, QPixmap, QRadialGradient
+from PySide6.QtCore import QEvent, QObject, QPointF, QRectF, Qt
+from PySide6.QtGui import QColor, QFont, QIcon, QImage, QLinearGradient, QPainter, QPainterPath, QPalette, QPen, QPixmap, QRadialGradient
 from PySide6.QtWidgets import QApplication, QMainWindow, QWidget
 
 from anihub.core.config import config_dir
@@ -502,9 +502,12 @@ _STOP = re.compile(r"stop:\s*([\d.]+)\s+(#[0-9a-fA-F]{6})")
 _backdrop_cache: dict[tuple, QPixmap] = {}
 _noise_tile: QPixmap | None = None
 SPARKLES = ((0.94, 0.30, 7), (0.975, 0.38, 4), (0.905, 0.42, 3), (0.975, 0.78, 5), (0.925, 0.93, 4), (0.70, 0.955, 3))
+# a loose scatter of small dots near the top-right corner (fractional x, y, radius in px): fixed, not random each frame
+DOTS = ((0.80, 0.08, 2.2), (0.84, 0.14, 1.6), (0.90, 0.06, 1.8), (0.87, 0.20, 1.3), (0.93, 0.15, 2.0),
+        (0.96, 0.24, 1.4), (0.78, 0.18, 1.5), (0.91, 0.28, 1.7), (0.965, 0.10, 1.2), (0.83, 0.05, 1.1))
 
 
-def _smooth_stops(stops: list[tuple[float, QColor]], steps: int = 14) -> list[tuple[float, QColor]]:
+def _smooth_stops(stops: list[tuple[float, QColor]], steps: int = 28) -> list[tuple[float, QColor]]:
     """The gradient's few stops resampled with an ease in between: two- and three-stop gradients show visible bands (and a hard edge at
     every stop), an eased one with many stops does not."""
     stops = sorted(stops, key=lambda s: s[0])
@@ -536,6 +539,33 @@ def _noise() -> QPixmap:
                 img.setPixelColor(x, y, QColor(v, v, v, rnd.randint(0, 5)))
         _noise_tile = QPixmap.fromImage(img)
     return _noise_tile
+
+
+def _pattern(painter: QPainter, t: Tokens, w: float, h: float) -> None:
+    """A faint decorative wash in the corners the sparkles don't already cover: one thin meandering line low-left,
+    a scatter of tiny dots top-right -- the same idea as the sparkles, just with more variety so the empty space
+    reads as designed rather than flat."""
+    base = QColor(t.accent_text if t.dark else t.accent)
+
+    line = QColor(base)
+    line.setAlphaF(0.11 if t.dark else 0.08)
+    pen = QPen(line)
+    pen.setWidthF(max(1.0, min(w, h) * 0.0012))
+    pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+    painter.setPen(pen)
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    path = QPainterPath()
+    path.moveTo(-w * 0.05, h * 0.62)
+    path.cubicTo(w * 0.10, h * 0.55, w * 0.16, h * 0.74, w * 0.28, h * 0.68)
+    path.cubicTo(w * 0.38, h * 0.63, w * 0.40, h * 0.80, w * 0.50, h * 0.76)
+    painter.drawPath(path)
+
+    painter.setPen(Qt.PenStyle.NoPen)
+    dot = QColor(base)
+    for x, y, r in DOTS:
+        dot.setAlphaF((0.15 if t.dark else 0.11) * min(1.0, r / 2.2))
+        painter.setBrush(dot)
+        painter.drawEllipse(QPointF(w * x, h * y), r, r)
 
 
 def _backdrop(t: Tokens, w: int, h: int, glass: bool, dpr: float) -> QPixmap:
@@ -574,6 +604,7 @@ def _backdrop(t: Tokens, w: int, h: int, glass: bool, dpr: float) -> QPixmap:
             star.lineTo(cx + dx, cy + dy)
         star.closeSubpath()
         painter.drawPath(star)
+    _pattern(painter, t, w, h)
     painter.setOpacity(0.55)
     painter.drawTiledPixmap(QRectF(0, 0, w, h).toRect(), _noise())
     painter.end()
