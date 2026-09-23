@@ -224,28 +224,46 @@ class HttpClient:
             return self._request(url).content
 
     def download(self, url: str, dest: Path, progress: Callable[[int, int], None] | None = None,
-                 cancelled: Callable[[], bool] | None = None, headers: dict | None = None) -> None:
-        """Stream to dest via a .part file. progress(done, total) (total 0 if unknown); cancelled() aborts."""
+                 cancelled: Callable[[], bool] | None = None, paused: Callable[[], bool] | None = None,
+                 headers: dict | None = None) -> None:
+        """Stream to dest via a .part file. progress(done, total) (total 0 if unknown); cancelled() aborts (the
+        .part is discarded). `paused()`, if given, is polled the same way but on a "yes" just stops the transfer
+        and returns with the .part file kept as-is -- a later call resumes it with a Range request picking up
+        where it left off (falling back to a full restart if the server does not honour Range, e.g. it answers
+        with 200 instead of 206)."""
         self._check_online(url)
         dest.parent.mkdir(parents=True, exist_ok=True)
         part = dest.with_name(dest.name + ".part")
         generation = self._abort_generation
+        resume_from = part.stat().st_size if part.exists() else 0
+        req_headers = dict(self._merged_headers(url, headers) or {})
+        if resume_from:
+            req_headers["Range"] = f"bytes={resume_from}-"
+        discard = False  # set on cancel/error; the actual unlink happens after the file handle below is closed
+                          # (Windows refuses to delete a file that is still open)
         with self._sem:
             try:
-                with self.client.stream("GET", url, headers=self._merged_headers(url, headers)) as resp:
+                with self.client.stream("GET", url, headers=req_headers) as resp:
                     if resp.status_code >= 400:
+                        discard = True
                         raise HttpError(resp.status_code)
-                    total = int(resp.headers.get("Content-Length") or 0)
-                    done = 0
-                    with part.open("wb") as fh:
+                    resuming = resume_from > 0 and resp.status_code == 206
+                    start = resume_from if resuming else 0
+                    total = int(resp.headers.get("Content-Length") or 0) + start
+                    done = start
+                    with part.open("ab" if resuming else "wb") as fh:
                         for chunk in resp.iter_bytes(65536):
                             if (cancelled and cancelled()) or generation != self._abort_generation:
+                                discard = True
                                 raise HttpError(0, "cancelled")
                             self._bandwidth.consume(len(chunk), self.speed_limit)
                             fh.write(chunk)
                             done += len(chunk)
                             if progress:
                                 progress(done, total)
+                            if paused and paused():
+                                return  # this chunk is on disk; the next call to download() resumes after it
                 part.replace(dest)
             finally:
-                part.unlink(missing_ok=True)
+                if discard:
+                    part.unlink(missing_ok=True)

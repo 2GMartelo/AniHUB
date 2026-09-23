@@ -213,10 +213,13 @@ class LoraTrainPage(QWidget):
         adv_box.setLayout(adv_form)
 
         self.start_btn = style.primary(QPushButton(tr("lt.start")), "play")
+        self.pause_btn = style.secondary(QPushButton(tr("lt.pause")), "pause")
+        self.pause_btn.setEnabled(False)
         self.cancel_btn = style.secondary(QPushButton(tr("lt.cancel")), "stop")
         self.cancel_btn.setEnabled(False)
         run_row = QHBoxLayout()
         run_row.addWidget(self.start_btn)
+        run_row.addWidget(self.pause_btn)
         run_row.addWidget(self.cancel_btn)
         run_row.addStretch(1)
 
@@ -257,6 +260,7 @@ class LoraTrainPage(QWidget):
         self.checkpoint_browse.clicked.connect(self._browse_checkpoint)
         self.checkpoint.currentIndexChanged.connect(self._checkpoint_changed)
         self.start_btn.clicked.connect(self._start)
+        self.pause_btn.clicked.connect(self._toggle_pause)
         self.cancel_btn.clicked.connect(self._cancel)
 
         self.reload_checkpoints()
@@ -413,6 +417,8 @@ class LoraTrainPage(QWidget):
             self.status_label.setText(tr("status.error", msg=str(exc)))
             return
         self.start_btn.setEnabled(False)
+        self.pause_btn.setEnabled(True)
+        self.pause_btn.setText(tr("lt.pause"))
         self.cancel_btn.setEnabled(True)
         self.progress.setVisible(True)
         self.progress.setValue(0)
@@ -425,6 +431,16 @@ class LoraTrainPage(QWidget):
         if self.trainer is not None:
             self.trainer.cancel()
 
+    def _toggle_pause(self) -> None:
+        if self.trainer is None:
+            return
+        if self.trainer.paused:
+            self.trainer.resume()
+        else:
+            self.trainer.pause()
+        self.pause_btn.setText(tr("lt.resume") if self.trainer.paused else tr("lt.pause"))
+        self.status_label.setText(tr("lt.paused") if self.trainer.paused else tr("lt.running"))
+
     def _poll(self) -> None:
         if self.trainer is None:
             return
@@ -436,7 +452,7 @@ class LoraTrainPage(QWidget):
             if at_bottom:
                 bar.setValue(bar.maximum())
         prog = self.trainer.progress()
-        if prog:
+        if prog and not self.trainer.paused:
             self.progress.setValue(int(prog["frac"] * 100))
             text = tr("lt.progress", step=prog["step"], total=prog["total_steps"])
             if "epoch" in prog:
@@ -445,6 +461,7 @@ class LoraTrainPage(QWidget):
         if self.trainer.state in ("done", "failed", "cancelled"):
             self.timer.stop()
             self.start_btn.setEnabled(True)
+            self.pause_btn.setEnabled(False)
             self.cancel_btn.setEnabled(False)
             if self.trainer.state == "done":
                 self._finish_success()

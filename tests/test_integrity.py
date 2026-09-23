@@ -82,6 +82,21 @@ def test_cancel_and_progress_and_optimize(tmp_path):
     assert db.count_items() == 120
 
 
+def test_pausing_blocks_before_the_next_item_without_losing_progress(tmp_path):
+    paths, db = make(tmp_path)
+    for i in range(3):
+        add_file_item(paths, db, f"{i}.png", str(i).encode())
+    polls = {"n": 0}
+
+    def paused():
+        polls["n"] += 1
+        return polls["n"] == 1              # paused for exactly the first poll, then lets go
+
+    report = integrity.check_library(db, paths, paused=paused)
+    assert report.checked == 3              # nothing skipped, just delayed
+    assert polls["n"] >= 2                  # actually waited (polled more than once) before continuing
+
+
 def test_dialog_finds_and_cleans(qapp, tmp_path, monkeypatch):
     from types import SimpleNamespace
 

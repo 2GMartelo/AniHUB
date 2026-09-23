@@ -96,7 +96,7 @@ def test_install_downloads_unpacks_and_reports_progress(tmp_path, monkeypatch):
         def get_json(self, url, params=None, headers=None, interval_ms=None):
             return {"assets": [{"name": "webui_forge_cu121_torch21.7z", "browser_download_url": "https://x/a.7z", "size": 100}]}
 
-        def download(self, url, dest, progress=None, cancelled=None, headers=None):
+        def download(self, url, dest, progress=None, cancelled=None, paused=None, headers=None):
             dest.write_bytes(b"7z")
             progress(50, 100)
             calls.append(url)
@@ -116,6 +116,28 @@ def test_install_downloads_unpacks_and_reports_progress(tmp_path, monkeypatch):
     monkeypatch.setattr(forge_install.shutil, "disk_usage", lambda p: SimpleNamespace(free=1 * 1024**3))
     with pytest.raises(forge_install.ForgeInstallError, match="disk"):
         forge_install.install(Http(), tmp_path / "d2")
+
+
+def test_install_returns_none_when_paused_before_extracting(tmp_path, monkeypatch):
+    make_package(tmp_path / "src")
+    calls = []
+
+    class Http:
+        def get_json(self, url, params=None, headers=None, interval_ms=None):
+            return {"assets": [{"name": "webui_forge_cu121_torch21.7z", "browser_download_url": "https://x/a.7z", "size": 100}]}
+
+        def download(self, url, dest, progress=None, cancelled=None, paused=None, headers=None):
+            dest.write_bytes(b"7z")
+            calls.append("download")
+
+    def fake_extract(arc, dst, cancelled=None):
+        calls.append("extract")  # must never run once paused stopped things before this stage
+
+    monkeypatch.setattr(forge_install, "extract", fake_extract)
+    monkeypatch.setattr(forge_install, "tar_exe", lambda: "tar")
+    result = forge_install.install(Http(), tmp_path / "dest", paused=lambda: True)
+    assert result is None and calls == ["download"]
+    assert (tmp_path / "dest" / "webui_forge_cu121_torch21.7z").exists()  # kept, ready to resume
 
 
 # --- the wizard page ------------------------------------------------------------------------------------------------------

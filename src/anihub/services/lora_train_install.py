@@ -8,11 +8,13 @@ import os
 import re
 import shutil
 import subprocess
+import time
 import zipfile
 from pathlib import Path
 from typing import Callable
 
 from anihub.net.http import HttpClient, HttpError
+from anihub.services import procsuspend
 from anihub.services.procservice import NEW_GROUP, NO_WINDOW
 
 REPO_ZIP_URL = "https://github.com/kohya-ss/sd-scripts/archive/refs/heads/main.zip"
@@ -81,23 +83,37 @@ def find_system_python() -> list[str] | None:
     return None
 
 
-def _run_step(cmd: list[str], cwd: Path, log_path: Path, cancelled: Callable[[], bool] | None) -> None:
+def _run_step(cmd: list[str], cwd: Path, log_path: Path, cancelled: Callable[[], bool] | None,
+             paused: Callable[[], bool] | None = None) -> None:
     """One subprocess step of the install, its output appended to the shared log; polls `cancelled` so a slow pip install
-    can still be stopped (the same polling loop forge_install.extract() uses, for the same reason)."""
+    can still be stopped (the same polling loop forge_install.extract() uses, for the same reason). `paused`, if given,
+    is polled the same way: while it says yes, the whole step (and any child of its own -- see procsuspend) is kept
+    suspended in place, and this call simply does not return until it says no again."""
     with log_path.open("ab") as log:
         log.write((" ".join(cmd) + "\r\n").encode("utf-8", errors="replace"))
         log.flush()
         proc = subprocess.Popen(cmd, cwd=str(cwd), stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
                                 env={**os.environ, "PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"},
                                 creationflags=NO_WINDOW | NEW_GROUP)
+        watch: procsuspend.Suspend | None = None
         while proc.poll() is None:
             if cancelled and cancelled():
+                if watch is not None:
+                    watch.stop()
                 subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"], capture_output=True, creationflags=NO_WINDOW)
                 raise InstallError("cancelled")
+            if paused and paused():
+                if watch is None:
+                    watch = procsuspend.Suspend(proc.pid)
+            elif watch is not None:
+                watch.stop()
+                watch = None
             try:
                 proc.wait(timeout=0.5)
             except subprocess.TimeoutExpired:
                 pass
+        if watch is not None:
+            watch.stop()
         code = proc.returncode
     if code != 0:
         raise InstallError(f"{Path(cmd[0]).name} exited with {code} (see {log_path.name})")
@@ -121,9 +137,11 @@ def _extract(archive: Path, dest: Path) -> None:
 
 
 def install(http: HttpClient, dest_dir: Path, progress: Callable[[str, int, int], None] | None = None,
-           cancelled: Callable[[], bool] | None = None) -> Path:
+           cancelled: Callable[[], bool] | None = None, paused: Callable[[], bool] | None = None) -> Path:
     """Downloads sd-scripts' source, builds its own venv, installs PyTorch (matched to the driver) and its requirements.
-    Returns `dest_dir` (what to store as lora_train.sd_scripts_path). progress(stage, done, total)."""
+    Returns `dest_dir` (what to store as lora_train.sd_scripts_path). progress(stage, done, total). `paused`, if given,
+    is polled throughout: this call simply blocks (never returns early, unlike a plain download) for as long as it
+    says yes, so pausing partway through any step -- download or subprocess -- behaves the same way everywhere."""
     def report(stage: str, done: int = 0, total: int = 0) -> None:
         if progress:
             progress(stage, done, total)
@@ -149,7 +167,14 @@ def install(http: HttpClient, dest_dir: Path, progress: Callable[[str, int, int]
     report("download")
     archive = dest_dir / "sd-scripts.zip"
     try:
-        http.download(REPO_ZIP_URL, archive, progress=lambda d, t: report("download", d, t), cancelled=cancelled)
+        while True:
+            http.download(REPO_ZIP_URL, archive, progress=lambda d, t: report("download", d, t),
+                          cancelled=cancelled, paused=paused)
+            if archive.exists():
+                break
+            check_cancel()  # stopped because `paused` said so, not because cancelled -- wait it out, then retry
+            while paused and paused():
+                time.sleep(0.5)
     except HttpError as exc:
         raise InstallError(str(exc)) from exc
     check_cancel()
@@ -163,28 +188,28 @@ def install(http: HttpClient, dest_dir: Path, progress: Callable[[str, int, int]
 
     venv_dir = dest_dir / "venv"
     report("venv")
-    _run_step(python_cmd + ["-m", "venv", str(venv_dir)], dest_dir, log_path, cancelled)
+    _run_step(python_cmd + ["-m", "venv", str(venv_dir)], dest_dir, log_path, cancelled, paused)
     venv_python = venv_dir / "Scripts" / "python.exe"
     check_cancel()
 
     report("pip")
-    _run_step([str(venv_python), "-m", "pip", "install", "--upgrade", "pip"], dest_dir, log_path, cancelled)
+    _run_step([str(venv_python), "-m", "pip", "install", "--upgrade", "pip"], dest_dir, log_path, cancelled, paused)
     check_cancel()
 
     report("torch")
     tag = pick_torch(driver_cuda_version())
     _run_step([str(venv_python), "-m", "pip", "install", f"torch>={MIN_TORCH}", "torchvision",
-              "--index-url", f"https://download.pytorch.org/whl/{tag}"], dest_dir, log_path, cancelled)
+              "--index-url", f"https://download.pytorch.org/whl/{tag}"], dest_dir, log_path, cancelled, paused)
     check_cancel()
 
     report("requirements")
-    _run_step([str(venv_python), "-m", "pip", "install", "--upgrade", "-r", "requirements.txt"], dest_dir, log_path, cancelled)
+    _run_step([str(venv_python), "-m", "pip", "install", "--upgrade", "-r", "requirements.txt"], dest_dir, log_path, cancelled, paused)
     check_cancel()
 
     report("accelerate")
     try:
         _run_step([str(venv_python), "-m", "accelerate", "config", "default", "--mixed_precision", "fp16"],
-                  dest_dir, log_path, cancelled)
+                  dest_dir, log_path, cancelled, paused)
     except InstallError:
         pass          # best-effort: the training scripts run fine without a config too; "accelerate config" by hand still works
 

@@ -14,6 +14,8 @@ import threading
 from dataclasses import dataclass
 from pathlib import Path
 
+from anihub.services import procsuspend
+
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 NEW_GROUP = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
 
@@ -206,8 +208,10 @@ class Trainer:
         self.log_file = log_file
         self.proc: subprocess.Popen | None = None
         self.state = "idle"
+        self.paused = False
         self.error = ""
         self._lock = threading.Lock()
+        self._suspend_watch: procsuspend.Suspend | None = None
 
     def start(self, cmd: list[str], cwd: Path, env: dict | None = None) -> None:
         self.log_file.parent.mkdir(parents=True, exist_ok=True)
@@ -240,9 +244,33 @@ class Trainer:
 
     def cancel(self) -> None:
         with self._lock:
-            proc, self.state = self.proc, "cancelled"
+            proc, self.state, self.paused = self.proc, "cancelled", False
+            watch, self._suspend_watch = self._suspend_watch, None
+        if watch is not None:
+            watch.stop()
         if proc is not None and proc.poll() is None:
             subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"], capture_output=True, creationflags=NO_WINDOW)
+
+    def pause(self) -> bool:
+        """Freezes the whole training process (and any child of its own -- a venv's python.exe can itself be a
+        launcher stub, see procsuspend) exactly where it is: sd-scripts' progress lives in memory and on the GPU,
+        untouched by this, so resuming just carries on from the same step."""
+        if self.proc is None or self.state != "running" or self.paused:
+            return False
+        watch = procsuspend.Suspend(self.proc.pid)
+        if watch.active:
+            self._suspend_watch, self.paused = watch, True
+        else:
+            watch.stop()
+        return self.paused
+
+    def resume(self) -> bool:
+        if self.proc is None or not self.paused:
+            return False
+        watch, self._suspend_watch = self._suspend_watch, None
+        ok = watch.stop() if watch is not None else True
+        self.paused = not ok
+        return ok
 
     def log_tail(self, chars: int = 8000) -> str:
         try:

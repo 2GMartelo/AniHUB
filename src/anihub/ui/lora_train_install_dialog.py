@@ -25,6 +25,7 @@ class LoraTrainInstallDialog(QDialog):
         self.ctx, self.dest = ctx, Path(dest)
         self.installed: Path | None = None
         self._cancel = False
+        self._paused = False
         self.setWindowTitle(tr("train_install.title"))
         self.setModal(True)
         self.setMinimumWidth(520)
@@ -34,6 +35,7 @@ class LoraTrainInstallDialog(QDialog):
         self.state.setWordWrap(True)
         self.bar = QProgressBar()
         self.bar.setRange(0, 0)
+        self.pause_btn = style.secondary(QPushButton(tr("train_install.pause")), "pause")
         self.cancel_btn = style.secondary(QPushButton(tr("close.cancel")), "x")
         self.close_btn = style.primary(QPushButton(tr("forge.install.close")), "check")
         self.close_btn.hide()
@@ -41,15 +43,25 @@ class LoraTrainInstallDialog(QDialog):
         layout.setSpacing(12)
         for w in (self.info, self.bar, self.state):
             layout.addWidget(w)
+        layout.addWidget(self.pause_btn, 0, Qt.AlignmentFlag.AlignRight)
         layout.addWidget(self.cancel_btn, 0, Qt.AlignmentFlag.AlignRight)
         layout.addWidget(self.close_btn, 0, Qt.AlignmentFlag.AlignRight)
         self._progress.connect(self._on_progress)
+        self.pause_btn.clicked.connect(self._toggle_pause)
         self.cancel_btn.clicked.connect(self._on_cancel)
         self.close_btn.clicked.connect(self.accept)
         run_async(self._work, on_done=self._done, on_error=self._failed)
 
     def _work(self) -> Path:
-        return ti.install(self.ctx.http, self.dest, lambda s, d, t: self._progress.emit(s, d, t), lambda: self._cancel)
+        return ti.install(self.ctx.http, self.dest, lambda s, d, t: self._progress.emit(s, d, t),
+                          lambda: self._cancel, lambda: self._paused)
+
+    def _toggle_pause(self) -> None:
+        # install() itself blocks in place while `_paused` is true (see lora_train_install.install's own docstring),
+        # so there is nothing else to kick off here -- just flip the flag and reflect it in the UI.
+        self._paused = not self._paused
+        self.pause_btn.setText(tr("train_install.resume") if self._paused else tr("train_install.pause"))
+        self.state.setText(tr("train_install.paused") if self._paused else self.state.text())
 
     def _on_progress(self, stage: str, done: int, total: int) -> None:
         if stage == "download" and total:
@@ -66,6 +78,7 @@ class LoraTrainInstallDialog(QDialog):
         self.bar.setRange(0, 1)
         self.bar.setValue(1)
         self.state.setText(tr("train_install.done", path=str(path)))
+        self.pause_btn.hide()
         self.cancel_btn.hide()
         self.close_btn.show()
 
@@ -73,6 +86,7 @@ class LoraTrainInstallDialog(QDialog):
         self.bar.setRange(0, 1)
         self.bar.setValue(0)
         self.state.setText(tr("forge.install.failed", msg=str(exc)))
+        self.pause_btn.hide()
         self.cancel_btn.hide()
         self.close_btn.show()
 

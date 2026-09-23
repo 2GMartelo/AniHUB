@@ -580,4 +580,23 @@ DATA = r"""
 1399|Copiar marcações e abrir rule34.xxx
 1400|Abrir a pasta da imagem
 1401|Marcações copiadas, rule34.xxx está aberto — escolha o arquivo lá e cole as marcações.
+1402|Volume
+1403|Pausar
+1404|Retomar download
+1405|em pausa
+1406|Pausar
+1407|Retomar
+1408|Retomar download
+1409|Download pausado — clique em Retomar para continuar.
+1410|Pausar
+1411|Retomar
+1412|Download pausado. Clique em Retomar para continuar.
+1413|Pausar
+1414|Retomar
+1415|Treinamento pausado — o processo está congelado, nada é perdido.
+1416|Pausar
+1417|Retomar
+1418|Pausado. Clique em Retomar para continuar.
+1419|Pausar
+1420|Retomar
 """

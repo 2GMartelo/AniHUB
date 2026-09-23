@@ -285,7 +285,7 @@ class FakeHttp:
     def __init__(self, content=b"model-bytes", error=None):
         self.content, self.error, self.calls = content, error, []
 
-    def download(self, url, dest, progress=None, cancelled=None, headers=None):
+    def download(self, url, dest, progress=None, cancelled=None, paused=None, headers=None):
         self.calls.append((url, headers))
         if self.error:
             raise self.error
@@ -321,6 +321,14 @@ def test_download_rejects_corrupt_files_and_never_overwrites(tmp_path):
         civitai.download(FakeHttp(), civ_file(), tmp_path / "d")
     with pytest.raises(civitai.CivitaiError, match="login"):
         civitai.download(FakeHttp(error=HttpError(401)), civ_file(), tmp_path / "e")
+
+
+def test_download_returns_none_when_paused_and_keeps_the_partial_file(tmp_path):
+    http = FakeHttp()
+    result = civitai.download(http, civ_file(), tmp_path / "Lora", paused=lambda: True)
+    assert result is None
+    assert not (tmp_path / "Lora" / "a_b_.safetensors").exists()                          # never verified/renamed
+    assert list((tmp_path / "Lora").glob("*.download"))                                   # kept for a later resume
 
 
 def test_search_builds_query_and_returns_next_page():

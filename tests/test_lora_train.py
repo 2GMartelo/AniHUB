@@ -200,3 +200,32 @@ def test_trainer_cancel_kills_a_running_process(tmp_path):
     assert trainer.state == "cancelled"
     time.sleep(0.5)
     assert trainer.proc.poll() is not None                                                                  # really stopped, not just marked
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="process suspend is Windows-only")
+def test_trainer_pause_freezes_progress_and_resume_continues_it(tmp_path):
+    trainer = lt.Trainer(tmp_path / "log.txt")
+    counter = tmp_path / "n.txt"
+    script = tmp_path / "counting.py"
+    script.write_text(
+        "import time\nn = 0\nwhile True:\n n += 1\n open(r'%s', 'w').write(str(n))\n time.sleep(0.02)\n" % counter)
+    trainer.start([sys.executable, str(script)], cwd=tmp_path)
+    end = time.time() + 5
+    while not counter.exists() and time.time() < end:
+        time.sleep(0.02)
+
+    assert trainer.pause() is True
+    assert trainer.paused and trainer.state == "running"                     # paused is separate from the run state
+    time.sleep(0.5)                                                          # a few rescans: catches a respawn too
+    frozen_at = int(counter.read_text() or 0)
+    time.sleep(0.4)
+    assert int(counter.read_text() or 0) == frozen_at                        # genuinely frozen, not just marked as such
+
+    assert trainer.resume() is True                                          # the OS-level resume call succeeded
+    assert not trainer.paused
+    trainer.cancel()
+
+
+def test_trainer_pause_and_resume_are_no_ops_without_a_running_process(tmp_path):
+    trainer = lt.Trainer(tmp_path / "log.txt")
+    assert trainer.pause() is False and trainer.resume() is False

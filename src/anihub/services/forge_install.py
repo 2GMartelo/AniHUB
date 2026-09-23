@@ -85,8 +85,11 @@ def extract(archive: Path, dest: Path, cancelled: Callable[[], bool] | None = No
 
 
 def install(http: HttpClient, dest_dir: Path, progress: Callable[[str, int, int], None] | None = None,
-            cancelled: Callable[[], bool] | None = None) -> Path:
-    """Download + unpack into `dest_dir`; returns the `webui` folder to store as forge.path. progress(stage, done, total)."""
+            cancelled: Callable[[], bool] | None = None, paused: Callable[[], bool] | None = None) -> Path | None:
+    """Download + unpack into `dest_dir`; returns the `webui` folder to store as forge.path. progress(stage, done, total).
+    None means `paused` said stop: only the download itself can pause (extracting the archive cannot be safely
+    resumed partway through, so once that starts a cancel is the only way out) -- the partial archive is kept via
+    HttpClient.download's own .part file, and a later call resumes it."""
     def report(stage: str, done: int = 0, total: int = 0) -> None:
         if progress:
             progress(stage, done, total)
@@ -107,9 +110,11 @@ def install(http: HttpClient, dest_dir: Path, progress: Callable[[str, int, int]
     archive = dest_dir / asset["name"]
     try:
         http.download(asset["browser_download_url"], archive, progress=lambda d, t: report("download", d, t or int(asset.get("size", 0))),
-                      cancelled=cancelled)
+                      cancelled=cancelled, paused=paused)
     except HttpError as exc:
         raise ForgeInstallError(str(exc)) from exc
+    if paused and paused():
+        return None
     report("extract")
     try:
         extract(archive, dest_dir, cancelled)

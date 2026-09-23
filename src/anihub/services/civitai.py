@@ -207,8 +207,11 @@ def sha256_file(path: Path) -> str:
 
 
 def download(http: HttpClient, file: CivitFile, dest_dir: Path, token: str = "",
-             progress: Callable[[int, int], None] | None = None, cancelled: Callable[[], bool] | None = None) -> Path:
-    """Blocking. Verifies the SHA256 when CivitAI provides one. Never overwrites a different existing file."""
+             progress: Callable[[int, int], None] | None = None, cancelled: Callable[[], bool] | None = None,
+             paused: Callable[[], bool] | None = None) -> Path | None:
+    """Blocking. Verifies the SHA256 when CivitAI provides one. Never overwrites a different existing file.
+    None means `paused` said stop partway through: the partial file is kept (as HttpClient.download's own .part)
+    and a later call resumes it instead of starting over."""
     if not file.url:
         raise CivitaiError("This version has no downloadable file")
     dest_dir.mkdir(parents=True, exist_ok=True)
@@ -219,12 +222,14 @@ def download(http: HttpClient, file: CivitFile, dest_dir: Path, token: str = "",
         raise CivitaiError(f"{dest.name} already exists in {dest_dir} (different content)")
     tmp = dest.with_name(dest.name + ".download")
     try:
-        try:
-            http.download(file.url, tmp, progress=progress, cancelled=cancelled, headers=headers(token))
-        except HttpError as exc:
-            if exc.status in (401, 403):
-                raise CivitaiError("CivitAI requires a login for this file: add your API key in Settings") from exc
-            raise CivitaiError(f"CivitAI download failed: {exc}") from exc
+        http.download(file.url, tmp, progress=progress, cancelled=cancelled, paused=paused, headers=headers(token))
+    except HttpError as exc:
+        if exc.status in (401, 403):
+            raise CivitaiError("CivitAI requires a login for this file: add your API key in Settings") from exc
+        raise CivitaiError(f"CivitAI download failed: {exc}") from exc
+    if paused and paused():
+        return None
+    try:
         if file.sha256 and sha256_file(tmp) != file.sha256:
             raise CivitaiError("Checksum mismatch: the download is corrupted, try again")
         tmp.replace(dest)

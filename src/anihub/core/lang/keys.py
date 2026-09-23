@@ -1404,4 +1404,23 @@ rule34.rating
 rule34.copy_and_open
 rule34.open_folder
 rule34.done
+viewer.volume
+settings.autotag_pause
+settings.autotag_resume
+settings.autotag_paused_status
+civ.pause
+civ.resume
+civ.resume_download
+civ.paused
+forge.install.pause
+forge.install.resume
+forge.install.paused
+lt.pause
+lt.resume
+lt.paused
+train_install.pause
+train_install.resume
+train_install.paused
+integrity.pause
+integrity.resume
 """.split("\n") if k]

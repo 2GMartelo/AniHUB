@@ -580,4 +580,23 @@ DATA = r"""
 1399|Tags kopieren und rule34.xxx öffnen
 1400|Bildordner öffnen
 1401|Tags kopiert, rule34.xxx ist geöffnet — wähle dort die Datei aus und füge die Tags ein.
+1402|Lautstärke
+1403|Pause
+1404|Download fortsetzen
+1405|pausiert
+1406|Pause
+1407|Fortsetzen
+1408|Download fortsetzen
+1409|Download pausiert — klicke auf Fortsetzen, um weiterzumachen.
+1410|Pause
+1411|Fortsetzen
+1412|Download pausiert. Klicke auf Fortsetzen, um weiterzumachen.
+1413|Pause
+1414|Fortsetzen
+1415|Training pausiert — der Prozess ist eingefroren, nichts geht verloren.
+1416|Pause
+1417|Fortsetzen
+1418|Pausiert. Klicke auf Fortsetzen, um weiterzumachen.
+1419|Pause
+1420|Fortsetzen
 """

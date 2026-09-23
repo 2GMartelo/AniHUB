@@ -205,22 +205,30 @@ class SettingsPage(QWidget):
         self.tag_enabled = QCheckBox(tr("settings.autotag_enable"), checked=bool(cfg.get("autotag.enabled")))
         self.tag_status = QLabel()
         self.tag_download = QPushButton(tr("settings.autotag_download"))
+        self.tag_pause_btn = QPushButton(tr("settings.autotag_pause"))
+        self.tag_pause_btn.hide()
         self.tag_bar = QProgressBar()
         self.tag_bar.hide()
+        self._tag_paused = False
         self.tag_general = QDoubleSpinBox(minimum=0.05, maximum=0.95, singleStep=0.05, decimals=2,
                                           value=float(cfg.get("autotag.general_threshold", 0.35)))
         self.tag_char = QDoubleSpinBox(minimum=0.05, maximum=0.99, singleStep=0.05, decimals=2,
                                        value=float(cfg.get("autotag.character_threshold", 0.85)))
+        tag_dl_row = QHBoxLayout()
+        tag_dl_row.addWidget(self.tag_download)
+        tag_dl_row.addWidget(self.tag_pause_btn)
+        tag_dl_row.addStretch(1)
         tag = QFormLayout()
         tag.addRow("", self.tag_enabled)
         tag.addRow(tr("settings.autotag_model"), self.tag_status)
-        tag.addRow("", self.tag_download)
+        tag.addRow("", tag_dl_row)
         tag.addRow("", self.tag_bar)
         tag.addRow(tr("settings.autotag_general"), self.tag_general)
         tag.addRow(tr("settings.autotag_character"), self.tag_char)
         tag_box = QGroupBox(tr("settings.autotag_group"))
         tag_box.setLayout(tag)
         self.tag_download.clicked.connect(self._download_model)
+        self.tag_pause_btn.clicked.connect(self._toggle_tag_pause)
         self._tag_progress.connect(self._on_tag_progress)
         self._refresh_tag_status()
 
@@ -366,27 +374,40 @@ class SettingsPage(QWidget):
         self.tag_download.setVisible(not ready)
 
     def _download_model(self) -> None:
+        self._tag_paused = False
         self.tag_download.setEnabled(False)
+        self.tag_pause_btn.setText(tr("settings.autotag_pause"))
+        self.tag_pause_btn.show()
         self.tag_bar.show()
         self.tag_bar.setRange(0, 0)
         ctx = self.ctx
 
         def work() -> None:
             download_model(ctx.http, ctx.autotagger.model_dir,
-                           progress=lambda name, done, total: self._tag_progress.emit(name, done, total))
+                           progress=lambda name, done, total: self._tag_progress.emit(name, done, total),
+                           paused=lambda: self._tag_paused)
 
         def done(_) -> None:
-            self.tag_bar.hide()
-            self.tag_download.setEnabled(True)
-            ctx.refresh_tagger()
+            self.tag_pause_btn.hide()
+            if ctx.autotagger.available:
+                self.tag_bar.hide()
+                ctx.refresh_tagger()
+            else:                                                   # stopped mid-way: a later click resumes it
+                self.tag_download.setText(tr("settings.autotag_resume"))
+                self.tag_download.setEnabled(True)
             self._refresh_tag_status()
 
         def failed(exc: Exception) -> None:
             self.tag_bar.hide()
+            self.tag_pause_btn.hide()
             self.tag_download.setEnabled(True)
             self.tag_status.setText(tr("status.error", msg=str(exc)))
 
         run_async(work, on_done=done, on_error=failed)
+
+    def _toggle_tag_pause(self) -> None:
+        self._tag_paused = not self._tag_paused
+        self.tag_pause_btn.setText(tr("settings.autotag_resume") if self._tag_paused else tr("settings.autotag_pause"))
 
     def _on_tag_progress(self, name: str, done: int, total: int) -> None:
         self.tag_bar.setRange(0, max(total, 1))

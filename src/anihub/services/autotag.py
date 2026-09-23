@@ -97,12 +97,16 @@ class Autotagger:
 
 
 def download_model(http: HttpClient, model_dir: Path, progress: Callable[[str, int, int], None] | None = None,
-                   cancelled: Callable[[], bool] | None = None) -> None:
-    """Blocking. progress(file name, done, total)."""
+                   cancelled: Callable[[], bool] | None = None, paused: Callable[[], bool] | None = None) -> None:
+    """Blocking. progress(file name, done, total). A pause stops before starting the next file too (not just the
+    one in flight) -- a later call picks up wherever this one stopped, `target.exists()` skipping finished files
+    and HttpClient.download's own .part resuming a file that was only partway done."""
     model_dir.mkdir(parents=True, exist_ok=True)
     for name, url in MODEL_FILES.items():
         target = model_dir / name
         if target.exists():
             continue
         http.download(url, target, progress=(lambda d, t, n=name: progress(n, d, t)) if progress else None,
-                      cancelled=cancelled)
+                      cancelled=cancelled, paused=paused)
+        if paused and paused():
+            return

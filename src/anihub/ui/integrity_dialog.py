@@ -25,6 +25,7 @@ class IntegrityDialog(QDialog):
         self.ctx = ctx
         self.report: Report | None = None
         self._cancel = False
+        self._paused = False
         self._running = False
         self.setWindowTitle(tr("integrity.title"))
         self.resize(760, 560)
@@ -33,6 +34,8 @@ class IntegrityDialog(QDialog):
         style.role(hint, "dim")
         self.hashes = QCheckBox(tr("integrity.hashes"))
         self.start_btn = style.primary(QPushButton(tr("integrity.start")), "check")
+        self.pause_btn = style.secondary(QPushButton(tr("integrity.pause")), "pause")
+        self.pause_btn.setEnabled(False)
         self.stop_btn = style.secondary(QPushButton(tr("wizard.cancel")), "x")
         self.stop_btn.setEnabled(False)
         self.fix_btn = style.danger(QPushButton(tr("integrity.remove_missing")), "trash")
@@ -49,7 +52,7 @@ class IntegrityDialog(QDialog):
         self.tree.setRootIsDecorated(False)
         self.tree.setColumnWidth(0, 170)
         row = QHBoxLayout()
-        for w in (self.start_btn, self.stop_btn, self.hashes):
+        for w in (self.start_btn, self.pause_btn, self.stop_btn, self.hashes):
             row.addWidget(w)
         row.addStretch(1)
         row2 = QHBoxLayout()
@@ -65,6 +68,7 @@ class IntegrityDialog(QDialog):
         layout.addLayout(row2)
         self.progress_changed.connect(self._progress)
         self.start_btn.clicked.connect(self.start)
+        self.pause_btn.clicked.connect(self._toggle_pause)
         self.stop_btn.clicked.connect(self._stop)
         self.fix_btn.clicked.connect(self._fix)
         self.optimize_btn.clicked.connect(self._optimize)
@@ -78,11 +82,17 @@ class IntegrityDialog(QDialog):
         self._cancel = True
         self.stop_btn.setEnabled(False)
 
+    def _toggle_pause(self) -> None:
+        self._paused = not self._paused
+        self.pause_btn.setText(tr("integrity.resume") if self._paused else tr("integrity.pause"))
+
     def start(self) -> None:
         if self._running:
             return
-        self._running, self._cancel = True, False
+        self._running, self._cancel, self._paused = True, False, False
         self.start_btn.setEnabled(False)
+        self.pause_btn.setEnabled(True)
+        self.pause_btn.setText(tr("integrity.pause"))
         self.stop_btn.setEnabled(True)
         self.fix_btn.setEnabled(False)
         self.tree.clear()
@@ -91,13 +101,14 @@ class IntegrityDialog(QDialog):
 
         def work() -> Report:
             return integrity.check_library(ctx.db, ctx.paths, verify, lambda d, t: self.progress_changed.emit(d, t),
-                                           lambda: self._cancel)
+                                           lambda: self._cancel, lambda: self._paused)
 
         run_async(work, on_done=self._done, on_error=self._failed)
 
     def _failed(self, exc: Exception) -> None:
         self._running = False
         self.start_btn.setEnabled(True)
+        self.pause_btn.setEnabled(False)
         self.stop_btn.setEnabled(False)
         self.summary.setText(tr("status.error", msg=str(exc)))
 
@@ -105,6 +116,7 @@ class IntegrityDialog(QDialog):
         self._running = False
         self.report = report
         self.start_btn.setEnabled(True)
+        self.pause_btn.setEnabled(False)
         self.stop_btn.setEnabled(False)
         self.progress.setValue(self.progress.maximum())
         names = {"missing": tr("integrity.kind.missing"), "damaged": tr("integrity.kind.damaged"), "orphan": tr("integrity.kind.orphan")}

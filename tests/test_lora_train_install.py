@@ -129,13 +129,58 @@ def test_run_step_can_be_cancelled_mid_run(tmp_path):
         ti._run_step([sys.executable, str(script)], tmp_path, log, lambda: True)
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="process suspend is Windows-only")
+def test_run_step_pauses_a_running_subprocess_and_resumes_it(tmp_path):
+    import threading
+    import time
+
+    log = tmp_path / "install.log"
+    counter = tmp_path / "n.txt"
+    script = tmp_path / "counting.py"
+    script.write_text(
+        "import time\nn = 0\nwhile True:\n n += 1\n open(r'%s', 'w').write(str(n))\n time.sleep(0.02)\n" % counter)
+
+    state = {"paused": False, "cancel": False}
+    errors = []
+
+    def run():
+        try:
+            ti._run_step([sys.executable, str(script)], tmp_path, log, lambda: state["cancel"], lambda: state["paused"])
+        except ti.InstallError:
+            pass
+        except Exception as exc:  # noqa: BLE001 - surfaced via `errors`, not raised on a background thread
+            errors.append(exc)
+
+    thread = threading.Thread(target=run, daemon=True)
+    thread.start()
+    end = time.time() + 5
+    while not counter.exists() and time.time() < end:
+        time.sleep(0.02)
+
+    state["paused"] = True
+    time.sleep(0.5)                                        # a few rescans: catches a respawned worker too
+    frozen_at = int(counter.read_text() or 0)
+    time.sleep(0.4)
+    assert int(counter.read_text() or 0) == frozen_at
+
+    state["paused"] = False
+    end = time.time() + 5
+    while int(counter.read_text() or 0) <= frozen_at and time.time() < end:
+        time.sleep(0.02)
+    assert int(counter.read_text() or 0) > frozen_at
+
+    state["cancel"] = True
+    thread.join(timeout=5)
+    assert not errors
+
+
 # --- the full install(), with a fake HttpClient and fake commands ------------------------------------------------------
 
 class FakeHttp:
     def __init__(self, archive_src: Path):
         self.archive_src = archive_src
 
-    def download(self, url, dest, progress=None, cancelled=None):
+    def download(self, url, dest, progress=None, cancelled=None, paused=None):
         dest.write_bytes(self.archive_src.read_bytes())
         if progress:
             progress(dest.stat().st_size, dest.stat().st_size)
@@ -152,7 +197,7 @@ def test_install_runs_every_stage_in_order(tmp_path, monkeypatch):
 
     calls: list[list[str]] = []
 
-    def fake_run_step(cmd, cwd, log_path, cancelled):
+    def fake_run_step(cmd, cwd, log_path, cancelled, paused=None):
         calls.append(cmd)
         log_path.parent.mkdir(parents=True, exist_ok=True)
         with log_path.open("ab") as f:
@@ -191,3 +236,47 @@ def test_install_can_be_cancelled_before_any_subprocess_runs(tmp_path, monkeypat
     monkeypatch.setattr(ti.shutil, "disk_usage", lambda p: type("D", (), {"free": 999 * 1024**3})())
     with pytest.raises(ti.InstallError):
         ti.install(http, tmp_path / "sd-scripts", cancelled=lambda: True)
+
+
+class PausableFakeHttp:
+    """Mimics HttpClient.download's own contract: a paused call writes nothing and just returns."""
+
+    def __init__(self, archive_src: Path):
+        self.archive_src = archive_src
+        self.calls = 0
+
+    def download(self, url, dest, progress=None, cancelled=None, paused=None):
+        self.calls += 1
+        if paused and paused():
+            return
+        dest.write_bytes(self.archive_src.read_bytes())
+        if progress:
+            progress(dest.stat().st_size, dest.stat().st_size)
+
+
+def test_install_blocks_while_paused_during_the_download_then_continues(tmp_path, monkeypatch):
+    import threading
+    import time
+
+    http = PausableFakeHttp(make_repo_zip(tmp_path / "src_holder"))
+    dest = tmp_path / "sd-scripts"
+    monkeypatch.setattr(ti, "find_system_python", lambda: [sys.executable])
+    monkeypatch.setattr(ti, "driver_cuda_version", lambda: None)
+    monkeypatch.setattr(ti.shutil, "disk_usage", lambda p: type("D", (), {"free": 999 * 1024**3})())
+    monkeypatch.setattr(ti, "_run_step", lambda cmd, cwd, log_path, cancelled, paused=None: None)
+
+    state = {"paused": True}
+    result_box: dict = {}
+
+    def run():
+        result_box["result"] = ti.install(http, dest, paused=lambda: state["paused"])
+
+    thread = threading.Thread(target=run, daemon=True)
+    thread.start()
+    time.sleep(0.3)
+    assert "result" not in result_box          # install() is still blocked, waiting for the pause to lift
+    assert http.calls >= 1                     # it did try the download and was told to stand down
+
+    state["paused"] = False
+    thread.join(timeout=5)
+    assert result_box.get("result") == dest    # picked back up and finished once unpaused

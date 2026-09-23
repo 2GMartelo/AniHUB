@@ -21,6 +21,7 @@ class ForgeInstallDialog(QDialog):
         self.ctx, self.dest = ctx, Path(dest)
         self.installed: Path | None = None
         self._cancel = False
+        self._paused = False
         self.setWindowTitle(tr("forge.install.title"))
         self.setModal(True)
         self.setMinimumWidth(520)
@@ -30,6 +31,7 @@ class ForgeInstallDialog(QDialog):
         self.state.setWordWrap(True)
         self.bar = QProgressBar()
         self.bar.setRange(0, 0)
+        self.pause_btn = style.secondary(QPushButton(tr("forge.install.pause")), "pause")
         self.cancel_btn = style.secondary(QPushButton(tr("close.cancel")), "x")
         self.close_btn = style.primary(QPushButton(tr("forge.install.close")), "check")
         self.close_btn.hide()
@@ -37,17 +39,21 @@ class ForgeInstallDialog(QDialog):
         layout.setSpacing(12)
         for w in (self.info, self.bar, self.state):
             layout.addWidget(w)
+        layout.addWidget(self.pause_btn, 0, Qt.AlignmentFlag.AlignRight)
         layout.addWidget(self.cancel_btn, 0, Qt.AlignmentFlag.AlignRight)
         layout.addWidget(self.close_btn, 0, Qt.AlignmentFlag.AlignRight)
         self._progress.connect(self._on_progress)
+        self.pause_btn.clicked.connect(self._toggle_pause)
         self.cancel_btn.clicked.connect(self._on_cancel)
         self.close_btn.clicked.connect(self.accept)
         run_async(self._work, on_done=self._done, on_error=self._failed)
 
-    def _work(self) -> Path:
-        return forge_install.install(self.ctx.http, self.dest, lambda s, d, t: self._progress.emit(s, d, t), lambda: self._cancel)
+    def _work(self) -> Path | None:
+        return forge_install.install(self.ctx.http, self.dest, lambda s, d, t: self._progress.emit(s, d, t),
+                                     lambda: self._cancel, lambda: self._paused)
 
     def _on_progress(self, stage: str, done: int, total: int) -> None:
+        self.pause_btn.setEnabled(stage == "download")  # only the download itself can be paused
         if stage == "download" and total:
             self.bar.setRange(0, 1000)
             self.bar.setValue(int(done / total * 1000))
@@ -56,13 +62,26 @@ class ForgeInstallDialog(QDialog):
             self.bar.setRange(0, 0)
             self.state.setText(tr(f"forge.install.{stage}") if stage in ("release", "extract") else tr("status.loading"))
 
-    def _done(self, path: Path) -> None:
+    def _toggle_pause(self) -> None:
+        self._paused = not self._paused
+        self.pause_btn.setText(tr("forge.install.resume") if self._paused else tr("forge.install.pause"))
+
+    def _done(self, path: Path | None) -> None:
+        if path is None:  # paused before extracting: not done, just stopped -- reopening this dialog resumes it
+            self.bar.setRange(0, 1)
+            self.bar.setValue(0)
+            self.state.setText(tr("forge.install.paused"))
+            self.pause_btn.hide()
+            self.cancel_btn.hide()
+            self.close_btn.show()
+            return
         self.installed = path
         self.ctx.cfg.set("forge.path", str(path))
         self.ctx.cfg.set("sd.install_pending", "")
         self.bar.setRange(0, 1)
         self.bar.setValue(1)
         self.state.setText(tr("forge.install.done", path=str(path)))
+        self.pause_btn.hide()
         self.cancel_btn.hide()
         self.close_btn.show()
 

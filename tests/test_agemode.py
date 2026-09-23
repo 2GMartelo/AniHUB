@@ -92,6 +92,48 @@ def test_settings_show_locked_tags_and_they_follow_the_mode(qapp, tmp_path, monk
     page.age_mode.setCurrentIndex(page.age_mode.findData("18"))
     assert "nipples" not in page.locked_tags.toPlainText()
 
+
+def test_autotag_download_pause_toggles_button_and_resume_label(qapp, tmp_path, monkeypatch):
+    import threading
+    import time
+
+    from anihub.context import AppContext
+    from anihub.core.i18n import tr
+    from anihub.ui import settings as settings_module
+    from anihub.ui.settings import SettingsPage
+
+    cfg = cfg_in(tmp_path)
+    cfg.set("library_path", str(tmp_path / "lib"), save=False)
+    ctx = AppContext.build(cfg)
+    ctx.autotagger.model_dir = tmp_path / "autotag_model"          # never the real, possibly-already-downloaded one
+    started, release = threading.Event(), threading.Event()
+
+    def fake_download(http, model_dir, progress=None, cancelled=None, paused=None):
+        started.set()
+        release.wait(timeout=5)  # stays "in progress" until the test lets it go, whatever `paused` ends up being
+
+    monkeypatch.setattr(settings_module, "download_model", fake_download)
+    page = SettingsPage(ctx)
+    assert page.tag_pause_btn.isHidden()
+    page.tag_download.click()
+
+    def wait(cond, timeout=5):
+        end = time.time() + timeout
+        while time.time() < end:
+            qapp.processEvents()
+            if cond():
+                return True
+            time.sleep(0.01)
+        return False
+
+    assert wait(started.is_set) and wait(lambda: not page.tag_pause_btn.isHidden())
+    page.tag_pause_btn.click()
+    assert page._tag_paused and page.tag_pause_btn.text() == tr("settings.autotag_resume")
+    release.set()
+    assert wait(lambda: page.tag_pause_btn.isHidden())
+    # the fake never actually wrote the model files, so the worker returning is reported as "stopped, not finished"
+    assert page.tag_download.text() == tr("settings.autotag_resume") and page.tag_download.isEnabled()
+
     page.custom_tags.setPlainText("Spiders, gore*")
     monkeypatch.setattr(page, "_confirm_adult", lambda: False)   # declined: stays where it was
     page._save()

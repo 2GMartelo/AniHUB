@@ -220,6 +220,34 @@ def test_quit_app_cancels_a_running_training_job(tmp_path, qapp, monkeypatch):
     win.close()
 
 
+def test_pause_button_toggles_the_trainer_and_updates_its_own_label(tmp_path, qapp):
+    from anihub.core.i18n import tr
+
+    page = LoraTrainPage(make_ctx(tmp_path))
+
+    class FakeTrainer:
+        def __init__(self):
+            self.paused = False
+            self.state = "running"
+
+        def pause(self):
+            self.paused = True
+            return True
+
+        def resume(self):
+            self.paused = False
+            return True
+
+    page.trainer = FakeTrainer()
+    page.pause_btn.setEnabled(True)
+    page._toggle_pause()
+    assert page.trainer.paused and page.pause_btn.text() == tr("lt.resume")
+    assert page.status_label.text() == tr("lt.paused")
+    page._toggle_pause()
+    assert not page.trainer.paused and page.pause_btn.text() == tr("lt.pause")
+    assert page.status_label.text() == tr("lt.running")
+
+
 # --- autotagging: one picture at a time, not a single big frozen batch ------------------------------------------------
 
 def make_page_with_rows(tmp_path, qapp, count=3, tags=None):

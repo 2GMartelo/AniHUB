@@ -131,6 +131,7 @@ class Viewer(QWidget):
         self.player = QMediaPlayer(self)
         self.audio = QAudioOutput(self)
         self.audio.setMuted(True)  # clips autoplay: start silent, M toggles sound
+        self.audio.setVolume(0.7)
         self.player.setAudioOutput(self.audio)
         self.player.setVideoOutput(self.video)
         self.player.setLoops(QMediaPlayer.Loops.Infinite)
@@ -141,13 +142,19 @@ class Viewer(QWidget):
         self.seek = QSlider(Qt.Orientation.Horizontal)
         self.time_label = QLabel("0:00 / 0:00")
         self.mute_btn = self._tool("volume-x", "viewer.mute", size=18, side=34)
+        self.volume = QSlider(Qt.Orientation.Horizontal)
+        self.volume.setRange(0, 100)
+        self.volume.setValue(int(self.audio.volume() * 100))
+        self.volume.setFixedWidth(80)
+        self.volume.setToolTip(tr("viewer.volume"))
         self.controls = QWidget()
         row = QHBoxLayout(self.controls)
         row.setContentsMargins(0, 0, 0, 0)
-        for w in (self.play_btn, self.seek, self.time_label, self.mute_btn):
+        for w in (self.play_btn, self.seek, self.time_label, self.mute_btn, self.volume):
             row.addWidget(w, 1 if w is self.seek else 0)
         self.play_btn.clicked.connect(self.toggle_play)
         self.mute_btn.clicked.connect(self.toggle_mute)
+        self.volume.valueChanged.connect(self._on_volume_changed)
         self.seek.sliderMoved.connect(self.player.setPosition)
         self.player.durationChanged.connect(lambda d: self.seek.setRange(0, d))
         self.player.positionChanged.connect(self._on_position)
@@ -161,7 +168,7 @@ class Viewer(QWidget):
         self.tags.itemDoubleClicked.connect(lambda it: self._emit_tag(it, "search"))
 
         # Keys (arrows, space...) must reach the viewer, not the child widgets.
-        for w in (self.tags, self.play_btn, self.mute_btn, self.seek):
+        for w in (self.tags, self.play_btn, self.mute_btn, self.seek, self.volume):
             w.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
         self.info = QLabel(wordWrap=True)
@@ -394,6 +401,12 @@ class Viewer(QWidget):
     def toggle_mute(self) -> None:
         self.audio.setMuted(not self.audio.isMuted())
         style.bind_icon(self.mute_btn, "volume-x" if self.audio.isMuted() else "volume", "normal", 18)
+
+    def _on_volume_changed(self, value: int) -> None:
+        self.audio.setVolume(value / 100)
+        if value > 0 and self.audio.isMuted():         # dragging the slider up is also "I want sound"
+            self.audio.setMuted(False)
+            style.bind_icon(self.mute_btn, "volume", "normal", 18)
 
     def toggle_slideshow(self) -> None:
         self.timer.stop() if self.timer.isActive() else self.timer.start(self.SLIDESHOW_MS)

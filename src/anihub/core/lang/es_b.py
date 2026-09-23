@@ -580,4 +580,23 @@ DATA = r"""
 1399|Copiar etiquetas y abrir rule34.xxx
 1400|Abrir la carpeta de la imagen
 1401|Etiquetas copiadas, rule34.xxx está abierto: elige el archivo allí y pega las etiquetas.
+1402|Volumen
+1403|Pausar
+1404|Reanudar descarga
+1405|en pausa
+1406|Pausar
+1407|Reanudar
+1408|Reanudar descarga
+1409|Descarga en pausa: haz clic en Reanudar para continuar.
+1410|Pausar
+1411|Reanudar
+1412|Descarga en pausa. Haz clic en Reanudar para continuar.
+1413|Pausar
+1414|Reanudar
+1415|Entrenamiento en pausa: el proceso está congelado, no se pierde nada.
+1416|Pausar
+1417|Reanudar
+1418|En pausa. Haz clic en Reanudar para continuar.
+1419|Pausar
+1420|Reanudar
 """

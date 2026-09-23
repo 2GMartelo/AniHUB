@@ -9,6 +9,7 @@ from typing import Callable
 
 from anihub.core.db import Database
 from anihub.core.paths import LibraryPaths
+from anihub.services.pausing import wait_while_paused
 
 # folders whose files must all be known to the database (sd/generated is a scratch folder: only chosen pictures get records)
 ITEM_FOLDERS = ("arts",)
@@ -47,7 +48,8 @@ def _sha256(path: Path) -> str:
 
 def check_library(db: Database, paths: LibraryPaths, verify_hashes: bool = False,
                   progress: Callable[[int, int], None] | None = None,
-                  cancelled: Callable[[], bool] | None = None) -> Report:
+                  cancelled: Callable[[], bool] | None = None,
+                  paused: Callable[[], bool] | None = None) -> Report:
     report = Report()
     result = db.conn.execute("PRAGMA integrity_check").fetchone()[0]
     report.db_ok, report.db_message = result == "ok", str(result)
@@ -55,6 +57,7 @@ def check_library(db: Database, paths: LibraryPaths, verify_hashes: bool = False
     rows = db.conn.execute("SELECT id, path, trashed_at, trash_path, sha256, kind FROM items").fetchall()
     known: set[str] = set()
     for i, row in enumerate(rows, 1):
+        wait_while_paused(paused, cancelled)
         if cancelled and cancelled():
             break
         rel = row["trash_path"] if row["trashed_at"] and row["trash_path"] else row["path"]

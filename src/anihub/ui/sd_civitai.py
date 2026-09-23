@@ -30,6 +30,7 @@ class CivitaiView(QWidget):
         self._models: list[civitai.CivitModel] = []
         self._next_url: str | None = None
         self._cancel = False
+        self._paused = False
         self._downloading = False
         self._gen = 0
 
@@ -72,6 +73,8 @@ class CivitaiView(QWidget):
         self.download_btn.setEnabled(False)
         self.cancel_btn = QPushButton(tr("import.cancel"))
         self.cancel_btn.hide()
+        self.pause_btn = QPushButton(tr("civ.pause"))
+        self.pause_btn.hide()
         self.page_btn = QPushButton(tr("civ.page"))
         self.page_btn.setEnabled(False)
         self.bar = QProgressBar()
@@ -92,6 +95,7 @@ class CivitaiView(QWidget):
         ll.addWidget(self.more_btn)
         act = QHBoxLayout()
         act.addWidget(self.download_btn, 1)
+        act.addWidget(self.pause_btn)
         act.addWidget(self.cancel_btn)
         act.addWidget(self.page_btn)
         right = QWidget()
@@ -125,6 +129,7 @@ class CivitaiView(QWidget):
         self.version.currentIndexChanged.connect(self._version_changed)
         self.download_btn.clicked.connect(self._download)
         self.cancel_btn.clicked.connect(lambda: setattr(self, "_cancel", True))
+        self.pause_btn.clicked.connect(self._toggle_pause)
         self.page_btn.clicked.connect(lambda: webbrowser.open(self._current().page_url) if self._current() else None)
         self.base.activated.connect(self._fill_list)
         self._progress.connect(lambda d, t: (self.bar.setRange(0, max(t, 1)), self.bar.setValue(d)))
@@ -282,17 +287,21 @@ class CivitaiView(QWidget):
         except civitai.CivitaiError as exc:
             self.status.setText(str(exc))
             return
-        self._downloading, self._cancel = True, False
+        self._downloading, self._cancel, self._paused = True, False, False
         self.download_btn.setEnabled(False)
+        self.pause_btn.setText(tr("civ.pause"))
+        self.pause_btn.show()
         self.cancel_btn.show()
         self.bar.show()
         self.bar.setRange(0, 0)
         self.status.setText(tr("civ.downloading", name=file.name, folder=str(dest)))
         token = self._token()
 
-        def work() -> tuple[Path, str]:
+        def work() -> tuple[Path, str] | None:
             path = civitai.download(self.ctx.http, file, dest, token, progress=lambda d, t: self._progress.emit(d, t),
-                                    cancelled=lambda: self._cancel)
+                                    cancelled=lambda: self._cancel, paused=lambda: self._paused)
+            if path is None:
+                return None
             kind = civitai.REFRESH_KIND.get(model.type)
             if kind:  # tell every running backend to rescan, so the file shows up without a restart
                 for backend in self.ctx.backends:
@@ -306,10 +315,19 @@ class CivitaiView(QWidget):
         def finish() -> None:
             self._downloading = False
             self.cancel_btn.hide()
+            self.pause_btn.hide()
             self.bar.hide()
             self._version_changed()
 
         def done(result) -> None:
+            if result is None:  # paused partway: not an error, just stopped -- Download resumes it
+                self._downloading = False
+                self.cancel_btn.hide()
+                self.pause_btn.hide()
+                self.download_btn.setEnabled(True)
+                self.download_btn.setText(tr("civ.resume_download"))
+                self.status.setText(tr("civ.paused"))
+                return
             finish()
             path, mtype = result
             self.status.setText(tr("civ.installed", path=str(path)))
@@ -320,3 +338,7 @@ class CivitaiView(QWidget):
             self.status.setText(tr("civ.cancelled") if self._cancel else tr("status.error", msg=str(exc)))
 
         run_async(work, on_done=done, on_error=failed)
+
+    def _toggle_pause(self) -> None:
+        self._paused = not self._paused
+        self.pause_btn.setText(tr("civ.resume") if self._paused else tr("civ.pause"))

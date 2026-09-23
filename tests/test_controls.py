@@ -159,6 +159,21 @@ def test_viewer_buttons_navigate_and_report_actions(qapp, tmp_path):
     viewer.close()
 
 
+def test_viewer_volume_slider_sets_level_and_unmutes(qapp, tmp_path):
+    viewer = Viewer(make_items(tmp_path), 0)
+    assert viewer.audio.isMuted()                                          # starts silent (autoplay)
+    default = viewer.volume.value()
+    assert abs(default - viewer.audio.volume() * 100) < 1                  # slider matches the initial volume
+    viewer.volume.setValue(35)
+    assert abs(viewer.audio.volume() * 100 - 35) < 1
+    assert not viewer.audio.isMuted()                                      # moving the slider up also unmutes
+    viewer.toggle_mute()
+    assert viewer.audio.isMuted()
+    viewer.volume.setValue(0)
+    assert viewer.audio.isMuted()                                          # 0 does not fight the mute button
+    viewer.close()
+
+
 def test_viewer_hides_actions_without_callbacks(qapp, tmp_path):
     viewer = Viewer(make_items(tmp_path, 1), 0)
     assert viewer.fav_btn.isHidden() and viewer.stars_btn.isHidden() and viewer.save_btn.isHidden()

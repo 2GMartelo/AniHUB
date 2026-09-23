@@ -580,4 +580,23 @@ DATA = r"""
 1399|Copier les tags et ouvrir rule34.xxx
 1400|Ouvrir le dossier de l'image
 1401|Tags copiés, rule34.xxx est ouvert — choisissez le fichier là-bas et collez les tags.
+1402|Volume
+1403|Pause
+1404|Reprendre le téléchargement
+1405|en pause
+1406|Pause
+1407|Reprendre
+1408|Reprendre le téléchargement
+1409|Téléchargement en pause — cliquez sur Reprendre pour continuer.
+1410|Pause
+1411|Reprendre
+1412|Téléchargement en pause. Cliquez sur Reprendre pour continuer.
+1413|Pause
+1414|Reprendre
+1415|Entraînement en pause — le processus est figé, rien n'est perdu.
+1416|Pause
+1417|Reprendre
+1418|En pause. Cliquez sur Reprendre pour continuer.
+1419|Pause
+1420|Reprendre
 """
