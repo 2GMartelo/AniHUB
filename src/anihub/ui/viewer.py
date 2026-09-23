@@ -187,6 +187,9 @@ class Viewer(QWidget):
         self.tags_btn = self._tool("tag", "viewer.tags", checkable=True)
         self.tags_btn.setChecked(True)
         self.tags_btn.clicked.connect(self.toggle_tags)
+        self.info_btn = self._tool("file-text", "viewer.info_toggle", checkable=True)
+        self.info_btn.setChecked(True)
+        self.info_btn.clicked.connect(self.toggle_info)
         self.full_btn = self._tool("maximize", "viewer.fullscreen")
         self.full_btn.clicked.connect(self.toggle_fullscreen)
         self.close_btn = self._tool("x", "viewer.close")
@@ -200,7 +203,7 @@ class Viewer(QWidget):
         bar.setSpacing(8)
         bar.addWidget(self.counter)
         bar.addStretch(1)
-        for w in (self.slide_btn, self.fav_btn, self.stars_btn, self.save_btn, self.tags_btn, self.full_btn, self.close_btn):
+        for w in (self.slide_btn, self.fav_btn, self.stars_btn, self.save_btn, self.tags_btn, self.info_btn, self.full_btn, self.close_btn):
             bar.addWidget(w)
         bar.addStretch(1)
         bar.addSpacing(self.counter.sizeHint().width())
@@ -222,7 +225,7 @@ class Viewer(QWidget):
         layout.addWidget(self.help)
 
         for w in (self.prev_btn, self.next_btn, self.slide_btn, self.fav_btn, self.stars_btn, self.save_btn,
-                  self.tags_btn, self.full_btn, self.close_btn):
+                  self.tags_btn, self.info_btn, self.full_btn, self.close_btn):
             w.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.timer = QTimer(self)
         self.timer.timeout.connect(lambda: self.step(1))
@@ -288,6 +291,12 @@ class Viewer(QWidget):
         show = self.tags.isHidden()
         self.tags.setVisible(show)
         self.tags_btn.setChecked(show)
+
+    def toggle_info(self) -> None:
+        """Hides the bottom description strip so the picture itself gets the space -- same idea as toggle_tags()."""
+        show = self.info.isHidden()
+        self.info.setVisible(show)
+        self.info_btn.setChecked(show)
 
     # --- navigation --------------------------------------------------------------
 
@@ -487,6 +496,8 @@ class Viewer(QWidget):
             self.toggle_fullscreen()
         elif key == Qt.Key.Key_T:
             self.toggle_tags()
+        elif key == Qt.Key.Key_I:
+            self.toggle_info()
         elif key == Qt.Key.Key_L and self.on_favorite:
             self.toggle_favorite()
         elif key == Qt.Key.Key_M:

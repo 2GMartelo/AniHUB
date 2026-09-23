@@ -1379,4 +1379,10 @@ lt.save_failed
 err.train.no_torch
 lt.autotag_stop
 lt.autotag_progress
+viewer.info_toggle
+settings.cat_appearance
+settings.cat_library
+settings.cat_network
+settings.cat_generation
+settings.cat_system
 """.split("\n") if k]

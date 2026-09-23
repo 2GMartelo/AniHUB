@@ -7,7 +7,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, QFormLayout, QGroupBox, QProgressBar, QTableWidget,
     QTableWidgetItem, QHBoxLayout, QLabel, QLineEdit, QPushButton,
-    QMessageBox, QPlainTextEdit, QScrollArea, QSpinBox, QVBoxLayout, QWidget,
+    QMessageBox, QPlainTextEdit, QScrollArea, QSpinBox, QTabWidget, QVBoxLayout, QWidget,
 )
 
 from anihub.context import AppContext
@@ -152,6 +152,7 @@ class SettingsPage(QWidget):
 
         # training your own LoRA (services/lora_train.py): off by default, needs a separate sd-scripts install
         self.train_enabled = QCheckBox(tr("train.enable"), checked=bool(cfg.get("lora_train.enabled", False)))
+        self.train_enabled.toggled.connect(self._on_train_toggled)
         self.train_path = QLineEdit(str(cfg.get("lora_train.sd_scripts_path") or ""))
         browse_train = QPushButton(tr("wizard.browse"))
         browse_train.clicked.connect(self._pick_train_path)
@@ -281,16 +282,41 @@ class SettingsPage(QWidget):
         self.save_btn.clicked.connect(self._save)
         self.note = style.role(QLabel(), "dim")
 
+        self.sd_box = self._build_sd_box()
+
+        # Categorised into tabs (was one long scroll of a dozen-plus group boxes -- hard to find anything in).
+        gen_boxes = [self.sd_box]
+        if ctx.sd_enabled:
+            gen_boxes += [forge_box, gen_box, self.train_box]    # hidden together with the whole tab when the PC cannot run Forge
+        categories = [
+            (tr("settings.cat_appearance"), [look_box]),
+            (tr("settings.cat_library"), [storage_box, lib_box, tag_box]),
+            (tr("age.title"), [age_box]),
+            (tr("settings.cat_network"), [network_box, creds_box]),
+            (tr("nav.manga"), [manga_box]),
+            (tr("settings.cat_generation"), gen_boxes),
+            (tr("settings.cat_system"), [self.backup, self.about]),
+        ]
+        self.tabs = QTabWidget()
+        for title, boxes in categories:
+            self.tabs.addTab(self._tab_page(boxes), title)
+
+        footer = QHBoxLayout()
+        footer.addWidget(self.note, 1)
+        footer.addWidget(self.save_btn)
+        layout = QVBoxLayout(self)
+        layout.setSpacing(10)
+        layout.addWidget(style.role(QLabel(tr("nav.settings")), "title"))
+        layout.addWidget(self.tabs, 1)
+        layout.addLayout(footer)
+
+    def _tab_page(self, boxes: list[QGroupBox]) -> QScrollArea:
+        """One category tab: its boxes stacked in a scrollable column, same look every tab had before categorising."""
         content = QWidget()
         content.setMaximumWidth(940)
         cl = QVBoxLayout(content)
-        cl.setContentsMargins(0, 0, 8, 12)
+        cl.setContentsMargins(0, 8, 8, 12)
         cl.setSpacing(6)
-        self.sd_box = self._build_sd_box()
-        boxes = [look_box, age_box, storage_box, network_box, creds_box, self.sd_box]
-        if ctx.sd_enabled:
-            boxes += [forge_box, gen_box, self.train_box]                # hidden together with the whole section when the PC cannot run Forge
-        boxes += [manga_box, lib_box, tag_box, self.backup, self.about]
         for box in boxes:
             cl.addWidget(box)
         cl.addStretch(1)
@@ -304,15 +330,7 @@ class SettingsPage(QWidget):
         scroll.setFrameShape(QScrollArea.Shape.NoFrame)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         scroll.setWidget(holder)
-
-        footer = QHBoxLayout()
-        footer.addWidget(self.note, 1)
-        footer.addWidget(self.save_btn)
-        layout = QVBoxLayout(self)
-        layout.setSpacing(10)
-        layout.addWidget(style.role(QLabel(tr("nav.settings")), "title"))
-        layout.addWidget(scroll, 1)
-        layout.addLayout(footer)
+        return scroll
 
     def _add_backend_row(self, entry: dict) -> None:
         row = self.backend_table.rowCount()
@@ -494,6 +512,13 @@ class SettingsPage(QWidget):
         if folder:
             self.train_path.setText(os.path.normpath(folder))
 
+    def _on_train_toggled(self, checked: bool) -> None:
+        """The first time the box is ticked in this settings session, show the minimum requirements and the
+        suitability verdict right away, same as the wizard already does for Forge -- instead of leaving the user to
+        find the separate "Проверить" button before deciding whether to bother downloading sd-scripts at all."""
+        if checked and not self.train_status.text():
+            self._recheck_train()
+
     def _recheck_train(self) -> None:
         from anihub.services import lora_train, sysreq
 
@@ -547,21 +572,25 @@ class SettingsPage(QWidget):
         cfg.set("library.cache_limit_gb", self.cache_limit.value(), save=False)
         for key, field in self.cred_fields.items():
             cfg.set(key, field.text().strip(), save=False)
-        cfg.set("forge.path", self.forge_path.text().strip(), save=False)
-        cfg.set("forge.port", self.forge_port.value(), save=False)
-        cfg.set("forge.nowebui", self.forge_nowebui.isChecked(), save=False)
-        cfg.set("forge.extra_args", self.forge_args.text().strip(), save=False)
-        cfg.set("forge.idle_minutes", self.forge_idle.value(), save=False)
+        if self.ctx.sd_enabled:
+            # forge_box / gen_box / self.train_box are only ever parented into a layout when sd_enabled is True (see
+            # __init__); with no parent, Qt is free to garbage-collect their C++ side, so reading these fields when
+            # sd_enabled is False would hit an already-deleted QLineEdit instead of just being pointless.
+            cfg.set("forge.path", self.forge_path.text().strip(), save=False)
+            cfg.set("forge.port", self.forge_port.value(), save=False)
+            cfg.set("forge.nowebui", self.forge_nowebui.isChecked(), save=False)
+            cfg.set("forge.extra_args", self.forge_args.text().strip(), save=False)
+            cfg.set("forge.idle_minutes", self.forge_idle.value(), save=False)
+            cfg.set("forge.backends", self._backend_entries(), save=False)
+            cfg.set("civitai.token", self.civitai_token.text().strip(), save=False)
+            cfg.set("lora_train.enabled", self.train_enabled.isChecked(), save=False)
+            cfg.set("lora_train.sd_scripts_path", self.train_path.text().strip(), save=False)
         cfg.set("library.near_dedup", self.near_mode.currentData(), save=False)
         cfg.set("library.trash_days", self.trash_days.value(), save=False)
         cfg.set("ui.confirm_trash", self.confirm_trash.isChecked(), save=False)
         cfg.set("autotag.enabled", self.tag_enabled.isChecked(), save=False)
         cfg.set("autotag.general_threshold", self.tag_general.value(), save=False)
         cfg.set("autotag.character_threshold", self.tag_char.value(), save=False)
-        cfg.set("civitai.token", self.civitai_token.text().strip(), save=False)
-        cfg.set("forge.backends", self._backend_entries(), save=False)
-        cfg.set("lora_train.enabled", self.train_enabled.isChecked(), save=False)
-        cfg.set("lora_train.sd_scripts_path", self.train_path.text().strip(), save=False)
         cfg.set("manga.port", self.manga_port.value(), save=False)
         cfg.set("manga.poll_minutes", self.manga_poll.value(), save=False)
         cfg.save()

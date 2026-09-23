@@ -203,7 +203,9 @@ def test_quit_app_cancels_a_running_training_job(tmp_path, qapp, monkeypatch):
 
     cfg = Config.load(tmp_path / "c.json")
     cfg.set("library_path", str(tmp_path / "lib"), save=False)
+    cfg.set("forge.path", str(tmp_path / "forge"), save=False)
     cfg.set("lora_train.enabled", True, save=False)
+    cfg.set("lora_train.sd_scripts_path", str(tmp_path / "sd-scripts"), save=False)
     win = MainWindow(AppContext.build(cfg))
     win.tray.isVisible = lambda: True
 
@@ -291,3 +293,29 @@ def test_autotag_all_skips_rows_that_already_have_tags(tmp_path, qapp, monkeypat
     monkeypatch.setattr(page.ctx.autotagger, "tag_file", lambda path: calls.append(path))
     page._autotag_all()
     assert not page._autotagging and not calls    # nothing queued: every row already had tags
+
+
+# --- Settings: ticking "enable LoRA training" shows the system requirements right away -----------------------------
+
+def test_enabling_the_checkbox_shows_the_suitability_verdict_immediately(tmp_path, qapp):
+    from anihub.ui.settings import SettingsPage
+
+    ctx = make_ctx(tmp_path, **{"lora_train.enabled": False})   # make_ctx's own default is True: start unchecked
+    page = SettingsPage(ctx)
+    assert not page.train_enabled.isChecked() and page.train_status.text() == ""
+
+    page.train_enabled.setChecked(True)
+    assert pump(qapp, cond=lambda: page.train_status.text() != "")
+    assert page.train_status.text()                # some verdict/report text is now showing, unprompted
+
+
+def test_toggling_it_again_does_not_re_trigger_the_check(tmp_path, qapp, monkeypatch):
+    from anihub.ui.settings import SettingsPage
+
+    ctx = make_ctx(tmp_path, **{"lora_train.enabled": False})
+    page = SettingsPage(ctx)
+    page.train_status.setText("already checked once")
+    calls = []
+    monkeypatch.setattr(page, "_recheck_train", lambda: calls.append(1))
+    page.train_enabled.setChecked(True)               # a real False -> True transition, but a verdict is already shown
+    assert not calls

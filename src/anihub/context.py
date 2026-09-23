@@ -78,15 +78,23 @@ class AppContext:
 
     @property
     def sd_enabled(self) -> bool:
-        """False on a computer the first-run check found unsuitable for Stable Diffusion: the generation section is hidden.
-        Old configs have no such key and keep generation."""
-        return self.cfg.get("sd.enabled", True) is not False
+        """False on a computer the first-run check found unsuitable for Stable Diffusion (or the user turned it off):
+        the generation section is hidden. Old configs have no such key and keep generation.
+
+        Also False when Forge itself is not actually set up yet (no folder picked, and no download queued from the
+        wizard) -- there is nothing useful to do in an empty Generation tab, so it stays out of the way, the same as
+        it does on an unsuitable PC, until a folder exists. `sd.install_pending` keeps this True across the wizard's
+        own "download Forge now" flow (main_window.maybe_install_forge), which itself only runs while this is True."""
+        if self.cfg.get("sd.enabled", True) is False:
+            return False
+        return bool(self.cfg.get("forge.path")) or bool(self.cfg.get("sd.install_pending"))
 
     @property
     def lora_train_enabled(self) -> bool:
         """Off by default (unlike sd_enabled): training needs a separate program (sd-scripts) nobody has installed by
-        chance, so the tab only appears once the user turns it on in Settings -- same switch either way, "Обучение LoRA"."""
-        return self.sd_enabled and bool(self.cfg.get("lora_train.enabled", False))
+        chance, so the tab only appears once the user turns it on in Settings AND actually points it at a folder --
+        same switch either way, "Обучение LoRA"."""
+        return self.sd_enabled and bool(self.cfg.get("lora_train.enabled", False)) and bool(self.cfg.get("lora_train.sd_scripts_path"))
 
     def reload_extensions(self) -> None:
         """Re-read the plugin folders (after an extension was installed, updated or removed)."""

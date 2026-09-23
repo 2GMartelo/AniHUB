@@ -152,6 +152,10 @@ def test_viewer_buttons_navigate_and_report_actions(qapp, tmp_path):
     assert not viewer.timer.isActive()
     viewer.tags_btn.click()
     assert viewer.tags.isHidden()
+    viewer.info_btn.click()
+    assert viewer.info.isHidden() and not viewer.info_btn.isChecked()
+    viewer.info_btn.click()
+    assert not viewer.info.isHidden() and viewer.info_btn.isChecked()
     viewer.close()
 
 

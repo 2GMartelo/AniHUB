@@ -171,7 +171,7 @@ def test_wizard_has_the_forge_page_before_the_end(qapp, tmp_path):
 
 # --- the main window without generation ---------------------------------------------------------------------------------------
 
-def make_window(qapp, tmp_path, enabled):
+def make_window(qapp, tmp_path, enabled, forge_path=None):
     from anihub.context import AppContext
     from anihub.ui.main_window import MainWindow
 
@@ -180,6 +180,8 @@ def make_window(qapp, tmp_path, enabled):
     cfg.set("first_run_done", True, save=False)
     if enabled is not None:
         cfg.set("sd.enabled", enabled, save=False)
+    if forge_path is not None:
+        cfg.set("forge.path", forge_path, save=False)
     ctx = AppContext.build(cfg)
     win = MainWindow(ctx)
     win.resize(1400, 850)
@@ -188,11 +190,43 @@ def make_window(qapp, tmp_path, enabled):
 
 
 def test_sections_are_ordered_manga_then_novels_and_generation_is_optional(qapp, tmp_path):
-    win, ctx = make_window(qapp, tmp_path, None)                                   # an old config: keeps generation
+    # an old config (no "sd.enabled" key) that already has Forge set up: keeps generation
+    win, ctx = make_window(qapp, tmp_path, None, forge_path=str(tmp_path / "forge"))
     assert list(win.rows) == ["arts", "manga", "novels", "sd", "anime", "settings"]
     assert win.rows["novels"] == win.rows["manga"] + 1 and win.sd_page is not None and ctx.sd_enabled
     win.go("novels")
     assert win.pages.currentWidget() is win.novels_hub
+    win._quitting = True
+    win.close()
+
+
+def test_generation_stays_off_until_forge_is_actually_set_up(qapp, tmp_path):
+    """A suitable PC (sd.enabled True, the default) is not enough on its own: without a Forge folder configured and
+    no download queued from the wizard, the tab has nothing to do, so it stays hidden the same as on an unsuitable
+    PC -- until forge.path exists."""
+    win, ctx = make_window(qapp, tmp_path, True)                        # sd.enabled=True, but no forge.path
+    assert not ctx.sd_enabled and win.sd_page is None
+    assert list(win.rows) == ["arts", "manga", "novels", "anime", "settings"]
+    win._quitting = True
+    win.close()
+
+
+def test_a_pending_wizard_download_keeps_generation_available(qapp, tmp_path):
+    """The wizard's own "download Forge now" queues sd.install_pending instead of forge.path; main_window's
+    maybe_install_forge() only runs while sd_enabled is True, so this must count too, or the queued download would
+    never get the chance to run."""
+    from anihub.context import AppContext
+    from anihub.ui.main_window import MainWindow
+
+    cfg = Config.load(tmp_path / "c.json")
+    cfg.set("library_path", str(tmp_path / "lib"), save=False)
+    cfg.set("first_run_done", True, save=False)
+    cfg.set("sd.install_pending", str(tmp_path / "ForgeHere"), save=False)
+    ctx = AppContext.build(cfg)
+    assert ctx.sd_enabled
+    win = MainWindow(ctx)
+    win.resize(1400, 850)
+    assert win.sd_page is not None
     win._quitting = True
     win.close()
 
@@ -235,7 +269,9 @@ def test_library_menu_has_img2img_only_with_generation(qapp, tmp_path):
 def test_recheck_button_updates_the_setting(qapp, tmp_path, monkeypatch):
     import time
 
-    win, ctx = make_window(qapp, tmp_path, False)
+    # Forge already configured (a PC that was marked unsuitable before, now rechecked and found fine): only the
+    # suitability half of the gate is what this recheck can change.
+    win, ctx = make_window(qapp, tmp_path, False, forge_path=str(tmp_path / "forge"))
     monkeypatch.setattr(sysreq, "assess_forge", lambda p="": judge_forge("RTX 4070", 12, 32, 300))
     win.settings._recheck_pc()
     end = time.time() + 3
