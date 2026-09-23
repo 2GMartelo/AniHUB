@@ -625,4 +625,10 @@ DATA = r"""
 1444|Cada línea del prompt de arriba se convierte en su propia zona — escribe una línea por zona en vez de un prompt largo.
 1445|Listas de comodines…
 1446|Usa __nombre__ en el prompt para elegir una etiqueta al azar de una lista
+1447|Animar (AnimateDiff)
+1448|Instalar AnimateDiff…
+1449|Convierte esta generación en un GIF corto en lugar de una imagen fija — funciona con un prompt nuevo o con un arte existente enviado a img2img.
+1450|No se encontró ningún modelo de módulo de movimiento en la carpeta propia de AnimateDiff — descarga uno allí para animar.
+1451|Fotogramas
+1452|FPS
 """

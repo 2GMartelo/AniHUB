@@ -116,6 +116,17 @@ def test_run_txt2img_splits_a_batch_count_into_one_call_each(tmp_path):
     assert api.payload["override_settings"] == {"sd_model_checkpoint": "m.safetensors [abc]"}
 
 
+def test_run_txt2img_saves_animatediff_output_as_a_gif(tmp_path):
+    """AnimateDiff replaces the whole images list with its own GIF bytes -- no leading grid to skip, and the
+    result belongs on disk as .gif, not .png."""
+    info = {"all_seeds": [7]}
+    api = FakeApi({"images": [PNG], "info": json.dumps(info)})
+    params = GenParams(prompt="1girl", animate=True, animate_model="mm_sd_v15_v2.ckpt")
+    results = run_txt2img(api, params, tmp_path / "gen")
+    assert len(results) == 1 and results[0].path.suffix == ".gif" and results[0].path.exists()
+    assert api.payload["alwayson_scripts"]["AnimateDiff"]["args"][0]["model"] == "mm_sd_v15_v2.ckpt"
+
+
 def test_run_txt2img_no_images(tmp_path):
     try:
         run_txt2img(FakeApi({"images": [], "info": "{}"}), GenParams(), tmp_path)

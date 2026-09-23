@@ -625,4 +625,10 @@ DATA = r"""
 1444|Cada linha do prompt acima se torna sua própria zona — escreva uma linha por zona em vez de um prompt longo.
 1445|Listas de curingas…
 1446|Use __nome__ no prompt para escolher uma tag aleatória de uma lista
+1447|Animar (AnimateDiff)
+1448|Instalar AnimateDiff…
+1449|Transforma esta geração em um GIF curto em vez de uma imagem parada — funciona com um prompt novo ou com uma arte existente enviada ao img2img.
+1450|Nenhum modelo de módulo de movimento encontrado na pasta própria do AnimateDiff — baixe um lá para animar.
+1451|Quadros
+1452|FPS
 """

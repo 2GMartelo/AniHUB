@@ -53,6 +53,10 @@ class GenParams:
     couple_enabled: bool = False   # Forge Couple addon: each *line* of `prompt` becomes its own region -- Forge
                                     # itself splits the main prompt on newlines, this only says how to arrange them
     couple_direction: str = "Horizontal"    # "Horizontal" (left->right) or "Vertical" (top->bottom)
+    animate: bool = False          # AnimateDiff addon: turns this generation into a short GIF instead of a still
+    animate_model: str = ""        # exact motion-module filename under the addon's own model/ folder
+    animate_frames: int = 16       # SD1.5 motion modules want 16; AnimateDiffXL/HotShot-XL want 8
+    animate_fps: int = 8
 
     def to_payload(self) -> dict:
         payload = {
@@ -120,7 +124,19 @@ class GenParams:
                 "{ }", False, True,  # common_parser, common_debug, def_in_prompt
                 None, None, None, None, None, None,  # Tile mode args, unused here
             ]}
+        if self.animate:
+            scripts["AnimateDiff"] = {"args": [{
+                "model": self.animate_model, "format": ["GIF"], "enable": True,
+                "video_length": self.animate_frames, "fps": self.animate_fps, "loop_number": 0,
+                "closed_loop": "R+P", "batch_size": self.animate_frames, "stride": 1, "overlap": -1,
+                "interp": "Off",
+            }]}
         return scripts
+
+    @property
+    def result_suffix(self) -> str:
+        """The file extension the addons above make Forge return instead of a plain image."""
+        return ".gif" if self.animate else ".png"
 
     def summary(self, limit: int = 60) -> str:
         text = " ".join(self.prompt.split())
@@ -162,14 +178,16 @@ def _unique(day_dir: Path, name: str, suffix: str) -> Path:
     return path
 
 
-def _images_from_response(data: dict, out_dir: Path, meta_base: dict, fallback_seed: int) -> list[GenResult]:
+def _images_from_response(data: dict, out_dir: Path, meta_base: dict, fallback_seed: int,
+                          suffix: str = ".png") -> list[GenResult]:
     images = data.get("images") or []
     try:
         info = json.loads(data.get("info") or "{}")
     except ValueError:
         info = {}
     # With batches Forge may prepend a preview grid; index_of_first_image tells where real images start.
-    first = int(info.get("index_of_first_image", 0) or 0)
+    # AnimateDiff replaces the whole list with its own output instead, so that offset does not apply to it.
+    first = 0 if suffix != ".png" else int(info.get("index_of_first_image", 0) or 0)
     images = images[first:]
     if not images:
         raise ForgeError("Forge returned no images")
@@ -181,7 +199,7 @@ def _images_from_response(data: dict, out_dir: Path, meta_base: dict, fallback_s
     results = []
     for i, b64 in enumerate(images):
         seed = int(seeds[i]) if i < len(seeds) else fallback_seed
-        path = _unique(day_dir, f"{stamp}_{seed}_{i + 1}", ".png")
+        path = _unique(day_dir, f"{stamp}_{seed}_{i + 1}", suffix)
         path.write_bytes(base64.b64decode(b64))
         meta = {**meta_base, "seed": seed}
         if i + first < len(infotexts):  # infotexts align with the full image list, grid included
@@ -222,7 +240,7 @@ def run_generation(api: ForgeApi, params: GenParams, out_dir: Path,
         payload = call_params.to_payload()
         payload["n_iter"] = 1
         data = api.img2img(payload) if params.init_image else api.txt2img(payload)  # img2img also covers inpaint (mask in payload)
-        results = _images_from_response(data, out_dir, call_params.__dict__, call_params.seed)
+        results = _images_from_response(data, out_dir, call_params.__dict__, call_params.seed, call_params.result_suffix)
         all_results.extend(results)
         if on_batch is not None:
             on_batch(results)

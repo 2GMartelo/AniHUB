@@ -625,4 +625,10 @@ DATA = r"""
 1444|Chaque ligne du prompt ci-dessus devient sa propre zone — écrivez une ligne par zone au lieu d'un long prompt.
 1445|Listes de wildcards…
 1446|Utilisez __nom__ dans le prompt pour choisir une balise aléatoire d'une liste
+1447|Animer (AnimateDiff)
+1448|Installer AnimateDiff…
+1449|Transforme cette génération en un court GIF au lieu d'une image fixe — fonctionne avec un nouveau prompt ou avec un art existant envoyé vers img2img.
+1450|Aucun modèle de module de mouvement trouvé dans le propre dossier d'AnimateDiff — téléchargez-en un là pour animer.
+1451|Images
+1452|FPS
 """

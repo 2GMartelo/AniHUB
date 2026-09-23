@@ -625,4 +625,10 @@ DATA = r"""
 1444|Jede Zeile des obigen Prompts wird zu einer eigenen Zone — schreibe eine Zeile pro Zone statt eines langen Prompts.
 1445|Wildcard-Listen…
 1446|Verwende __Name__ im Prompt, um ein zufälliges Tag aus einer Liste zu wählen
+1447|Animieren (AnimateDiff)
+1448|AnimateDiff installieren…
+1449|Verwandelt diese Generierung in ein kurzes GIF statt eines Standbilds — funktioniert mit einem neuen Prompt oder mit einer vorhandenen Grafik, die an img2img gesendet wurde.
+1450|Kein Motion-Modul-Modell im eigenen Ordner von AnimateDiff gefunden — lade dort eines herunter, um zu animieren.
+1451|Bilder
+1452|FPS
 """

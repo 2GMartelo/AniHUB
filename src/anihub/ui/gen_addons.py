@@ -6,11 +6,13 @@ the detection can actually mean anything."""
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Callable
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, QFrame, QGroupBox, QHBoxLayout, QLabel, QPushButton, QVBoxLayout,
+    QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, QFrame, QGroupBox, QHBoxLayout, QLabel, QPushButton, QSpinBox,
+    QVBoxLayout,
 )
 
 from anihub.context import AppContext
@@ -29,6 +31,7 @@ class GenAddonsPanel(QGroupBox):
     def __init__(self, ctx: AppContext, parent=None):
         super().__init__(tr("sd.addons"), parent)
         self.ctx = ctx
+        self._api: ForgeApi | None = None
         self._openpose_path: Path | None = None
         self._openpose_module = ""
         self._openpose_model = ""
@@ -78,6 +81,28 @@ class GenAddonsPanel(QGroupBox):
         couple_row.addWidget(self.couple_direction)
         couple_row.addStretch(1)
 
+        # --- AnimateDiff ---------------------------------------------------------------------------------------------
+        self.animate_check = QCheckBox(tr("sd.animate"))
+        self.animate_install_btn = style.ghost(QPushButton(tr("sd.animate_install")), "download")
+        self.animate_check.hide()
+        self.animate_install_btn.hide()
+        self.animate_model = QComboBox()
+        self.animate_frames = QSpinBox(minimum=1, maximum=64, value=16)
+        self.animate_fps = QSpinBox(minimum=1, maximum=60, value=8)
+        self.animate_hint = style.role(QLabel(tr("sd.animate_hint")), "dim")
+        self.animate_hint.setWordWrap(True)
+        self.animate_no_model_hint = style.role(QLabel(tr("sd.animate_no_model")), "dim")
+        self.animate_no_model_hint.setWordWrap(True)
+        self.animate_no_model_hint.hide()
+        animate_row = QHBoxLayout()
+        animate_row.addWidget(self.animate_check)
+        animate_row.addWidget(self.animate_install_btn)
+        animate_row.addWidget(self.animate_model, 1)
+        animate_row.addWidget(QLabel(tr("sd.animate_frames")))
+        animate_row.addWidget(self.animate_frames)
+        animate_row.addWidget(QLabel(tr("sd.animate_fps")))
+        animate_row.addWidget(self.animate_fps)
+
         # --- Wildcards (no Forge extension: resolved by AniHUB itself) ---------------------------------------------
         self.wildcards_btn = style.ghost(QPushButton(tr("wildcards.manage")), "list")
         wc_row = QHBoxLayout()
@@ -99,24 +124,35 @@ class GenAddonsPanel(QGroupBox):
         layout.addLayout(couple_row)
         layout.addWidget(self.couple_hint)
         layout.addWidget(_separator())
+        layout.addLayout(animate_row)
+        layout.addWidget(self.animate_hint)
+        layout.addWidget(self.animate_no_model_hint)
+        layout.addWidget(_separator())
         layout.addLayout(wc_row)
 
         self.openpose_choose_btn.clicked.connect(self._choose_openpose)
         self.openpose_clear_btn.clicked.connect(self._clear_openpose)
         self.adetailer_install_btn.clicked.connect(lambda: self._install("adetailer", self.adetailer_check, self.adetailer_install_btn))
         self.couple_install_btn.clicked.connect(lambda: self._install("forge_couple", self.couple_check, self.couple_install_btn))
+        self.animate_install_btn.clicked.connect(
+            lambda: self._install("animatediff", self.animate_check, self.animate_install_btn, after=self._refresh_animate_models))
         self.wildcards_btn.clicked.connect(self._open_wildcards)
 
     # --- detection ---------------------------------------------------------------------------------------------------
 
     def refresh(self, api: ForgeApi) -> None:
-        """Call once Forge is confirmed ready. Everything here is a network round-trip, so it runs off the GUI thread."""
+        """Call once Forge is confirmed ready. Everything here is a network round-trip (or, for AnimateDiff's model
+        list, a local folder read), so it runs off the GUI thread."""
+        self._api = api
+        forge_dir = self.ctx.cfg.get("forge.path") or ""
+
         def fetch():
             return (addons.is_installed(api, "adetailer"), addons.is_installed(api, "forge_couple"),
-                    api.controlnet_model_for("OpenPose"))
+                    api.controlnet_model_for("OpenPose"), addons.is_installed(api, "animatediff"),
+                    addons.animatediff_models(forge_dir) if forge_dir else [])
 
         def done(result: tuple) -> None:
-            adetailer_ok, couple_ok, (module, model) = result
+            adetailer_ok, couple_ok, (module, model), animate_ok, motion_models = result
             self.adetailer_check.setVisible(adetailer_ok)
             self.adetailer_install_btn.setVisible(not adetailer_ok)
             self.couple_check.setVisible(couple_ok)
@@ -127,10 +163,33 @@ class GenAddonsPanel(QGroupBox):
             has_model = bool(model)
             self.openpose_check.setEnabled(has_model)
             self.openpose_no_model_hint.setVisible(not has_model)
+            self.animate_check.setVisible(animate_ok)
+            self.animate_install_btn.setVisible(not animate_ok)
+            self.animate_model.setVisible(animate_ok)
+            self.animate_hint.setVisible(animate_ok)
+            self._set_motion_models(motion_models)
 
         run_async(fetch, on_done=done, on_error=lambda _e: None)
 
-    def _install(self, key: str, checkbox, install_btn) -> None:
+    def _set_motion_models(self, motion_models: list[str]) -> None:
+        wanted = self.animate_model.currentText()
+        self.animate_model.clear()
+        self.animate_model.addItems(motion_models)
+        self.animate_model.setCurrentIndex(max(self.animate_model.findText(wanted), 0))
+        self.animate_check.setEnabled(bool(motion_models))
+        self.animate_no_model_hint.setVisible(not self.animate_check.isHidden() and not motion_models)
+
+    def _refresh_animate_models(self) -> None:
+        """Just the model list, not the whole detection: right after installing, Forge itself has not restarted
+        yet so is_installed() would still (correctly) say no and hide the checkbox _install() just showed -- the
+        model folder, unlike Forge's own script list, does not need a restart to exist."""
+        forge_dir = self.ctx.cfg.get("forge.path") or ""
+        if not forge_dir:
+            return
+        run_async(lambda: addons.animatediff_models(forge_dir), on_done=self._set_motion_models,
+                 on_error=lambda _e: None)
+
+    def _install(self, key: str, checkbox, install_btn, after: Callable[[], None] | None = None) -> None:
         forge_dir = self.ctx.cfg.get("forge.path") or ""
         if not forge_dir:
             return
@@ -141,6 +200,8 @@ class GenAddonsPanel(QGroupBox):
         if dlg.installed is not None:
             checkbox.show()
             install_btn.hide()
+            if after:
+                after()
 
     # --- OpenPose reference image -------------------------------------------------------------------------------------
 
@@ -173,12 +234,15 @@ class GenAddonsPanel(QGroupBox):
     def params_kwargs(self) -> dict:
         pose_on = self.openpose_check.isChecked() and self._openpose_path is not None
         couple_on = self.couple_check.isChecked() and not self.couple_check.isHidden()
+        animate_on = self.animate_check.isChecked() and not self.animate_check.isHidden()
         return dict(
             adetailer=self.adetailer_check.isChecked() and not self.adetailer_check.isHidden(),
             openpose_image=str(self._openpose_path) if pose_on else "",
             openpose_module=self._openpose_module, openpose_model=self._openpose_model,
             openpose_weight=self.openpose_weight.value(),
-            couple_enabled=couple_on, couple_direction=self.couple_direction.currentData() or "Horizontal")
+            couple_enabled=couple_on, couple_direction=self.couple_direction.currentData() or "Horizontal",
+            animate=animate_on, animate_model=self.animate_model.currentText(),
+            animate_frames=self.animate_frames.value(), animate_fps=self.animate_fps.value())
 
     def apply(self, p: GenParams) -> None:
         self.adetailer_check.setChecked(p.adetailer)
@@ -189,6 +253,13 @@ class GenAddonsPanel(QGroupBox):
         self.openpose_weight.setValue(p.openpose_weight or 1.0)
         self.couple_check.setChecked(p.couple_enabled)
         self.couple_direction.setCurrentIndex(max(self.couple_direction.findData(p.couple_direction), 0))
+        self.animate_check.setChecked(p.animate)
+        if p.animate_model:
+            idx = self.animate_model.findText(p.animate_model)
+            if idx >= 0:
+                self.animate_model.setCurrentIndex(idx)
+        self.animate_frames.setValue(p.animate_frames or 16)
+        self.animate_fps.setValue(p.animate_fps or 8)
 
 
 def _separator() -> QFrame:

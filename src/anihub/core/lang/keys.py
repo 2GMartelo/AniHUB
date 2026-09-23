@@ -1449,4 +1449,10 @@ sd.couple_vertical
 sd.couple_hint
 wildcards.manage
 wildcards.syntax_hint
+sd.animate
+sd.animate_install
+sd.animate_hint
+sd.animate_no_model
+sd.animate_frames
+sd.animate_fps
 """.split("\n") if k]

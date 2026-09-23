@@ -19,6 +19,7 @@ def test_is_installed_matches_case_insensitively():
     assert addons.is_installed(api, "adetailer")
     assert not addons.is_installed(FakeApi(["Refiner", "Seed"]), "adetailer")
     assert addons.is_installed(FakeApi(["forge couple"]), "forge_couple")   # Forge's own script-title casing varies
+    assert addons.is_installed(FakeApi(["AnimateDiff"]), "animatediff")
 
 
 def make_repo_zip(tmp_path: Path, repo_name: str = "adetailer", branch: str = "main") -> Path:
@@ -80,6 +81,18 @@ def test_install_works_for_a_second_registered_addon(tmp_path):
     dest = addons.install(http, forge_dir, "forge_couple")
     assert dest == forge_dir / "extensions" / "forge_couple"
     assert (dest / "scripts").is_dir()
+
+
+def test_animatediff_models_lists_only_model_files_under_the_addons_own_folder(tmp_path):
+    forge_dir = tmp_path / "forge"
+    assert addons.animatediff_models(forge_dir) == []                        # not installed at all yet
+    model_dir = forge_dir / "extensions" / "animatediff" / "model"
+    model_dir.mkdir(parents=True)
+    (model_dir / "mm_sd_v15_v2.ckpt").write_bytes(b"x")
+    (model_dir / "mm_sdxl_v10.safetensors").write_bytes(b"x")
+    (model_dir / ".gitkeep").write_bytes(b"")
+    (model_dir / "readme.txt").write_text("not a model")
+    assert addons.animatediff_models(forge_dir) == ["mm_sd_v15_v2.ckpt", "mm_sdxl_v10.safetensors"]
 
 
 def test_extract_raises_when_the_archive_has_no_matching_top_level_folder(tmp_path):

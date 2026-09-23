@@ -74,6 +74,17 @@ def test_payload_forge_couple_sends_the_basic_mode_script_only_when_enabled():
     assert on["prompt"] == "line1\nline2"                      # the regions are just the ordinary multi-line prompt
 
 
+def test_payload_animatediff_sends_the_script_and_switches_the_result_suffix():
+    off = GenParams(prompt="x")
+    assert "alwayson_scripts" not in off.to_payload() and off.result_suffix == ".png"
+    on = GenParams(prompt="x", animate=True, animate_model="mm_sd_v15_v2.ckpt", animate_frames=12, animate_fps=10)
+    unit = on.to_payload()["alwayson_scripts"]["AnimateDiff"]["args"][0]
+    assert unit["enable"] is True and unit["model"] == "mm_sd_v15_v2.ckpt"
+    assert unit["format"] == ["GIF"] and unit["video_length"] == 12 and unit["fps"] == 10
+    assert unit["batch_size"] == 12                                      # matches video_length, per the addon's own docs
+    assert on.result_suffix == ".gif"
+
+
 def test_payload_combines_several_addons_at_once(tmp_path):
     src = tmp_path / "pose.png"
     src.write_bytes(b"x")

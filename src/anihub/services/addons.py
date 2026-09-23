@@ -10,7 +10,9 @@ check to say yes.
 ControlNet is not in this registry: it ships inside Forge itself, so there is nothing to detect or install --
 generation.py's openpose_* fields just use it directly. ADetailer needs no configuration of its own; Forge Couple's
 regions come from the ordinary multi-line prompt (see GenParams.couple_enabled), so it only needs an install check
-here, not a settings payload."""
+here, not a settings payload. AnimateDiff needs one more thing none of the others do: which motion-module model to
+use, which has no REST endpoint to query (unlike ControlNet's own /controlnet/model_list) -- animatediff_models()
+below reads the addon's own model/ folder directly, the same folder its own UI dropdown scans."""
 from __future__ import annotations
 
 import shutil
@@ -38,7 +40,11 @@ class Addon:
 ADDONS: dict[str, Addon] = {
     "adetailer": Addon(key="adetailer", script_name="ADetailer", repo="Bing-su/adetailer", branch="main"),
     "forge_couple": Addon(key="forge_couple", script_name="Forge Couple", repo="Haoming02/sd-forge-couple", branch="main"),
+    "animatediff": Addon(key="animatediff", script_name="AnimateDiff",
+                        repo="continue-revolution/sd-forge-animatediff", branch="forge-master"),
 }
+
+MOTION_MODEL_EXTS = (".ckpt", ".safetensors", ".pt")
 
 
 def is_installed(api: ForgeApi, key: str) -> bool:
@@ -68,6 +74,15 @@ def install(http: HttpClient, forge_dir: Path, key: str, progress: Callable[[int
     finally:
         archive.unlink(missing_ok=True)
     return dest
+
+
+def animatediff_models(forge_dir: Path) -> list[str]:
+    """Motion-module filenames under the AnimateDiff addon's own model/ folder (only meaningful once
+    is_installed(api, "animatediff") says yes -- an uninstalled addon has no such folder at all)."""
+    model_dir = Path(forge_dir) / "extensions" / "animatediff" / "model"
+    if not model_dir.is_dir():
+        return []
+    return sorted(p.name for p in model_dir.iterdir() if p.is_file() and p.suffix.lower() in MOTION_MODEL_EXTS)
 
 
 def _extract(archive: Path, dest: Path, repo_name: str) -> None:
