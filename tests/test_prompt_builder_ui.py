@@ -10,6 +10,7 @@ from anihub.core.config import Config
 from anihub.core.db import Database
 from anihub.core.paths import LibraryPaths
 from anihub.services import promptbook as pb
+from anihub.services.tagpictures import SEED_MAX
 from anihub.ui.prompt_builder import EntryChip, PromptBuilder
 
 
@@ -190,4 +191,5 @@ def test_previews_are_generated_with_the_api_and_stored(env, qapp):
     finally:
         generation.run_generation = original
     assert v.book.tag(row["id"])["image"]
-    assert "kimono" in calls[0].prompt and calls[0].seed == 12345
+    # the seed is no longer a fixed 12345: PictureMaker salts it per batch so a later redraw differs from this one
+    assert "kimono" in calls[0].prompt and 0 <= calls[0].seed < SEED_MAX

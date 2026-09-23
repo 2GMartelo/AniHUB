@@ -16,7 +16,7 @@ from anihub.services import generation
 from anihub.services import lora as lo
 from anihub.services import promptbook as pb
 from anihub.services.promptbook import PromptBook
-from anihub.services.tagpictures import PictureMaker
+from anihub.services.tagpictures import SEED_MAX, PictureMaker
 from anihub.ui import builder_dnd as dnd
 from anihub.ui.prompt_builder import PromptBuilder
 
@@ -236,10 +236,11 @@ def test_picture_maker_uses_the_character_settings(book, tmp_path):
         assert QImage.fromData(data).width() == 64
         p = calls[0]
         assert p.model.startswith("waiIllustrious") and p.width == p.height == 640 and p.steps == 12 and p.cfg_scale == 4.0
-        assert p.sampler_name == "DPM++ 2M" and p.seed == 100 and "smile" in p.prompt
+        assert p.sampler_name == "DPM++ 2M" and p.seed == (100 + maker._salt) % SEED_MAX and "smile" in p.prompt
         quality = next(t for t in book.tags(query="masterpiece") if t["text"] == "masterpiece")
         maker.draw(quality, "quality.basic")
-        assert calls[1].seed == 100 + quality["id"]                                                              # words without a comparison: own seeds
+        # words without a comparison get their own seed too (still offset by the same per-batch salt as the rest)
+        assert calls[1].seed == (100 + maker._salt + quality["id"]) % SEED_MAX
         with pytest.raises(ValueError):
             PictureMaker(FakeApi(), {"model": "nothing like it"}).draw(row, "")
     finally:
