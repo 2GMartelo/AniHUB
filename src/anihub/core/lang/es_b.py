@@ -606,4 +606,23 @@ DATA = r"""
 1425|Descargando en {dest}
 1426|Instalado. Reinicia Forge para cargarlo.
 1427|ADetailer instalado — reinicia Forge para empezar a usarlo.
+1428|Listas de comodines
+1429|Escribe __nombre__ en cualquier parte del prompt para elegir una entrada al azar de la lista llamada «nombre» en cada generación — una elección distinta por imagen, incluso dentro del mismo lote.
+1430|Nueva lista
+1431|Eliminar lista
+1432|Nombre de la lista (se usa como __nombre__)
+1433|Entradas (una por línea)
+1434|kimono\ntraje de baño\nuniforme escolar
+1435|Control de pose (OpenPose)
+1436|Elegir foto de referencia…
+1437|Quitar
+1438|Intensidad
+1439|No se encontró ningún modelo OpenPose en la carpeta de modelos ControlNet de Forge — descarga uno allí para usar el control de pose.
+1440|Dividir en zonas (Forge Couple)
+1441|Instalar Forge Couple…
+1442|De izquierda a derecha
+1443|De arriba a abajo
+1444|Cada línea del prompt de arriba se convierte en su propia zona — escribe una línea por zona en vez de un prompt largo.
+1445|Listas de comodines…
+1446|Usa __nombre__ en el prompt para elegir una etiqueta al azar de una lista
 """

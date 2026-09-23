@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Callable
 
 from anihub.services.forge import ForgeApi, ForgeError
+from anihub.services.wildcards import resolve as resolve_wildcards
 
 
 @dataclass
@@ -45,6 +46,13 @@ class GenParams:
     inpaint_fill: int = 1          # what is under the mask at the start: 0 fill, 1 original, 2 latent noise, 3 latent nothing
     inpaint_only_masked: bool = True  # redraw only the masked area at full resolution (needs less VRAM, keeps detail)
     adetailer: bool = False        # auto-fix faces via the ADetailer addon (services/addons.py); only sent when it's installed
+    openpose_image: str = ""       # ControlNet (built into Forge): a reference photo; "" = disabled
+    openpose_model: str = ""       # exact ControlNet model filename, e.g. "control_v11p_sd15_openpose [cab727d4]"
+    openpose_module: str = "openpose_full"  # preprocessor: Forge extracts the pose from openpose_image itself
+    openpose_weight: float = 1.0
+    couple_enabled: bool = False   # Forge Couple addon: each *line* of `prompt` becomes its own region -- Forge
+                                    # itself splits the main prompt on newlines, this only says how to arrange them
+    couple_direction: str = "Horizontal"    # "Horizontal" (left->right) or "Vertical" (top->bottom)
 
     def to_payload(self) -> dict:
         payload = {
@@ -82,9 +90,37 @@ class GenParams:
         if override:
             payload["override_settings"] = override
             payload["override_settings_restore_afterwards"] = False  # keep the model loaded between runs
-        if self.adetailer:
-            payload["alwayson_scripts"] = {"ADetailer": {"args": [{"ad_model": "face_yolov8n.pt"}]}}
+        scripts = self._alwayson_scripts()
+        if scripts:
+            payload["alwayson_scripts"] = scripts
         return payload
+
+    def _alwayson_scripts(self) -> dict:
+        """The addon payloads (services/addons.py and ControlNet, which ships inside Forge itself): each is only
+        added when the matching field says it is actually wanted, so a generation with none of them enabled looks
+        exactly like it did before any of this existed."""
+        scripts: dict = {}
+        if self.adetailer:
+            scripts["ADetailer"] = {"args": [{"ad_model": "face_yolov8n.pt"}]}
+        if self.openpose_image:
+            scripts["ControlNet"] = {"args": [{
+                "enabled": True, "module": self.openpose_module, "model": self.openpose_model,
+                "weight": self.openpose_weight,
+                "image": base64.b64encode(Path(self.openpose_image).read_bytes()).decode(),
+            }]}
+        if self.couple_enabled:
+            scripts["Forge Couple"] = {"args": [
+                True,               # enable
+                True,               # disable_hr
+                "Basic",            # mode
+                "",                 # separator: "" = newline
+                self.couple_direction,
+                "None", None,       # background, background_weight
+                None,               # mapping (Basic mode ignores it)
+                "{ }", False, True,  # common_parser, common_debug, def_in_prompt
+                None, None, None, None, None, None,  # Tile mode args, unused here
+            ]}
+        return scripts
 
     def summary(self, limit: int = 60) -> str:
         text = " ".join(self.prompt.split())
@@ -156,7 +192,8 @@ def _images_from_response(data: dict, out_dir: Path, meta_base: dict, fallback_s
 
 def run_generation(api: ForgeApi, params: GenParams, out_dir: Path,
                     on_batch: Callable[[list[GenResult]], None] | None = None,
-                    should_stop: Callable[[], bool] | None = None) -> list[GenResult]:
+                    should_stop: Callable[[], bool] | None = None,
+                    wildcards: dict[str, list[str]] | None = None) -> list[GenResult]:
     """Blocking: call Forge (img2img when an init image is set), write every returned image under out_dir/<date>/
     and return them all.
 
@@ -165,22 +202,27 @@ def run_generation(api: ForgeApi, params: GenParams, out_dir: Path,
     until every image in it has finished, even though Forge itself is generating them one at a time. `on_batch`
     (if given) is called with each call's own images right after they are written, so a caller can show them as
     they arrive. `should_stop` (if given) is checked between calls so a cancelled batch does not start another one
-    (Forge is still asked to interrupt the in-flight call the normal way; this only stops the *next* one)."""
+    (Forge is still asked to interrupt the in-flight call the normal way; this only stops the *next* one).
+
+    `wildcards` (if given) is resolved fresh for every call, not once for the whole batch -- "a random tag on every
+    generation" means each picture in a batch can get its own pick, not just its own seed."""
     n_iter = max(1, params.n_iter)
-    meta_base = params.__dict__
     all_results: list[GenResult] = []
     for i in range(n_iter):
         if should_stop is not None and should_stop():
             break
-        if i == 0:
+        seed = (params.seed + i * params.batch_size) if (i > 0 and params.seed != -1) else params.seed
+        if wildcards:
+            call_params = replace(params, n_iter=1, seed=seed, prompt=resolve_wildcards(params.prompt, wildcards),
+                                  negative_prompt=resolve_wildcards(params.negative_prompt, wildcards))
+        elif i == 0:
             call_params = params
         else:
-            seed = params.seed + i * params.batch_size if params.seed != -1 else -1
             call_params = replace(params, n_iter=1, seed=seed)
         payload = call_params.to_payload()
         payload["n_iter"] = 1
         data = api.img2img(payload) if params.init_image else api.txt2img(payload)  # img2img also covers inpaint (mask in payload)
-        results = _images_from_response(data, out_dir, meta_base, call_params.seed)
+        results = _images_from_response(data, out_dir, call_params.__dict__, call_params.seed)
         all_results.extend(results)
         if on_batch is not None:
             on_batch(results)

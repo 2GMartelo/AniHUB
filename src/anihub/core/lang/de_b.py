@@ -606,4 +606,23 @@ DATA = r"""
 1425|Download nach {dest}
 1426|Installiert. Forge neu starten, um es zu laden.
 1427|ADetailer installiert — Forge neu starten, um es zu nutzen.
+1428|Wildcard-Listen
+1429|Schreibe __Name__ irgendwo in einen Prompt, um bei jeder Generierung einen zufälligen Eintrag aus der Liste „Name“ zu wählen — eine eigene Wahl pro Bild, auch innerhalb desselben Batches.
+1430|Neue Liste
+1431|Liste entfernen
+1432|Listenname (verwendet als __Name__)
+1433|Einträge (einer pro Zeile)
+1434|Kimono\nBadeanzug\nSchuluniform
+1435|Posenkontrolle (OpenPose)
+1436|Referenzfoto wählen…
+1437|Entfernen
+1438|Stärke
+1439|Kein OpenPose-Modell im ControlNet-Modellordner von Forge gefunden — lade dort eines herunter, um die Posenkontrolle zu nutzen.
+1440|In Zonen aufteilen (Forge Couple)
+1441|Forge Couple installieren…
+1442|Von links nach rechts
+1443|Von oben nach unten
+1444|Jede Zeile des obigen Prompts wird zu einer eigenen Zone — schreibe eine Zeile pro Zone statt eines langen Prompts.
+1445|Wildcard-Listen…
+1446|Verwende __Name__ im Prompt, um ein zufälliges Tag aus einer Liste zu wählen
 """

@@ -24,7 +24,7 @@ class AddonInstallDialog(QDialog):
         self.installed: Path | None = None
         self._cancel = False
         self._paused = False
-        self.setWindowTitle(tr("addon.install.title", name=key))
+        self.setWindowTitle(tr("addon.install.title", name=addons.ADDONS[key].script_name))
         self.setModal(True)
         self.setMinimumWidth(480)
         self.info = QLabel(tr("addon.install.text", dest=str(Path(forge_dir) / "extensions" / key)))

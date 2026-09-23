@@ -7,9 +7,10 @@ it currently has loaded, built-in or from an extension. An addon here is "instal
 there -- which also means Forge has to actually be running (and restarted since the extension was added) for the
 check to say yes.
 
-ControlNet and Regional Prompter are deliberately not in this registry yet: ControlNet ships inside Forge itself
-(nothing to install), and Regional Prompter needs its own zone-editor UI before an install button is worth adding.
-This starts with the one addon that is useful the moment it is installed, with no extra UI: ADetailer."""
+ControlNet is not in this registry: it ships inside Forge itself, so there is nothing to detect or install --
+generation.py's openpose_* fields just use it directly. ADetailer needs no configuration of its own; Forge Couple's
+regions come from the ordinary multi-line prompt (see GenParams.couple_enabled), so it only needs an install check
+here, not a settings payload."""
 from __future__ import annotations
 
 import shutil
@@ -36,6 +37,7 @@ class Addon:
 
 ADDONS: dict[str, Addon] = {
     "adetailer": Addon(key="adetailer", script_name="ADetailer", repo="Bing-su/adetailer", branch="main"),
+    "forge_couple": Addon(key="forge_couple", script_name="Forge Couple", repo="Haoming02/sd-forge-couple", branch="main"),
 }
 
 

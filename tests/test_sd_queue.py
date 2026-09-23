@@ -70,7 +70,7 @@ def env(tmp_path, qapp):
 
 
 def make_runner(paths, log, delay=0.05, fail_on=None):
-    def run(api, params, out_dir, on_batch=None, should_stop=None):
+    def run(api, params, out_dir, on_batch=None, should_stop=None, wildcards=None):
         log.append((threading.current_thread().name, params.prompt, time.time()))
         time.sleep(delay)
         if fail_on and params.prompt == fail_on:
@@ -90,7 +90,7 @@ def make_runner(paths, log, delay=0.05, fail_on=None):
 def make_multi_batch_runner(paths, batches=3, delay=0.05):
     """A job that produces several pieces, like a real batch count above 1 -- used to check that `on_batch` reaches
     the GUI as `partial_results` for each piece, and that `should_stop` is actually consulted between them."""
-    def run(api, params, out_dir, on_batch=None, should_stop=None):
+    def run(api, params, out_dir, on_batch=None, should_stop=None, wildcards=None):
         out_dir.mkdir(parents=True, exist_ok=True)
         produced = []
         for i in range(batches):

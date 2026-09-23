@@ -606,4 +606,23 @@ DATA = r"""
 1425|Baixando para {dest}
 1426|Instalado. Reinicie o Forge para carregá-lo.
 1427|ADetailer instalado — reinicie o Forge para começar a usá-lo.
+1428|Listas de curingas
+1429|Escreva __nome__ em qualquer parte do prompt para escolher uma entrada aleatória da lista chamada «nome» a cada geração — uma escolha diferente por imagem, mesmo dentro do mesmo lote.
+1430|Nova lista
+1431|Remover lista
+1432|Nome da lista (usado como __nome__)
+1433|Entradas (uma por linha)
+1434|quimono\ntraje de banho\nuniforme escolar
+1435|Controle de pose (OpenPose)
+1436|Escolher foto de referência…
+1437|Limpar
+1438|Intensidade
+1439|Nenhum modelo OpenPose encontrado na pasta de modelos ControlNet do Forge — baixe um lá para usar o controle de pose.
+1440|Dividir em zonas (Forge Couple)
+1441|Instalar Forge Couple…
+1442|Da esquerda para a direita
+1443|De cima para baixo
+1444|Cada linha do prompt acima se torna sua própria zona — escreva uma linha por zona em vez de um prompt longo.
+1445|Listas de curingas…
+1446|Use __nome__ no prompt para escolher uma tag aleatória de uma lista
 """

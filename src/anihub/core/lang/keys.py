@@ -1430,4 +1430,23 @@ addon.install.title
 addon.install.text
 addon.install.done
 addon.install.restart_hint
+wildcards.title
+wildcards.hint
+wildcards.new_list
+wildcards.remove_list
+wildcards.list_name
+wildcards.entries
+wildcards.entries_hint
+sd.openpose
+sd.openpose_choose
+sd.openpose_clear
+sd.openpose_weight
+sd.openpose_no_model
+sd.couple
+sd.couple_install
+sd.couple_horizontal
+sd.couple_vertical
+sd.couple_hint
+wildcards.manage
+wildcards.syntax_hint
 """.split("\n") if k]

@@ -53,6 +53,34 @@ def test_payload_adetailer_sends_the_alwayson_script_only_when_enabled():
     assert on["alwayson_scripts"] == {"ADetailer": {"args": [{"ad_model": "face_yolov8n.pt"}]}}
 
 
+def test_payload_openpose_sends_controlnet_with_the_reference_image(tmp_path):
+    src = tmp_path / "pose.png"
+    src.write_bytes(b"posebytes")
+    p = GenParams(prompt="x", openpose_image=str(src), openpose_model="control_v11p_sd15_openpose [cab727d4]",
+                 openpose_weight=0.8).to_payload()
+    unit = p["alwayson_scripts"]["ControlNet"]["args"][0]
+    assert unit["enabled"] is True and unit["module"] == "openpose_full"
+    assert unit["model"] == "control_v11p_sd15_openpose [cab727d4]" and unit["weight"] == 0.8
+    assert base64.b64decode(unit["image"]) == b"posebytes"
+    assert "alwayson_scripts" not in GenParams(prompt="x").to_payload()  # no image: nothing sent
+
+
+def test_payload_forge_couple_sends_the_basic_mode_script_only_when_enabled():
+    off = GenParams(prompt="line1\nline2").to_payload()
+    assert "alwayson_scripts" not in off
+    on = GenParams(prompt="line1\nline2", couple_enabled=True, couple_direction="Vertical").to_payload()
+    args = on["alwayson_scripts"]["Forge Couple"]["args"]
+    assert args[0] is True and args[2] == "Basic" and args[4] == "Vertical"
+    assert on["prompt"] == "line1\nline2"                      # the regions are just the ordinary multi-line prompt
+
+
+def test_payload_combines_several_addons_at_once(tmp_path):
+    src = tmp_path / "pose.png"
+    src.write_bytes(b"x")
+    p = GenParams(prompt="x", adetailer=True, openpose_image=str(src), couple_enabled=True).to_payload()
+    assert set(p["alwayson_scripts"]) == {"ADetailer", "ControlNet", "Forge Couple"}
+
+
 def test_params_from_dict_ignores_unknown_and_old_keys():
     p = params_from_dict({"prompt": "a", "steps": 9, "future_option": True})
     assert (p.prompt, p.steps, p.cfg_scale) == ("a", 9, 6.0)

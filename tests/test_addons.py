@@ -18,6 +18,7 @@ def test_is_installed_matches_case_insensitively():
     api = FakeApi(["Refiner", "ADetailer", "Seed"])
     assert addons.is_installed(api, "adetailer")
     assert not addons.is_installed(FakeApi(["Refiner", "Seed"]), "adetailer")
+    assert addons.is_installed(FakeApi(["forge couple"]), "forge_couple")   # Forge's own script-title casing varies
 
 
 def make_repo_zip(tmp_path: Path, repo_name: str = "adetailer", branch: str = "main") -> Path:
@@ -71,6 +72,14 @@ def test_install_returns_none_when_paused_and_keeps_the_partial_download(tmp_pat
     result = addons.install(http, forge_dir, "adetailer", paused=lambda: True)
     assert result is None
     assert not (forge_dir / "extensions" / "adetailer" / "scripts").exists()
+
+
+def test_install_works_for_a_second_registered_addon(tmp_path):
+    forge_dir = tmp_path / "forge"
+    http = FakeHttp(make_repo_zip(tmp_path, repo_name="sd-forge-couple"))
+    dest = addons.install(http, forge_dir, "forge_couple")
+    assert dest == forge_dir / "extensions" / "forge_couple"
+    assert (dest / "scripts").is_dir()
 
 
 def test_extract_raises_when_the_archive_has_no_matching_top_level_folder(tmp_path):

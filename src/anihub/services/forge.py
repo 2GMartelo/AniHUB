@@ -113,6 +113,19 @@ class ForgeApi:
         addon against to know whether it is actually installed."""
         return self._call("GET", "/sdapi/v1/scripts") or {"txt2img": [], "img2img": []}
 
+    def controlnet_model_for(self, control_type: str) -> tuple[str, str]:
+        """(module, model) ControlNet itself would pick by default for a control type (e.g. "OpenPose") -- lets
+        the OpenPose addon "just work" without the user having to know an exact model filename. ("", "") if this
+        Forge has no model installed for it (ControlNet ships with the app but its models are a separate,
+        optional download, same as checkpoints/LoRAs)."""
+        try:
+            data = self._call("GET", "/controlnet/control_types") or {}
+        except ForgeError:
+            return "", ""
+        entry = (data.get("control_types") or {}).get(control_type) or {}
+        module, model = str(entry.get("default_option") or ""), str(entry.get("default_model") or "")
+        return module, "" if model in ("", "None") else model
+
     REFRESH = {"checkpoints": "refresh-checkpoints", "loras": "refresh-loras", "embeddings": "refresh-embeddings",
                "vae": "refresh-vae"}
 

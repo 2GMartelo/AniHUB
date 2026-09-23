@@ -205,3 +205,22 @@ def test_run_generation_stops_early_when_should_stop_says_so(tmp_path):
     params = GenParams(prompt="p", seed=5, n_iter=5, batch_size=1)
     res = run_generation(api, params, tmp_path, should_stop=lambda: len(api.payloads) >= 2)
     assert len(api.payloads) == 2 and len(res) == 2                             # cancelled after the 2nd call finished
+
+
+def test_run_generation_resolves_wildcards_into_the_sent_prompt(tmp_path):
+    api = BatchApi()
+    params = GenParams(prompt="1girl, __outfit__", negative_prompt="__bad__", seed=1)
+    res = run_generation(api, params, tmp_path, wildcards={"outfit": ["kimono"], "bad": ["blurry"]})
+    assert api.payloads[0]["prompt"] == "1girl, kimono" and api.payloads[0]["negative_prompt"] == "blurry"
+    assert res[0].meta["prompt"] == "1girl, kimono"                             # the resolved text, not the template
+
+
+def test_run_generation_resolves_wildcards_fresh_for_every_call_in_the_batch(tmp_path, monkeypatch):
+    import anihub.services.generation as gen
+
+    calls = []
+    monkeypatch.setattr(gen, "resolve_wildcards", lambda text, lists: calls.append(text) or text)
+    api = BatchApi()
+    params = GenParams(prompt="1girl, __outfit__", negative_prompt="neg", seed=1, n_iter=3, batch_size=1)
+    gen.run_generation(api, params, tmp_path, wildcards={"outfit": ["kimono"]})
+    assert len(calls) == 6                       # prompt + negative_prompt resolved once per call, not once for the whole batch

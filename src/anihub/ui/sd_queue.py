@@ -141,10 +141,12 @@ class QueueController(QObject):
         ctrl.set_busy(True)
         api, db, paths = ctrl.manager.api, self.ctx.db, self.ctx.paths
 
+        wildcards = self.ctx.cfg.get("wildcards") or None
+
         def work():
             results = self.run_job(api, params, paths.sd / "generated",
                                    on_batch=lambda partial: post_to_gui(self.partial_results.emit, partial),
-                                   should_stop=lambda: self._cancelling)
+                                   should_stop=lambda: self._cancelling, wildcards=wildcards)
             record_history(db, paths.root, results, name)
             return results
 

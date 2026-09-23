@@ -606,4 +606,23 @@ DATA = r"""
 1425|Téléchargement vers {dest}
 1426|Installé. Redémarrez Forge pour le charger.
 1427|ADetailer installé — redémarrez Forge pour commencer à l'utiliser.
+1428|Listes de wildcards
+1429|Écrivez __nom__ n'importe où dans un prompt pour choisir une entrée aléatoire de la liste appelée «nom» à chaque génération — un choix différent par image, même au sein d'un même lot.
+1430|Nouvelle liste
+1431|Supprimer la liste
+1432|Nom de la liste (utilisé comme __nom__)
+1433|Entrées (une par ligne)
+1434|kimono\nmaillot de bain\nuniforme scolaire
+1435|Contrôle de pose (OpenPose)
+1436|Choisir une photo de référence…
+1437|Effacer
+1438|Intensité
+1439|Aucun modèle OpenPose trouvé dans le dossier des modèles ControlNet de Forge — téléchargez-en un là pour utiliser le contrôle de pose.
+1440|Diviser en zones (Forge Couple)
+1441|Installer Forge Couple…
+1442|De gauche à droite
+1443|De haut en bas
+1444|Chaque ligne du prompt ci-dessus devient sa propre zone — écrivez une ligne par zone au lieu d'un long prompt.
+1445|Listes de wildcards…
+1446|Utilisez __nom__ dans le prompt pour choisir une balise aléatoire d'une liste
 """
