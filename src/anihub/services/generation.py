@@ -241,7 +241,9 @@ def parse_infotext(text: str) -> dict:
     simple = {"Steps": ("steps", int), "Sampler": ("sampler_name", str), "Schedule type": ("scheduler", str),
               "CFG scale": ("cfg_scale", float), "Seed": ("seed", int), "Clip skip": ("clip_skip", int),
               "Variation seed": ("subseed", int), "Variation seed strength": ("subseed_strength", float),
-              "Hires steps": ("hr_steps", int), "Hires upscaler": ("hr_upscaler", str), "Model": ("model", str)}
+              "Hires steps": ("hr_steps", int), "Hires upscaler": ("hr_upscaler", str), "Model": ("model", str),
+              "Model hash": ("model_hash", str)}   # not a GenParams field -- harmless, params_from_dict() drops it;
+                                                    # read back by model_hash_of() for "which model made this picture"
     for key, (name, cast) in simple.items():
         if key in pairs:
             try:
@@ -264,6 +266,13 @@ def parse_infotext(text: str) -> dict:
         if value is not None:
             result["hr_denoise" if result.get("enable_hr") else "denoising_strength"] = value
     return result
+
+
+def model_hash_of(path: Path) -> str:
+    """The checkpoint hash Forge/A1111 stamps into a picture's own metadata ("" for a picture with no such text, or
+    one not made by Forge/A1111 at all) -- the AUTOV2 short hash CivitAI's own by-hash lookup expects."""
+    text = read_png_text(path).get("parameters", "")
+    return parse_infotext(text).get("model_hash", "") if text else ""
 
 
 # --- prompts / progress ----------------------------------------------------------------------------------

@@ -16,7 +16,7 @@ from anihub.services import civitai
 from anihub.services.backends import build_backends
 from anihub.services.forge import ForgeManager
 from anihub.services.generation import (
-    GenParams, GenResult, params_from_dict, parse_infotext, read_png_text, record_history, run_upscale)
+    GenParams, GenResult, model_hash_of, params_from_dict, parse_infotext, read_png_text, record_history, run_upscale)
 from anihub.services.schedule import next_run, parse_time, schedule_due
 
 PNG_B64 = base64.b64encode(b"\x89PNG upscaled").decode()
@@ -66,6 +66,7 @@ def test_parse_infotext_full():
     assert (r["steps"], r["sampler_name"], r["scheduler"], r["cfg_scale"], r["seed"]) == (10, "Euler a", "Automatic", 6.0, 7)
     assert (r["width"], r["height"], r["model"], r["clip_skip"]) == (896, 1216, "waiIllustriousSDXL_v140", 2)
     assert r["denoising_strength"] == 0.55 and "enable_hr" not in r          # plain img2img strength
+    assert r["model_hash"] == "bdb59bac77"
 
 
 def test_parse_infotext_hires_and_missing_negative():
@@ -102,6 +103,15 @@ def test_read_png_text_chunks(tmp_path):
     bad = tmp_path / "c.png"
     bad.write_bytes(b"not a png")
     assert read_png_text(bad) == {}
+
+
+def test_model_hash_of_reads_the_embedded_model_hash(tmp_path):
+    path = tmp_path / "a.png"
+    path.write_bytes(make_png([chunk(b"tEXt", b"parameters\0" + INFO.encode())]))
+    assert model_hash_of(path) == "bdb59bac77"
+    no_meta = tmp_path / "b.png"
+    no_meta.write_bytes(make_png([]))
+    assert model_hash_of(no_meta) == ""
 
 
 # --- upscale / history ---------------------------------------------------------------------------------
@@ -223,6 +233,40 @@ def test_parse_model_and_pick_file():
 def test_parse_model_url():
     assert civitai.parse_model_url("https://civitai.com/models/123/some-name?modelVersionId=456") == (123, 456)
     assert civitai.parse_model_url("civitai.com/models/77") == (77, None)
+
+
+# --- find_by_hash: "which model was this picture made with" -----------------------------------------------------
+
+class HashHttp:
+    def __init__(self, response=None, error=None):
+        self.response, self.error, self.calls = response, error, []
+
+    def get_json(self, url, params=None, headers=None, **kw):
+        self.calls.append((url, headers))
+        if self.error:
+            raise self.error
+        return self.response
+
+
+def test_find_by_hash_resolves_a_real_hit():
+    response = {"id": 128713, "modelId": 257749, "name": "v1.0", "model": {"name": "hassakuXLIllustrious"}}
+    http = HashHttp(response)
+    match = civitai.find_by_hash(http, "bdb59bac77", token="tok")
+    assert match.model_id == 257749 and match.model_name == "hassakuXLIllustrious" and match.version_id == 128713
+    assert match.page_url == "https://civitai.red/models/257749?modelVersionId=128713"
+    assert http.calls[0][0].endswith("/model-versions/by-hash/bdb59bac77")
+    assert http.calls[0][1]["Authorization"] == "Bearer tok"
+
+
+def test_find_by_hash_returns_none_for_an_unknown_or_empty_hash():
+    assert civitai.find_by_hash(HashHttp({}), "deadbeef00") is None                 # no modelId in the response
+    http = HashHttp(response={"modelId": 1})
+    assert civitai.find_by_hash(http, "") is None                                   # nothing to look up
+    assert not http.calls                                                            # never mind, no call was made either
+
+
+def test_find_by_hash_fails_quietly_on_a_network_or_404_error():
+    assert civitai.find_by_hash(HashHttp(error=HttpError(404)), "bdb59bac77") is None
     assert civitai.parse_model_url(" 88 ") == (88, None)
     assert civitai.parse_model_url("https://example.com/models/1") is None
 

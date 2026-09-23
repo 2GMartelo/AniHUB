@@ -148,6 +148,34 @@ def get_model(http: HttpClient, model_id: int, token: str = "") -> CivitModel:
     return parse_model(data)
 
 
+@dataclass
+class HashMatch:
+    model_id: int
+    model_name: str
+    version_id: int
+    version_name: str
+    page_url: str
+
+
+def find_by_hash(http: HttpClient, model_hash: str, token: str = "") -> HashMatch | None:
+    """Which CivitAI model a checkpoint hash belongs to -- the real GET /model-versions/by-hash/{hash} endpoint.
+    There is no by-name lookup: file names get renamed and differ across installs, the hash is what actually
+    identifies a specific model file. None for an unknown hash, an empty one, or any request failure."""
+    if not model_hash:
+        return None
+    try:
+        data = http.get_json(f"{API}/model-versions/by-hash/{model_hash}", headers=headers(token))
+    except (HttpError, ValueError):
+        return None
+    if not isinstance(data, dict) or not data.get("modelId"):
+        return None
+    model_id = int(data["modelId"])
+    version_id = int(data.get("id") or 0)
+    page_url = f"{SITE}/models/{model_id}" + (f"?modelVersionId={version_id}" if version_id else "")
+    return HashMatch(model_id=model_id, model_name=str((data.get("model") or {}).get("name") or ""),
+                     version_id=version_id, version_name=str(data.get("name") or ""), page_url=page_url)
+
+
 def safe_filename(name: str) -> str:
     """CivitAI file names can hold characters Windows rejects (<lora:x:>.safetensors, embedding:x.safetensors)."""
     cleaned = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", name).strip(" .")
