@@ -599,4 +599,11 @@ DATA = r"""
 1418|Pausado. Clique em Retomar para continuar.
 1419|Pausar
 1420|Retomar
+1421|Complementos
+1422|Corrigir rostos automaticamente (ADetailer)
+1423|Instalar ADetailer…
+1424|Instalando {name}
+1425|Baixando para {dest}
+1426|Instalado. Reinicie o Forge para carregá-lo.
+1427|ADetailer instalado — reinicie o Forge para começar a usá-lo.
 """

@@ -599,4 +599,11 @@ DATA = r"""
 1418|Pausiert. Klicke auf Fortsetzen, um weiterzumachen.
 1419|Pause
 1420|Fortsetzen
+1421|Addons
+1422|Gesichter automatisch korrigieren (ADetailer)
+1423|ADetailer installieren…
+1424|{name} wird installiert
+1425|Download nach {dest}
+1426|Installiert. Forge neu starten, um es zu laden.
+1427|ADetailer installiert — Forge neu starten, um es zu nutzen.
 """

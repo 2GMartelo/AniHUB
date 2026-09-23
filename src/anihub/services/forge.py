@@ -107,6 +107,12 @@ class ForgeApi:
         except ForgeError:
             return ["Latent"]
 
+    def scripts(self) -> dict:
+        """The txt2img/img2img scripts (built-in and extension-provided, e.g. "ADetailer") this Forge currently
+        knows about: {"txt2img": [names...], "img2img": [names...]}. What services/addons.py checks a generation
+        addon against to know whether it is actually installed."""
+        return self._call("GET", "/sdapi/v1/scripts") or {"txt2img": [], "img2img": []}
+
     REFRESH = {"checkpoints": "refresh-checkpoints", "loras": "refresh-loras", "embeddings": "refresh-embeddings",
                "vae": "refresh-vae"}
 

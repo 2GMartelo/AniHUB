@@ -1423,4 +1423,11 @@ train_install.resume
 train_install.paused
 integrity.pause
 integrity.resume
+sd.addons
+sd.adetailer
+sd.adetailer_install
+addon.install.title
+addon.install.text
+addon.install.done
+addon.install.restart_hint
 """.split("\n") if k]

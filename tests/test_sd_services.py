@@ -38,12 +38,19 @@ def test_payload_hires_vae_clip_skip_and_variations():
 
 def test_payload_defaults_stay_minimal(tmp_path):
     p = GenParams(prompt="x").to_payload()
-    for key in ("enable_hr", "override_settings", "subseed", "denoising_strength", "init_images"):
+    for key in ("enable_hr", "override_settings", "subseed", "denoising_strength", "init_images", "alwayson_scripts"):
         assert key not in p
     src = tmp_path / "s.png"
     src.write_bytes(b"x")
     both = GenParams(prompt="x", init_image=str(src), enable_hr=True, denoising_strength=0.5, hr_denoise=0.9).to_payload()
     assert "enable_hr" not in both and both["denoising_strength"] == 0.5   # img2img wins: hires is txt2img only
+
+
+def test_payload_adetailer_sends_the_alwayson_script_only_when_enabled():
+    off = GenParams(prompt="x").to_payload()
+    assert "alwayson_scripts" not in off
+    on = GenParams(prompt="x", adetailer=True).to_payload()
+    assert on["alwayson_scripts"] == {"ADetailer": {"args": [{"ad_model": "face_yolov8n.pt"}]}}
 
 
 def test_params_from_dict_ignores_unknown_and_old_keys():

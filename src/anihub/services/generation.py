@@ -44,6 +44,7 @@ class GenParams:
     mask_blur: int = 4
     inpaint_fill: int = 1          # what is under the mask at the start: 0 fill, 1 original, 2 latent noise, 3 latent nothing
     inpaint_only_masked: bool = True  # redraw only the masked area at full resolution (needs less VRAM, keeps detail)
+    adetailer: bool = False        # auto-fix faces via the ADetailer addon (services/addons.py); only sent when it's installed
 
     def to_payload(self) -> dict:
         payload = {
@@ -81,6 +82,8 @@ class GenParams:
         if override:
             payload["override_settings"] = override
             payload["override_settings_restore_afterwards"] = False  # keep the model loaded between runs
+        if self.adetailer:
+            payload["alwayson_scripts"] = {"ADetailer": {"args": [{"ad_model": "face_yolov8n.pt"}]}}
         return payload
 
     def summary(self, limit: int = 60) -> str:

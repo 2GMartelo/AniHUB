@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 
 from anihub.context import AppContext
 from anihub.core.i18n import tr
+from anihub.services import addons
 from anihub.services.forge import ForgeState
 from anihub.services.generation import (
     GenParams, GenResult, fit_size, params_from_dict, parse_infotext, progress_line, prompt_tags, read_png_text,
@@ -195,6 +196,16 @@ class GenerateView(QWidget):
         var.addRow(tr("sd.subseed"), self.subseed)
         var.addRow(tr("sd.subseed_strength"), self.subseed_strength)
 
+        self.addons_box = QGroupBox(tr("sd.addons"))
+        self.adetailer_check = QCheckBox(tr("sd.adetailer"))
+        self.adetailer_check.hide()
+        self.adetailer_install_btn = style.ghost(QPushButton(tr("sd.adetailer_install")), "download")
+        self.adetailer_install_btn.hide()
+        addons_l = QVBoxLayout(self.addons_box)
+        addons_l.addWidget(self.adetailer_check)
+        addons_l.addWidget(self.adetailer_install_btn)
+        self.addons_box.hide()  # shown once we know Forge is up and have checked what it has
+
         # --- actions
         self.generate_btn = style.primary(QPushButton(tr("sd.generate")), "zap")
         self.generate_btn.setMinimumHeight(38)
@@ -282,6 +293,7 @@ class GenerateView(QWidget):
         lay.addLayout(form)
         lay.addWidget(self.hr_box)
         lay.addWidget(self.var_box)
+        lay.addWidget(self.addons_box)
         lay.addLayout(queue_row)
         lay.addWidget(self.message)
         lay.addStretch(1)
@@ -349,6 +361,7 @@ class GenerateView(QWidget):
         self.png_btn.clicked.connect(self._load_from_image)
         self.lora_btn.clicked.connect(self._open_lora)
         self.embed_btn.clicked.connect(self._open_embeddings)
+        self.adetailer_install_btn.clicked.connect(self._install_adetailer)
         self.progress_timer = QTimer(self)
         self.progress_timer.timeout.connect(self._poll_progress)
         controller.state_changed.connect(self._on_state)
@@ -364,9 +377,33 @@ class GenerateView(QWidget):
     def _on_state(self, state: str) -> None:
         if ForgeState(state).ready and not self._data_loaded:
             self.load_forge_data()
+            self._check_addons()
         if not ForgeState(state).ready:
             self._data_loaded = False
         self._update_buttons()
+
+    def _check_addons(self) -> None:
+        """Shows the ADetailer checkbox once Forge confirms it is actually loaded, or an install button otherwise
+        -- addons.is_installed() only ever says yes after Forge has been restarted with the extension in place."""
+        api = self.controller.manager.api
+
+        def done(installed: bool) -> None:
+            self.addons_box.show()
+            self.adetailer_check.setVisible(installed)
+            self.adetailer_install_btn.setVisible(not installed)
+
+        run_async(lambda: addons.is_installed(api, "adetailer"), on_done=done, on_error=lambda _e: None)
+
+    def _install_adetailer(self) -> None:
+        forge_dir = self.ctx.cfg.get("forge.path") or ""
+        if not forge_dir:
+            return
+        from anihub.ui.addon_install_dialog import AddonInstallDialog
+
+        dlg = AddonInstallDialog(self.ctx, Path(forge_dir), "adetailer", self)
+        dlg.exec()
+        if dlg.installed is not None:
+            self.message.setText(tr("addon.install.restart_hint"))
 
     def swap_size(self) -> None:
         """Width and height change places (a portrait becomes a landscape)."""
@@ -449,7 +486,8 @@ class GenerateView(QWidget):
             hr_denoise=self.hr_denoise.value(),
             init_image=str(self.init_path) if self.init_path else "", denoising_strength=self.denoise.value(),
             mask_image=str(self.mask_path) if self.mask_path and self.init_path else "", mask_blur=self.mask_blur.value(),
-            inpaint_fill=self.inpaint_fill.currentData(), inpaint_only_masked=self.inpaint_only_masked.isChecked())
+            inpaint_fill=self.inpaint_fill.currentData(), inpaint_only_masked=self.inpaint_only_masked.isChecked(),
+            adetailer=self.adetailer_check.isChecked())
 
     def apply_params(self, data: dict) -> None:
         """Fill the whole form from a preset / history entry / PNG info (missing keys keep their defaults)."""
@@ -483,6 +521,7 @@ class GenerateView(QWidget):
         self.mask_blur.setValue(p.mask_blur)
         self.inpaint_fill.setCurrentIndex(max(self.inpaint_fill.findData(p.inpaint_fill), 0))
         self.inpaint_only_masked.setChecked(p.inpaint_only_masked)
+        self.adetailer_check.setChecked(p.adetailer)
 
     def _set_model(self, name: str) -> None:
         base = name.split(" [")[0].replace(".safetensors", "")
