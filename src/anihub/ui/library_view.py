@@ -566,6 +566,8 @@ class LibraryView(QWidget):
             if self.ctx.sd_enabled:                                     # no generation on this computer: no img2img
                 menu.addAction(tr("lib.to_img2img"), lambda: self.send_to_img2img.emit(dict(rows[0])))
             menu.addAction(tr("lib.show_folder"), lambda: os.startfile(self._file_of(rows[0]).parent))
+            if rows[0]["ext"] not in VIDEO_EXTS:
+                menu.addAction(tr("lib.upload_rule34"), lambda: self._upload_rule34(rows[0]))
         menu.addSeparator()
         menu.addAction(tr("lib.trash_action"), lambda: self._trash(ids))
 
@@ -614,6 +616,11 @@ class LibraryView(QWidget):
         except sqlite3.IntegrityError:  # already exists: just add to it
             cid = next(c["id"] for c in self.ctx.db.collections(self.kind) if c["name"] == name)
         self._to_collection(ids, cid)
+
+    def _upload_rule34(self, row: sqlite3.Row) -> None:
+        from anihub.ui.rule34_upload_dialog import Rule34UploadDialog
+
+        Rule34UploadDialog(self.ctx, self._file_of(row), self).exec()
 
     def _run_autotag(self, ids: list[int]) -> None:
         self.status.setText(tr("lib.autotagging", n=len(ids)))

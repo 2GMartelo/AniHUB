@@ -561,4 +561,23 @@ DATA = r"""
 1369|Installation du reste des dépendances de sd-scripts…
 1370|Configuration d'Accelerate…
 1371|Terminé. sd-scripts est installé : {path}
+1383|Publier sur CivitAI.red…
+1384|Publication de « {name} »
+1385|CivitAI n'a pas d'API pour envoyer un modèle, seul leur site le permet. Tout est préparé ici (images de présentation, description, modèles de base détectés) et ce qu'il faut est copié/ouvert ; l'envoi réel se fait en quelques clics sur leur page de téléversement.
+1386|Ajouter des images de présentation…
+1387|Détection du modèle…
+1388|Modèle non détecté (cette image ne contient pas ces métadonnées)
+1389|Description
+1390|Copier la description et ouvrir CivitAI.red
+1391|Ouvrir le dossier des images
+1392|Description copiée, CivitAI.red est ouvert — glissez les images et collez-y la description.
+1393|Envoyer sur rule34.xxx…
+1394|Préparation de « {name} » pour rule34.xxx
+1395|rule34.xxx n'a pas d'API pour envoyer une image, seul leur site le permet. L'auto-étiqueteur remplit des tags de départ, que vous pouvez ajouter ou retirer ci-dessous ; les tags sont ensuite copiés et le dossier de l'image est ouvert, l'envoi réel se fait en quelques clics sur leur page de téléversement.
+1396|Tags
+1397|Détection des tags…
+1398|Classification suggérée : {rating}
+1399|Copier les tags et ouvrir rule34.xxx
+1400|Ouvrir le dossier de l'image
+1401|Tags copiés, rule34.xxx est ouvert — choisissez le fichier là-bas et collez les tags.
 """

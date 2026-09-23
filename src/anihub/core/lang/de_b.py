@@ -561,4 +561,23 @@ DATA = r"""
 1369|Installiere die restlichen Abhängigkeiten von sd-scripts…
 1370|Richte Accelerate ein…
 1371|Fertig. sd-scripts ist installiert: {path}
+1383|Auf CivitAI.red veröffentlichen…
+1384|Veröffentlichung von „{name}“
+1385|CivitAI hat keine API zum Hochladen eines Modells, nur die eigene Website. Hier wird alles vorbereitet (Vorschaubilder, Beschreibung, erkannte Basismodelle) und kopiert/geöffnet, was gebraucht wird; der eigentliche Upload sind nur ein paar Klicks auf ihrer Upload-Seite.
+1386|Vorschaubilder hinzufügen…
+1387|Modell wird erkannt…
+1388|Modell nicht erkannt (dieses Bild enthält keine solchen Metadaten)
+1389|Beschreibung
+1390|Beschreibung kopieren und CivitAI.red öffnen
+1391|Bilderordner öffnen
+1392|Beschreibung kopiert, CivitAI.red ist geöffnet — ziehe die Bilder hinein und füge dort die Beschreibung ein.
+1393|Auf rule34.xxx hochladen…
+1394|Vorbereitung von „{name}“ für rule34.xxx
+1395|rule34.xxx hat keine API zum Hochladen eines Bildes, nur die eigene Website. Der Auto-Tagger trägt Start-Tags ein, die unten hinzugefügt oder entfernt werden können; danach werden die Tags kopiert und der Bildordner geöffnet, der eigentliche Upload sind nur ein paar Klicks auf ihrer Upload-Seite.
+1396|Tags
+1397|Tags werden erkannt…
+1398|Vorgeschlagene Einstufung: {rating}
+1399|Tags kopieren und rule34.xxx öffnen
+1400|Bildordner öffnen
+1401|Tags kopiert, rule34.xxx ist geöffnet — wähle dort die Datei aus und füge die Tags ein.
 """

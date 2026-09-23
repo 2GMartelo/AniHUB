@@ -155,6 +155,23 @@ def render_template(template: str, name: str, weight: float, keywords: str) -> s
     return text.strip().strip(",").strip()
 
 
+def default_description(lora: Lora) -> str:
+    """A starting draft for a CivitAI (or any other) listing, built from what the card already knows -- a trained-
+    in-app LoRA usually has no description at all (training only fills in keywords/weight/negative), so this gives
+    the publish dialog something real to start from instead of a blank box. Meant to be edited before publishing."""
+    lines = [f'LoRA "{lora.name}".']
+    if lora.keywords:
+        lines.append(f"Ключевое слово (триггер): {lora.keywords}")
+    if lora.base:
+        lines.append(f"Базовая модель: {lora.base}")
+    lines.append(f"Рекомендуемый вес: {lora.weight:g}")
+    if lora.negative:
+        lines.append(f"Рекомендуемый негативный промпт: {lora.negative}")
+    if lora.description.strip():
+        lines += ["", lora.description.strip()]
+    return "\n".join(lines)
+
+
 def clean_keywords(text: str) -> str:
     """"a,  b ,, c" -> "a, b, c" (one keyword may hold spaces)."""
     words: list[str] = []

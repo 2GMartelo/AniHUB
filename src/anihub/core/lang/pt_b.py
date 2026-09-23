@@ -561,4 +561,23 @@ DATA = r"""
 1369|Instalando o restante das dependências do sd-scripts…
 1370|Configurando o Accelerate…
 1371|Pronto. sd-scripts instalado: {path}
+1383|Publicar no CivitAI.red…
+1384|Publicando “{name}”
+1385|O CivitAI não tem API para enviar um modelo, apenas o próprio site. Aqui tudo é preparado (imagens de destaque, descrição, modelos base detectados) e o que for necessário é copiado/aberto; o envio real são alguns cliques na página de upload deles.
+1386|Adicionar imagens de destaque…
+1387|Detectando o modelo…
+1388|Modelo não detectado (esta imagem não tem esses metadados)
+1389|Descrição
+1390|Copiar descrição e abrir CivitAI.red
+1391|Abrir a pasta das imagens
+1392|Descrição copiada, CivitAI.red está aberto — arraste as imagens e cole a descrição lá.
+1393|Enviar para rule34.xxx…
+1394|Preparando “{name}” para o rule34.xxx
+1395|O rule34.xxx não tem API para enviar uma imagem, apenas o próprio site. O autoetiquetador preenche marcações iniciais, que você pode adicionar ou remover abaixo; depois as marcações são copiadas e a pasta da imagem é aberta, então o envio real são alguns cliques na página de upload deles.
+1396|Marcações
+1397|Detectando marcações…
+1398|Classificação sugerida: {rating}
+1399|Copiar marcações e abrir rule34.xxx
+1400|Abrir a pasta da imagem
+1401|Marcações copiadas, rule34.xxx está aberto — escolha o arquivo lá e cole as marcações.
 """

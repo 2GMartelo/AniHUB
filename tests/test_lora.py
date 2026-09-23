@@ -115,6 +115,17 @@ def test_preview_replaces_older_pictures_and_is_found_like_forge_does(tmp_path):
     assert lo.find_preview(model) is None
 
 
+def test_default_description_lists_the_known_fields():
+    bare = lo.Lora(Path("x/miku.safetensors"), Path("x"))
+    assert lo.default_description(bare) == 'LoRA "miku".\nРекомендуемый вес: 0.8'
+    full = lo.Lora(Path("x/miku.safetensors"), Path("x"), description="A Miku style.", keywords="hatsune miku, teal hair",
+                   weight=0.65, negative="bad hands", base="SDXL")
+    text = lo.default_description(full)
+    assert text.startswith('LoRA "miku".\n')
+    assert "hatsune miku, teal hair" in text and "SDXL" in text and "0.65" in text and "bad hands" in text
+    assert text.endswith("A Miku style.")
+
+
 def test_header_metadata_keywords_and_civitai_words(tmp_path):
     freq = {"set1": {"hatsune miku": 40, "teal hair": 30, "1girl": 90}, "set2": {"1girl": 10, "twintails": 5}}
     model = make_model(tmp_path, header={"ss_tag_frequency": json.dumps(freq), "ss_base_model_version": "sdxl_base_v1-0"})
@@ -229,6 +240,23 @@ def test_editor_suggests_keywords_from_the_file_and_clears_the_picture(editor):
     v._clear_picture()
     v.save()
     assert lo.find_preview(editor.root / "miku.safetensors") is None
+
+
+def test_editor_publish_button_opens_the_civitai_dialog(editor, monkeypatch):
+    v = editor.view
+    select(v, "miku")
+    calls = []
+
+    class FakeDialog:
+        def __init__(self, ctx, lora, parent=None):
+            calls.append(lora)
+
+        def exec(self):
+            calls.append("exec")
+
+    monkeypatch.setattr("anihub.ui.civitai_publish_dialog.CivitPublishDialog", FakeDialog)
+    v.publish_btn.click()
+    assert calls[0].name == "miku" and calls[1] == "exec"
 
 
 def test_editor_without_a_forge_folder_says_so(qapp, tmp_path):

@@ -1385,4 +1385,23 @@ settings.cat_library
 settings.cat_network
 settings.cat_generation
 settings.cat_system
+civpub.publish_button
+civpub.title
+civpub.intro
+civpub.add_pictures
+civpub.detecting
+civpub.model_unknown
+civpub.description
+civpub.copy_and_open
+civpub.open_folder
+civpub.done
+lib.upload_rule34
+rule34.title
+rule34.intro
+rule34.tags
+rule34.detecting
+rule34.rating
+rule34.copy_and_open
+rule34.open_folder
+rule34.done
 """.split("\n") if k]

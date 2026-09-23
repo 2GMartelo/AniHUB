@@ -138,6 +138,7 @@ class LoraEditor(QWidget):
         self.revert_btn = style.secondary(QPushButton(tr("lora.revert")), "rotate")
         self.insert_btn = style.secondary(QPushButton(tr("lora.insert")), "plus")
         self.open_btn = style.ghost(QPushButton(tr("lora.open_folder")), "folder")
+        self.publish_btn = style.ghost(QPushButton(tr("civpub.publish_button")), "external")
         self.message = style.role(QLabel(), "dim")
         self.message.setWordWrap(True)
 
@@ -179,7 +180,7 @@ class LoraEditor(QWidget):
         tl.addWidget(self.template_reset)
         actions = QWidget()
         af = FlowLayout(actions, spacing=8)
-        for b in (self.save_btn, self.revert_btn, self.insert_btn, self.open_btn):
+        for b in (self.save_btn, self.revert_btn, self.insert_btn, self.open_btn, self.publish_btn):
             af.addWidget(b)
 
         self.form = QWidget()
@@ -250,6 +251,7 @@ class LoraEditor(QWidget):
         self.revert_btn.clicked.connect(self._revert)
         self.insert_btn.clicked.connect(self.insert_current)
         self.open_btn.clicked.connect(self._open_folder)
+        self.publish_btn.clicked.connect(self._publish_to_civitai)
         self._show_form(False)
         self.reload()
 
@@ -524,3 +526,10 @@ class LoraEditor(QWidget):
     def _open_folder(self) -> None:
         if self.current is not None:
             QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.current.path.parent)))
+
+    def _publish_to_civitai(self) -> None:
+        if self.current is None:
+            return
+        from anihub.ui.civitai_publish_dialog import CivitPublishDialog
+
+        CivitPublishDialog(self.ctx, self.current, self).exec()
