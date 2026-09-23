@@ -79,23 +79,41 @@ def test_migration_v1_to_v2(tmp_path):
 class FakeApi:
     def __init__(self, response):
         self.response, self.payload = response, None
+        self.payloads: list[dict] = []
 
     def txt2img(self, payload):
         self.payload = payload
+        self.payloads.append(payload)
         return self.response
 
 
-def test_run_txt2img_skips_grid_and_writes_files(tmp_path):
+def test_run_txt2img_skips_the_grid_image_within_one_call(tmp_path):
+    """A batch *size* above 1 (several images from a single Forge call) can still come back with a leading grid
+    image; index_of_first_image says where the real ones start."""
     info = {"index_of_first_image": 1, "all_seeds": [111, 222], "infotexts": ["grid", "one", "two"]}
     api = FakeApi({"images": [PNG, PNG, PNG], "info": json.dumps(info)})
-    params = GenParams(prompt="1girl", model="m.safetensors [abc]", n_iter=2)
+    params = GenParams(prompt="1girl", model="m.safetensors [abc]", batch_size=2)
     results = run_txt2img(api, params, tmp_path / "gen")
     assert [r.seed for r in results] == [111, 222]
     assert [r.meta["infotext"] for r in results] == ["one", "two"]
     assert all(r.path.exists() and r.path.suffix == ".png" for r in results)
     assert len({r.path for r in results}) == 2
+    assert len(api.payloads) == 1                                             # one call: batch_size, not n_iter
     assert api.payload["override_settings"] == {"sd_model_checkpoint": "m.safetensors [abc]"}
-    assert api.payload["save_images"] is False and api.payload["n_iter"] == 2
+    assert api.payload["save_images"] is False and api.payload["n_iter"] == 1
+
+
+def test_run_txt2img_splits_a_batch_count_into_one_call_each(tmp_path):
+    """A batch *count* above 1 is sent as that many separate calls (one each), not one call with n_iter=2 -- so a
+    caller can show each finished picture as it arrives instead of only once the whole batch is done."""
+    info = {"all_seeds": [111], "infotexts": ["one"]}
+    api = FakeApi({"images": [PNG], "info": json.dumps(info)})
+    params = GenParams(prompt="1girl", model="m.safetensors [abc]", n_iter=2)
+    results = run_txt2img(api, params, tmp_path / "gen")
+    assert len(results) == 2 and len({r.path for r in results}) == 2
+    assert all(r.path.exists() and r.path.suffix == ".png" for r in results)
+    assert len(api.payloads) == 2 and all(p["n_iter"] == 1 for p in api.payloads)
+    assert api.payload["override_settings"] == {"sd_model_checkpoint": "m.safetensors [abc]"}
 
 
 def test_run_txt2img_no_images(tmp_path):

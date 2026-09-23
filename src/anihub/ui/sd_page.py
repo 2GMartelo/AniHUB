@@ -36,7 +36,7 @@ from anihub.ui.sd_dialogs import InsertDialog
 from anihub.ui.sd_history import HistoryView
 from anihub.ui.sd_queue import QueueController, QueueView
 from anihub.ui.viewer import ViewItem, Viewer
-from anihub.ui.workers import run_async
+from anihub.ui.workers import post_to_gui, run_async
 
 STATE_COLORS = {"stopped": "#8a8f94", "starting": "#f0a030", "running": "#3fb95a", "external": "#3fb95a",
                 "failed": "#e0575a"}
@@ -715,13 +715,14 @@ class GenerateView(QWidget):
         api = self.controller.manager.api
 
         def work() -> list[GenResult]:
-            results = run_generation(api, params, out_dir)
+            results = run_generation(api, params, out_dir,
+                                     on_batch=lambda partial: post_to_gui(self.add_results, partial),
+                                     should_stop=lambda: self._interrupting)
             record_history(self.ctx.db, self.ctx.paths.root, results, "main")
             return results
 
         def done(results: list[GenResult]) -> None:
             self._finish()
-            self.add_results(results)
             self.message.setText(tr("sd.done", n=len(results)))
             self.history_changed.emit()
 
@@ -939,7 +940,8 @@ class SDPage(QWidget):
         self.history.to_img2img.connect(lambda path, p, n: (self.show_generate_tab(), self.generate.use_as_init(path, p, n)))
         self.history.presets_changed.connect(self.generate.refresh_presets)
         self.history.library_changed.connect(self.saved.reload)
-        self.queue_ctrl.job_finished.connect(lambda results: (self.generate.add_results(results), self.history.reload()))
+        self.queue_ctrl.partial_results.connect(self.generate.add_results)  # shown as soon as each piece is ready
+        self.queue_ctrl.job_finished.connect(lambda _results: self.history.reload())
         # a freshly installed file is only visible to a running Forge (it was told to rescan already)
         self.civitai.installed.connect(lambda _t: self.generate.load_forge_data() if controller.state.ready else None)
         self._on_state(controller.state.value)

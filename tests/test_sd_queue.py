@@ -70,7 +70,7 @@ def env(tmp_path, qapp):
 
 
 def make_runner(paths, log, delay=0.05, fail_on=None):
-    def run(api, params, out_dir):
+    def run(api, params, out_dir, on_batch=None, should_stop=None):
         log.append((threading.current_thread().name, params.prompt, time.time()))
         time.sleep(delay)
         if fail_on and params.prompt == fail_on:
@@ -80,7 +80,30 @@ def make_runner(paths, log, delay=0.05, fail_on=None):
         img = out_dir / f"{params.prompt}.png"
         img.parent.mkdir(parents=True, exist_ok=True)
         img.write_bytes(b"x")
-        return [GenResult(img, 1, {"prompt": params.prompt, "model": "m"})]
+        result = [GenResult(img, 1, {"prompt": params.prompt, "model": "m"})]
+        if on_batch is not None:
+            on_batch(result)                                                  # a real run_job reports as it goes
+        return result
+    return run
+
+
+def make_multi_batch_runner(paths, batches=3, delay=0.05):
+    """A job that produces several pieces, like a real batch count above 1 -- used to check that `on_batch` reaches
+    the GUI as `partial_results` for each piece, and that `should_stop` is actually consulted between them."""
+    def run(api, params, out_dir, on_batch=None, should_stop=None):
+        out_dir.mkdir(parents=True, exist_ok=True)
+        produced = []
+        for i in range(batches):
+            if should_stop is not None and should_stop():
+                break
+            time.sleep(delay)
+            img = out_dir / f"{params.prompt}_{i}.png"
+            img.write_bytes(b"x")
+            piece = [GenResult(img, i, {"prompt": params.prompt})]
+            produced.extend(piece)
+            if on_batch is not None:
+                on_batch(piece)
+        return produced
     return run
 
 
@@ -173,6 +196,35 @@ def test_cancel_interrupts_the_backend_and_marks_the_job(env, qapp):
     assert pump(qapp, lambda: not qc.active)
     assert ctrl.manager.api.interrupted
     assert statuses(ctx) == ["cancelled", "pending"]                           # the next job stays queued
+
+
+def test_partial_results_are_delivered_as_each_piece_of_a_job_finishes(env, qapp):
+    ctx, paths = env
+    qc = QueueController(ctx, {"main": FakeController()}, run_job=make_multi_batch_runner(paths, batches=3))
+    seen = []
+    qc.partial_results.connect(seen.append)
+    finished = []
+    qc.job_finished.connect(finished.append)
+    qc.add(GenParams(prompt="a"))
+    qc.start()
+    assert pump(qapp, lambda: len(seen) >= 3)
+    assert [p[0].seed for p in seen] == [0, 1, 2]                              # one signal per piece, in order
+    assert pump(qapp, lambda: bool(finished))
+    assert len(finished[0]) == 3                                               # job_finished still carries the whole job
+
+
+def test_cancelling_a_multi_piece_job_stops_it_before_the_next_piece(env, qapp):
+    ctx, paths = env
+    ctrl = FakeController()
+    qc = QueueController(ctx, {"main": ctrl}, run_job=make_multi_batch_runner(paths, batches=5, delay=0.1))
+    qc.add(GenParams(prompt="a"))
+    qc.start()
+    assert pump(qapp, lambda: qc.is_busy("main"))
+    time.sleep(0.15)                                                           # let one or two pieces land first
+    qc.cancel_current()
+    assert pump(qapp, lambda: not qc.active)
+    assert statuses(ctx) == ["cancelled"]
+    assert ctrl.manager.api.interrupted
 
 
 def test_queue_add_with_count_randomises_seeds_of_the_copies(env, qapp):

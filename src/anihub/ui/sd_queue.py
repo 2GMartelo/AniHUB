@@ -20,7 +20,7 @@ from anihub.services.procservice import ServiceState
 from anihub.services.schedule import DEFAULT_SCHEDULE, next_run, schedule_due, system_idle_seconds
 from anihub.ui import style, theme
 from anihub.ui.forge_controller import ServiceController
-from anihub.ui.workers import run_async
+from anihub.ui.workers import post_to_gui, run_async
 
 def status_color(status: str) -> str:
     t = theme.current()
@@ -32,7 +32,8 @@ class QueueController(QObject):
     changed = Signal()
     message = Signal(str)
     running_changed = Signal(bool)
-    job_finished = Signal(list)  # list[GenResult] of a finished job
+    job_finished = Signal(list)  # list[GenResult] of a finished job (the whole job, once it is fully done)
+    partial_results = Signal(list)  # list[GenResult]: a piece of a still-running job, as soon as it is ready
     all_done = Signal()
 
     def __init__(self, ctx: AppContext, controllers: dict[str, ServiceController], run_job=run_generation,
@@ -141,7 +142,9 @@ class QueueController(QObject):
         api, db, paths = ctrl.manager.api, self.ctx.db, self.ctx.paths
 
         def work():
-            results = self.run_job(api, params, paths.sd / "generated")
+            results = self.run_job(api, params, paths.sd / "generated",
+                                   on_batch=lambda partial: post_to_gui(self.partial_results.emit, partial),
+                                   should_stop=lambda: self._cancelling)
             record_history(db, paths.root, results, name)
             return results
 

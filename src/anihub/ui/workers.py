@@ -64,3 +64,13 @@ class _Runnable(QRunnable):
 def run_async(fn: Callable, *args, on_done: Callable | None = None, on_error: Callable | None = None) -> None:
     """Call from the GUI thread. `on_done(result)` / `on_error(exc)` run on the GUI thread."""
     QThreadPool.globalInstance().start(_Runnable(fn, args, on_done, on_error, _get_bridge()))
+
+
+def post_to_gui(callback: Callable, arg=None) -> None:
+    """Queue `callback(arg)` onto the GUI thread; safe to call from any thread, including from inside a `run_async`
+    `fn` that wants to report progress partway through instead of only at on_done -- e.g. a long batch that hands
+    back each of its own pieces as they finish, not just the final combined result."""
+    try:
+        _get_bridge().deliver.emit(callback, arg)
+    except RuntimeError:
+        pass  # the application is shutting down and the bridge is already gone

@@ -7,9 +7,10 @@ import json
 import re
 import struct
 import zlib
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, field, fields, replace
 from datetime import datetime
 from pathlib import Path
+from typing import Callable
 
 from anihub.services.forge import ForgeApi, ForgeError
 
@@ -122,11 +123,7 @@ def _unique(day_dir: Path, name: str, suffix: str) -> Path:
     return path
 
 
-def run_generation(api: ForgeApi, params: GenParams, out_dir: Path) -> list[GenResult]:
-    """Blocking: call Forge (img2img when an init image is set), write every returned image under
-    out_dir/<date>/ and return them."""
-    payload = params.to_payload()
-    data = api.img2img(payload) if params.init_image else api.txt2img(payload)  # img2img also covers inpaint (mask in payload)
+def _images_from_response(data: dict, out_dir: Path, meta_base: dict, fallback_seed: int) -> list[GenResult]:
     images = data.get("images") or []
     try:
         info = json.loads(data.get("info") or "{}")
@@ -144,14 +141,47 @@ def run_generation(api: ForgeApi, params: GenParams, out_dir: Path) -> list[GenR
     stamp = datetime.now().strftime("%H%M%S")
     results = []
     for i, b64 in enumerate(images):
-        seed = int(seeds[i]) if i < len(seeds) else params.seed
+        seed = int(seeds[i]) if i < len(seeds) else fallback_seed
         path = _unique(day_dir, f"{stamp}_{seed}_{i + 1}", ".png")
         path.write_bytes(base64.b64decode(b64))
-        meta = {**params.__dict__, "seed": seed}
+        meta = {**meta_base, "seed": seed}
         if i + first < len(infotexts):  # infotexts align with the full image list, grid included
             meta["infotext"] = infotexts[i + first]
         results.append(GenResult(path, seed, meta))
     return results
+
+
+def run_generation(api: ForgeApi, params: GenParams, out_dir: Path,
+                    on_batch: Callable[[list[GenResult]], None] | None = None,
+                    should_stop: Callable[[], bool] | None = None) -> list[GenResult]:
+    """Blocking: call Forge (img2img when an init image is set), write every returned image under out_dir/<date>/
+    and return them all.
+
+    A batch count (`n_iter`) above 1 is sent as that many separate Forge calls of one each, instead of a single call
+    for the whole batch: Forge's API only answers once the whole batch is done, so with one call nothing appears
+    until every image in it has finished, even though Forge itself is generating them one at a time. `on_batch`
+    (if given) is called with each call's own images right after they are written, so a caller can show them as
+    they arrive. `should_stop` (if given) is checked between calls so a cancelled batch does not start another one
+    (Forge is still asked to interrupt the in-flight call the normal way; this only stops the *next* one)."""
+    n_iter = max(1, params.n_iter)
+    meta_base = params.__dict__
+    all_results: list[GenResult] = []
+    for i in range(n_iter):
+        if should_stop is not None and should_stop():
+            break
+        if i == 0:
+            call_params = params
+        else:
+            seed = params.seed + i * params.batch_size if params.seed != -1 else -1
+            call_params = replace(params, n_iter=1, seed=seed)
+        payload = call_params.to_payload()
+        payload["n_iter"] = 1
+        data = api.img2img(payload) if params.init_image else api.txt2img(payload)  # img2img also covers inpaint (mask in payload)
+        results = _images_from_response(data, out_dir, meta_base, call_params.seed)
+        all_results.extend(results)
+        if on_batch is not None:
+            on_batch(results)
+    return all_results
 
 
 run_txt2img = run_generation  # original name

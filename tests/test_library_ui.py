@@ -149,3 +149,42 @@ def test_img2img_payload_and_dispatch(tmp_path):
     res = run_generation(Api(), params, tmp_path / "o")
     assert calls == ["txt2img", "img2img"]
     assert res[0].meta["init_image"] == str(src) and res[0].seed == 2         # source kept in the saved parameters
+
+
+class BatchApi:
+    """Every txt2img call is its own `all_seeds`/`n_iter`-in-payload record, so a test can see exactly how the
+    batch was actually split into calls."""
+
+    def __init__(self):
+        self.payloads: list[dict] = []
+
+    def txt2img(self, payload):
+        self.payloads.append(dict(payload))
+        seed = payload["seed"] if payload["seed"] != -1 else 1000 + len(self.payloads)
+        return {"images": [PNG], "info": json.dumps({"all_seeds": [seed]})}
+
+
+def test_run_generation_splits_a_batch_count_into_one_call_each(tmp_path):
+    api = BatchApi()
+    delivered = []
+    params = GenParams(prompt="p", seed=100, n_iter=3, batch_size=1)
+    res = run_generation(api, params, tmp_path, on_batch=delivered.append)
+    assert [p["n_iter"] for p in api.payloads] == [1, 1, 1]                    # never one call for the whole batch
+    assert [p["seed"] for p in api.payloads] == [100, 101, 102]                # A1111-style: seed increments per image
+    assert [r.seed for r in res] == [100, 101, 102]
+    assert [d[0].seed for d in delivered] == [100, 101, 102]                   # on_batch fired once per call, in order
+
+
+def test_run_generation_keeps_a_random_seed_random_across_the_batch(tmp_path):
+    api = BatchApi()
+    params = GenParams(prompt="p", seed=-1, n_iter=3, batch_size=2)
+    res = run_generation(api, params, tmp_path, on_batch=lambda _r: None)
+    assert [p["seed"] for p in api.payloads] == [-1, -1, -1]                   # -1 stays -1: Forge itself randomises
+    assert len(res) == 3                                                        # one image per call (BatchApi returns one)
+
+
+def test_run_generation_stops_early_when_should_stop_says_so(tmp_path):
+    api = BatchApi()
+    params = GenParams(prompt="p", seed=5, n_iter=5, batch_size=1)
+    res = run_generation(api, params, tmp_path, should_stop=lambda: len(api.payloads) >= 2)
+    assert len(api.payloads) == 2 and len(res) == 2                             # cancelled after the 2nd call finished
