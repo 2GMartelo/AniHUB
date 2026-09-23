@@ -33,6 +33,7 @@ class TagCompleter(QCompleter):
         self.db, self.multi, self.limit = db, multi, limit
         self.remote = remote                                  # blocking lookup of the tags of a site (runs in a worker, a moment after typing)
         self._ask = 0
+        self._head, self._minus = "", ""                      # captured once per refresh; see pathFromIndex
         self._wait = QTimer(self, singleShot=True, interval=250)
         self._wait.timeout.connect(self._ask_remote)
         self._model = QStandardItemModel(self)
@@ -49,7 +50,8 @@ class TagCompleter(QCompleter):
         return split_last_token(text) if self.multi else ("", "", text.strip())
 
     def _refresh(self, text: str) -> None:
-        _, _, token = self._parts(text)
+        head, minus, token = self._parts(text)
+        self._head, self._minus = head, minus
         self._model.clear()
         if not token:
             return
@@ -88,9 +90,13 @@ class TagCompleter(QCompleter):
         return [self._parts(path)[2]]
 
     def pathFromIndex(self, index) -> str:  # the text the line edit gets after choosing a suggestion
+        """Qt calls this twice for one selection: once to preview it while the item is merely highlighted (hover /
+        arrow keys), which it applies to the widget right away, and again on the final activation. Re-parsing
+        `self.widget().text()` at that second call would read back the preview text the first call already wrote,
+        appending the same name a second time -- so the head/minus captured by the last _refresh() (i.e. from what
+        the user actually typed) is used instead, regardless of what the widget shows in between."""
         name = index.data(NAME_ROLE) or index.data()
-        head, minus, _ = self._parts(self.widget().text())
-        return f"{head}{minus}{name} " if self.multi else name
+        return f"{self._head}{self._minus}{name} " if self.multi else name
 
 
 def tag_line_edit(db: Database, placeholder: str = "", multi: bool = True, remote=None) -> QLineEdit:

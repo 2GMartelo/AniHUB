@@ -26,6 +26,7 @@ from anihub.ui.forge_controller import ForgeController
 from anihub.ui.style import StatusChip
 from anihub.ui.grid import ThumbGrid, image_to_thumb
 from anihub.ui.mask_editor import MaskDialog
+from anihub.ui.pagezoom import PageZoom
 from anihub.ui.character_tab import CharacterTab
 from anihub.ui.lora_editor import LoraEditor
 from anihub.ui.prompt_builder import PromptBuilder
@@ -289,7 +290,7 @@ class GenerateView(QWidget):
         left.setFrameShape(QScrollArea.Shape.NoFrame)
         left.setWidget(inner)
         left.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        left.setFixedWidth(470)
+        left.setMinimumWidth(340)                              # was setFixedWidth(470): the splitter below can now actually move it
 
         # --- results
         self.grid = ThumbGrid(220)
@@ -323,6 +324,7 @@ class GenerateView(QWidget):
         split.addWidget(left)
         split.addWidget(right)
         split.setStretchFactor(1, 1)
+        split.setSizes([470, 800])                             # same starting width as before, but now draggable
         QVBoxLayout(self).addWidget(split)
 
         # --- wiring
@@ -353,6 +355,9 @@ class GenerateView(QWidget):
         queue.running_changed.connect(lambda _r: self._update_buttons())
         self.refresh_presets()
         self._on_state(controller.state.value)
+
+        base_thumb = self.grid.thumb_size
+        self.page_zoom = PageZoom(self, on_zoom=lambda f: self.grid.set_thumb_size(max(80, round(base_thumb * f))))
 
     # --- Forge state / lists -------------------------------------------------------------------------------
 

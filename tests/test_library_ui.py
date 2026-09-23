@@ -47,6 +47,23 @@ def test_completer_suggests_for_last_word_and_rebuilds_the_line(qapp, db):
     assert comp.pathFromIndex(comp._model.index(0, 0)) == "cat -blue_hair "   # '-' and earlier words are kept
 
 
+def test_completer_selection_does_not_duplicate_when_qt_previews_it_first(qapp, db):
+    """Qt calls pathFromIndex() twice for one pick: once to preview the highlighted item (applied to the widget
+    right away, e.g. on hover or arrow-key navigation), and again on the actual activation. Regression: the second
+    call used to re-read the widget's own (already-previewed) text, appending the same tag a second time."""
+    from PySide6.QtWidgets import QLineEdit
+    add(db, "a", ["blue_hair"])
+    edit = QLineEdit()
+    comp = TagCompleter(db, edit)
+    edit.setText("1girl blue_h")
+    comp._refresh("1girl blue_h")
+    idx = comp._model.index(0, 0)
+    preview = comp.pathFromIndex(idx)
+    assert preview == "1girl blue_hair "
+    edit.setText(preview)                                    # what Qt's own hover-preview does before activating
+    assert comp.pathFromIndex(idx) == preview                # the final activation must reproduce it, not extend it
+
+
 def test_single_tag_completer_replaces_the_whole_text(qapp, db):
     from PySide6.QtWidgets import QLineEdit
     add(db, "a", ["blue_hair"])

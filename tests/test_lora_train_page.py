@@ -260,6 +260,23 @@ def make_page_with_rows(tmp_path, qapp, count=3, tags=None):
     return page
 
 
+def test_ctrl_wheel_zoom_resizes_existing_and_later_added_rows(tmp_path, qapp):
+    from anihub.ui.lora_train_page import THUMB
+
+    page = make_page_with_rows(tmp_path, qapp, count=2)
+    assert all(row._thumb_label.width() == THUMB for row in page.rows)
+
+    page.page_zoom.zoom(1)
+    assert page._thumb_size == round(THUMB * 1.1)
+    assert all(row._thumb_label.width() == round(THUMB * 1.1) for row in page.rows)
+
+    # a row added after zooming should come in already at the current size, not back at the default
+    row = ImageRow(picture(tmp_path, "later.png"), [])
+    row.set_thumb_size(page._thumb_size)
+    page.rows.append(row)
+    assert row._thumb_label.width() == round(THUMB * 1.1)
+
+
 def test_autotag_all_tags_pictures_one_at_a_time_not_in_one_batch(tmp_path, qapp, monkeypatch):
     page = make_page_with_rows(tmp_path, qapp, count=3)
     monkeypatch.setattr(type(page.ctx.autotagger), "available", True)

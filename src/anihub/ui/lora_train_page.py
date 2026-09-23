@@ -10,7 +10,7 @@ from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, QFormLayout, QFrame, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
-    QPlainTextEdit, QProgressBar, QPushButton, QScrollArea, QSpinBox, QToolButton, QVBoxLayout, QWidget,
+    QPlainTextEdit, QProgressBar, QPushButton, QScrollArea, QSpinBox, QSplitter, QToolButton, QVBoxLayout, QWidget,
 )
 
 from anihub.context import AppContext
@@ -20,6 +20,7 @@ from anihub.services import lora as lo
 from anihub.services import lora_train as lt
 from anihub.ui import style
 from anihub.ui.manga_filters import FlowLayout
+from anihub.ui.pagezoom import PageZoom
 from anihub.ui.workers import run_async
 
 THUMB = 88
@@ -55,17 +56,14 @@ class ImageRow(QFrame):
         self.path = path
         self.tags = list(dict.fromkeys(t.strip() for t in tags if t.strip()))
 
-        thumb = QLabel()
-        thumb.setObjectName("thumbHolder")
-        thumb.setFixedSize(THUMB, THUMB)
-        loaded = QPixmap(str(path))
-        if not loaded.isNull():
-            thumb.setPixmap(loaded.scaled(THUMB, THUMB, Qt.AspectRatioMode.KeepAspectRatioByExpanding,
-                                          Qt.TransformationMode.SmoothTransformation))
-        name = style.role(QLabel(path.name), "dim")
-        name.setWordWrap(True)
-        name.setFixedWidth(THUMB)
+        self._original_pixmap = QPixmap(str(path))
+        self._thumb_label = QLabel()
+        self._thumb_label.setObjectName("thumbHolder")
+        self._name_label = style.role(QLabel(path.name), "dim")
+        self._name_label.setWordWrap(True)
         self.remove_btn = style.ghost(QPushButton(tr("lt.remove_image")), "trash")
+        self.set_thumb_size(THUMB)
+        thumb, name = self._thumb_label, self._name_label
 
         left = QVBoxLayout()
         left.addWidget(thumb, 0, Qt.AlignmentFlag.AlignHCenter)
@@ -91,6 +89,13 @@ class ImageRow(QFrame):
         self.remove_btn.clicked.connect(lambda: self.removed.emit(self))
         self.add_line.returnPressed.connect(self._add_tag)
         self._rebuild_chips()
+
+    def set_thumb_size(self, size: int) -> None:
+        self._thumb_label.setFixedSize(size, size)
+        if not self._original_pixmap.isNull():
+            self._thumb_label.setPixmap(self._original_pixmap.scaled(
+                size, size, Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation))
+        self._name_label.setFixedWidth(size)
 
     def _rebuild_chips(self) -> None:
         while self.flow.count():
@@ -165,9 +170,12 @@ class LoraTrainPage(QWidget):
         rows_scroll.setFrameShape(QFrame.Shape.NoFrame)
         rows_scroll.setWidget(self.rows_area)
 
-        left = QVBoxLayout()
+        left_widget = QWidget()
+        left = QVBoxLayout(left_widget)
+        left.setContentsMargins(0, 0, 0, 0)
         left.addLayout(top_row)
         left.addWidget(rows_scroll, 1)
+        left_widget.setMinimumWidth(280)
 
         # --- right: name, trigger, checkpoint, advanced params, start/log ------------------------------------------
         self.name_edit = QLineEdit(placeholderText=tr("lt.name_hint"))
@@ -247,9 +255,15 @@ class LoraTrainPage(QWidget):
         right_scroll.setWidget(right_content)
         right_scroll.setMinimumWidth(360)
 
-        layout = QHBoxLayout(self)
-        layout.addLayout(left, 3)
-        layout.addWidget(right_scroll, 2)
+        split = QSplitter()
+        split.addWidget(left_widget)
+        split.addWidget(right_scroll)
+        split.setStretchFactor(0, 3)
+        split.setStretchFactor(1, 2)
+        split.setSizes([600, 400])
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(split)
 
         self.timer = QTimer(self)
         self.timer.setInterval(1000)
@@ -264,6 +278,14 @@ class LoraTrainPage(QWidget):
         self.cancel_btn.clicked.connect(self._cancel)
 
         self.reload_checkpoints()
+
+        self._thumb_size = THUMB
+        self.page_zoom = PageZoom(self, on_zoom=self._resize_rows)
+
+    def _resize_rows(self, factor: float) -> None:
+        self._thumb_size = max(50, round(THUMB * factor))
+        for row in self.rows:
+            row.set_thumb_size(self._thumb_size)
 
     # --- dataset ---------------------------------------------------------------------------------------------------
 
@@ -280,6 +302,7 @@ class LoraTrainPage(QWidget):
             if path in existing:
                 continue
             row = ImageRow(path, [])
+            row.set_thumb_size(self._thumb_size)
             row.removed.connect(self._remove_row)
             self.rows.append(row)
             self.rows_layout.insertWidget(self.rows_layout.count() - 2, row)
