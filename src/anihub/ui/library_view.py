@@ -490,7 +490,7 @@ class LibraryView(QWidget):
 
     @staticmethod
     def _tooltip(row: sqlite3.Row) -> str:
-        if row["source_site"] == "forge":
+        if row["source_site"] == "forge" or row["meta"]:       # generated here, or its PNG carried the parameters
             meta = json.loads(row["meta"] or "{}")
             return f"seed {meta.get('seed')} · {row['rating']}\n{meta.get('prompt', '')[:200]}"
         return f"#{row['source_post_id']}  {row['rating']}  {row['width'] or '?'}×{row['height'] or '?'}\n{row['author'] or ''}"
@@ -674,7 +674,7 @@ class LibraryView(QWidget):
     def _view_item(self, row: sqlite3.Row) -> ViewItem:
         path = self._file_of(row)
         tags = self.ctx.db.item_tags_categorized(row["id"])
-        if row["source_site"] == "forge":
+        if row["source_site"] == "forge" or row["meta"]:
             meta = json.loads(row["meta"] or "{}")
             info = meta.get("infotext") or json.dumps(meta, ensure_ascii=False)
         else:

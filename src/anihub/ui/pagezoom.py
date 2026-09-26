@@ -37,7 +37,10 @@ class PageZoom(QObject):
         return False
 
     def zoom(self, steps: int) -> None:
-        self.factor = round(min(MAX_FACTOR, max(MIN_FACTOR, self.factor + steps * STEP)), 2)
+        self.set_factor(self.factor + steps * STEP)
+
+    def set_factor(self, factor: float) -> None:
+        self.factor = round(min(MAX_FACTOR, max(MIN_FACTOR, factor)), 2)
         for button, (name, mode, base_size) in self._buttons:
             style.bind_icon(button, name, mode, max(10, round(base_size * self.factor)))
         if self.on_zoom:

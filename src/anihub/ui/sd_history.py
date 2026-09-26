@@ -129,7 +129,7 @@ class HistoryView(QWidget):
 
     def _thumb(self, row: sqlite3.Row):
         file = self._file(row)
-        return image_to_thumb(file.read_bytes(), self.grid.thumb_size) if file.exists() else None
+        return image_to_thumb(file, self.grid.thumb_size) if file.exists() else None
 
     def _hover(self, row: sqlite3.Row):
         file = self._file(row)

@@ -25,6 +25,7 @@ from anihub.ui import style
 from anihub.ui.forge_controller import ForgeController
 from anihub.ui.style import StatusChip
 from anihub.ui.grid import ThumbGrid, image_to_thumb
+from anihub.ui.pnginfo_view import PngInfoView
 from anihub.ui.gen_addons import GenAddonsPanel
 from anihub.ui.mask_editor import MaskDialog
 from anihub.ui.pagezoom import PageZoom
@@ -590,14 +591,19 @@ class GenerateView(QWidget):
         current = self.prompt.toPlainText().rstrip()
         self.prompt.setPlainText(f"{current}, {text}" if current else text)
 
+    def append_prompts(self, prompt: str, negative: str) -> None:
+        """Add text to the end of the prompt and / or the negative prompt (either may be empty)."""
+        if prompt:
+            self._append_prompt(prompt)
+        if negative:
+            current = self.negative.toPlainText().rstrip()
+            self.negative.setPlainText(f"{current}, {negative}" if current else negative)
+
     def insert_lora(self, prompt: str, negative: str, name: str) -> bool:
         """The LoRA editor's "add to the prompt": False when this LoRA is already written in the prompt."""
         if f"<lora:{name}:" in self.prompt.toPlainText():
             return False
-        self._append_prompt(prompt)
-        if negative:
-            current = self.negative.toPlainText().rstrip()
-            self.negative.setPlainText(f"{current}, {negative}" if current else negative)
+        self.append_prompts(prompt, negative)
         return True
 
     def _open_lora(self) -> None:
@@ -783,7 +789,7 @@ class GenerateView(QWidget):
 
     def add_results(self, results: list[GenResult]) -> None:
         for res in results:
-            self.grid.add_entry(res, self._tooltip(res), lambda r=res: image_to_thumb(r.path.read_bytes(), self.grid.thumb_size))
+            self.grid.add_entry(res, self._tooltip(res), lambda r=res: image_to_thumb(r.path, self.grid.thumb_size))
         self.grid.scrollToBottom()
 
     def _finish(self) -> None:
@@ -918,6 +924,7 @@ class SDPage(QWidget):
         self.history = HistoryView(ctx)
         self.civitai = CivitaiView(ctx)
         self.saved = LibraryView(ctx, kind="sd")
+        self.pnginfo = PngInfoView()
         self.builder = PromptBuilder(ctx, form={
             "get": lambda: (self.generate.prompt.toPlainText(), self.generate.negative.toPlainText()),
             "set": self.generate.set_prompts,
@@ -935,6 +942,7 @@ class SDPage(QWidget):
         tabs.addTab(self.lora, "LoRA")
         tabs.addTab(self.queue_view, tr("sd.tab.queue"))
         tabs.addTab(self.history, tr("sd.tab.history"))
+        tabs.addTab(self.pnginfo, tr("sd.tab.pnginfo"))
         tabs.addTab(self.civitai, "CivitAI.red")
         tabs.addTab(self.saved, tr("sd.tab.saved"))
         self.character = CharacterTab(ctx, hooks={
@@ -956,6 +964,9 @@ class SDPage(QWidget):
         self.generate.library_changed.connect(self.saved.reload)
         self.generate.history_changed.connect(self.history.reload)
         self.generate.presets_changed.connect(lambda: None)
+        self.pnginfo.add_to_prompt.connect(self.generate.append_prompts)
+        self.pnginfo.replace_prompt.connect(self.generate.set_prompts)
+        self.pnginfo.load_params.connect(self._load_params)
         self.history.load_params.connect(self._load_params)
         self.history.to_queue.connect(lambda d: self.queue_ctrl.add(params_from_dict(d)))
         self.history.to_img2img.connect(lambda path, p, n: (self.show_generate_tab(), self.generate.use_as_init(path, p, n)))

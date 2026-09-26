@@ -20,7 +20,7 @@ from anihub.core.paths import LibraryPaths
 from anihub.library.phash import dhash, find_near, similar_groups
 from anihub.library.rules import RuleEngine
 from anihub.net.http import HttpClient
-from anihub.services.generation import prompt_tags
+from anihub.services.generation import png_info_meta, prompt_tags
 from anihub.sources.base import Post, url_ext
 
 log = logging.getLogger(__name__)
@@ -134,6 +134,7 @@ class LibraryService:
             if similar and self._near_mode() == "skip":
                 dest.unlink(missing_ok=True)
                 return SaveResult("duplicate", similar=similar)
+            meta = png_info_meta(dest)          # a picture made in Forge / A1111 keeps its prompt inside the PNG
             tags = list(post.tags)
             if not tags:  # e.g. Twitter: nothing came with the file, ask the tagger
                 tagged = self._autotag(dest, ext)
@@ -156,6 +157,7 @@ class LibraryService:
                 source_url=post.source,
                 page_url=post.page_url,
                 author=post.author or None,
+                **({"meta": json.dumps(meta, ensure_ascii=False)} if meta else {}),
             )
         except Exception as exc:  # noqa: BLE001 - reported to the user per item
             log.warning("save_post failed for %s/%s: %s", post.site, post.id, exc)
@@ -263,11 +265,13 @@ class LibraryService:
             tagged = self._autotag(dest, dest.suffix.lstrip("."))
             if tagged:
                 tags, item_rating = tagged.tags, tagged.rating
+        meta = png_info_meta(dest)
         item_id = self.db.add_item(
             tags=tags, kind="art", path=dest.relative_to(self.paths.root).as_posix(), sha256=sha, phash=phash,
             width=image.width(), height=image.height(), size=dest.stat().st_size,
             ext=dest.suffix.lstrip(".").lower(), rating=item_rating, source_site="local",
-            source_post_id=sha[:16], source_url=str(src))
+            source_post_id=sha[:16], source_url=str(src),
+            **({"meta": json.dumps(meta, ensure_ascii=False)} if meta else {}))
         if category_id is not None:
             self.db.set_item_categories([item_id], add=[category_id])
             self._apply_rules([item_id])
@@ -276,6 +280,37 @@ class LibraryService:
         if similar:
             counts["similar"] += 1
         return "saved"
+
+    # --- reading generation parameters out of existing pictures ----------------------
+
+    def scan_png_info(self, progress: Callable[[int, int], None] | None = None,
+                      cancelled: Callable[[], bool] | None = None) -> dict[str, int]:
+        """Read the prompt / seed / model of every stored PNG that has none recorded yet -- the same thing Forge's "PNG
+        Info" tab does -- so pictures generated elsewhere and later imported or downloaded show their parameters too.
+        Only ever fills an empty `meta`; never overwrites one. Returns {"scanned": n, "found": n}."""
+        rows = self.db.items_without_meta(("png",))
+        counts = {"scanned": 0, "found": 0}
+        pending: list[tuple[int, str]] = []
+        for i, row in enumerate(rows, 1):
+            if cancelled and cancelled():
+                break
+            counts["scanned"] += 1
+            try:
+                meta = png_info_meta(self.paths.root / row["path"])
+            except Exception as exc:  # noqa: BLE001 - one unreadable file must not stop the scan
+                log.info("png info scan skipped %s: %s", row["path"], exc)
+                continue
+            if meta:
+                pending.append((row["id"], json.dumps(meta, ensure_ascii=False)))
+                counts["found"] += 1
+            if len(pending) >= 200:
+                self.db.set_meta_many(pending)
+                pending = []
+            if progress and (i % 50 == 0 or i == len(rows)):
+                progress(i, len(rows))
+        if pending:
+            self.db.set_meta_many(pending)
+        return counts
 
     # --- tagging existing items -------------------------------------------------
 

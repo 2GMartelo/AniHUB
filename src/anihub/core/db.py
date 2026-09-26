@@ -217,7 +217,7 @@ SORTS = {
     "author": "lower(COALESCE(i.author, ''))",
 }
 BULK_FIELDS = {"rating", "stars", "favorite"}
-UPDATABLE = {"rating", "stars", "favorite", "phash", "trashed_at", "trash_path", "width", "height", "size", "author"}
+UPDATABLE = {"rating", "stars", "favorite", "phash", "trashed_at", "trash_path", "width", "height", "size", "author", "meta"}
 
 
 def _like_escape(text: str) -> str:
@@ -277,6 +277,20 @@ class Database:
         return self.conn.execute(
             "SELECT * FROM items WHERE sha256=? AND trashed_at IS NULL", (sha256,)
         ).fetchone()
+
+    def items_without_meta(self, exts: Iterable[str]) -> list[sqlite3.Row]:
+        """(id, path) of the untrashed pictures with the given extensions that carry no generation parameters yet."""
+        exts = list(exts)
+        marks = ", ".join("?" for _ in exts)
+        return self.conn.execute(
+            f"SELECT id, path FROM items WHERE (meta IS NULL OR meta='') AND trashed_at IS NULL AND ext IN ({marks}) "
+            "ORDER BY id", exts).fetchall()
+
+    def set_meta_many(self, pairs: list[tuple[int, str]]) -> None:
+        """Store generation parameters for many items in one transaction (a scan writes thousands; one commit each
+        would hold the database for seconds)."""
+        with self.conn:
+            self.conn.executemany("UPDATE items SET meta=? WHERE id=?", [(meta, item_id) for item_id, meta in pairs])
 
     def get_item(self, item_id: int) -> sqlite3.Row | None:
         return self.conn.execute("SELECT * FROM items WHERE id=?", (item_id,)).fetchone()

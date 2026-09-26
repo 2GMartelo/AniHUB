@@ -24,6 +24,7 @@ from anihub.ui import builder_lora as bl
 from anihub.ui import style, theme
 from anihub.ui.builder_dnd import LORA_MIME, NODE_MIME, ROLE, TAG_MIME, CatalogTree, DragGrid
 from anihub.ui.manga_filters import FlowLayout
+from anihub.ui.pagezoom import PageZoom
 from anihub.ui.workers import run_async
 
 TILE = 84                        # picture size of a tag tile
@@ -85,16 +86,21 @@ def decorate_icon(pm: QPixmap, active: bool, size: int = TILE) -> QIcon:
     p.setRenderHint(QPainter.RenderHint.Antialiasing)
     p.drawPixmap(0, 0, pm)
     if active:                                                                    # the tag is in the prompt: accent ring and a check mark
+        k = size / TILE                                                           # the marks grow with the tile (Ctrl + wheel zoom)
+
+        def r(v: float) -> int:
+            return round(v * k)
+
         accent = theme.css_color(theme.current().accent)
-        p.setPen(QPen(accent, 4))
+        p.setPen(QPen(accent, 4 * k))
         p.setBrush(Qt.BrushStyle.NoBrush)
-        p.drawRoundedRect(2, 2, size - 4, size - 4, 12, 12)
+        p.drawRoundedRect(r(2), r(2), size - r(4), size - r(4), r(12), r(12))
         p.setBrush(accent)
         p.setPen(Qt.PenStyle.NoPen)
-        p.drawEllipse(size - 26, 5, 21, 21)
-        p.setPen(QPen(QColor("white"), 3))
-        p.drawLine(size - 20, 16, size - 16, 20)
-        p.drawLine(size - 16, 20, size - 10, 11)
+        p.drawEllipse(size - r(26), r(5), r(21), r(21))
+        p.setPen(QPen(QColor("white"), 3 * k))
+        p.drawLine(size - r(20), r(16), size - r(16), r(20))
+        p.drawLine(size - r(16), r(20), size - r(10), r(11))
     p.end()
     return QIcon(out)
 
@@ -149,14 +155,17 @@ class TagGrid(DragGrid):
         self.setMovement(QListWidget.Movement.Static)
         self.setWrapping(True)
         self.setUniformItemSizes(True)
-        self.setIconSize(QSize(TILE, TILE))
-        self.setGridSize(QSize(TILE + 26, TILE + 60))
+        self.set_tile(TILE)
         self.setSpacing(4)
         self.setWordWrap(True)
         self.setTextElideMode(Qt.TextElideMode.ElideRight)
         self.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         self.setAcceptDrops(True)
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+
+    def set_tile(self, size: int) -> None:
+        self.setIconSize(QSize(size, size))
+        self.setGridSize(QSize(size + 26, size + 60))
 
     def dragEnterEvent(self, event) -> None:  # noqa: N802
         if event.mimeData().hasUrls():
@@ -292,6 +301,7 @@ class PromptBuilder(QWidget):
         self.drawing = False
         self._rows: dict[int, dict] = {}
         self._lora_queue: list = []
+        self.tile = TILE                                     # current tile picture size (Ctrl + wheel zoom)
         self._lora_timer = QTimer(self, interval=15)
         self._lora_timer.timeout.connect(self._load_lora_thumbs)
 
@@ -407,6 +417,17 @@ class PromptBuilder(QWidget):
         self._fill_tree()
         self._refresh_grid()
         self._refresh_doc()
+        self.page_zoom = PageZoom(self, on_zoom=self._zoom_tiles)
+        saved = ctx.cfg.get("ui.builder_zoom")
+        if isinstance(saved, (int, float)) and saved != 1.0:
+            self.page_zoom.set_factor(float(saved))
+
+    def _zoom_tiles(self, factor: float) -> None:
+        """Ctrl + wheel: bigger or smaller tag pictures (and buttons), remembered for the next start."""
+        self.tile = max(40, round(TILE * factor))
+        self.grid.set_tile(self.tile)
+        self._refresh_grid()
+        self.ctx.cfg.set("ui.builder_zoom", factor)
 
     # --- helpers ---------------------------------------------------------------------------------------------------
 
@@ -525,8 +546,8 @@ class PromptBuilder(QWidget):
             item.setData(Qt.ItemDataRole.UserRole, row)
             item.setData(ROLE + 1, (LORA_MIME, [str(row["path"])]))
             item.setToolTip(row["text"] + ("\n" + row["folder"] if row["folder"] else "") + ("\n" + row["description"][:200] if row["description"] else ""))
-            item.setIcon(QIcon(placeholder_pixmap(row["text"], TILE)))
-            item.setSizeHint(QSize(TILE + 22, TILE + 56))
+            item.setIcon(QIcon(placeholder_pixmap(row["text"], self.tile)))
+            item.setSizeHint(QSize(self.tile + 22, self.tile + 56))
             self.grid.addItem(item)
             self._lora_queue.append(item)
         root = self._lora_root()
@@ -541,7 +562,7 @@ class PromptBuilder(QWidget):
             item = self._lora_queue.pop(0)
             try:
                 row = item.data(Qt.ItemDataRole.UserRole)
-                item.setIcon(tile_icon(self.book, row, self._lora_active(row["text"])))
+                item.setIcon(tile_icon(self.book, row, self._lora_active(row["text"]), self.tile))
             except RuntimeError:                                       # the tile is gone (the view was refilled)
                 continue
 
@@ -576,8 +597,8 @@ class PromptBuilder(QWidget):
             item.setData(Qt.ItemDataRole.UserRole, row)
             item.setData(ROLE + 1, (TAG_MIME, [row["id"]]))
             item.setToolTip(row["text"] + ("\n" + pb.slot_name(row["slot"], get_language())))
-            item.setIcon(tile_icon(self.book, row, self.doc.has(row["slot"], row["text"])))
-            item.setSizeHint(QSize(TILE + 22, TILE + 56))
+            item.setIcon(tile_icon(self.book, row, self.doc.has(row["slot"], row["text"]), self.tile))
+            item.setSizeHint(QSize(self.tile + 22, self.tile + 56))
             self.grid.addItem(item)
         note = tr("pb.hidden", n=hidden) if hidden else ""
         self.status.setText((tr("pb.count", n=len(rows)) + ("  ·  " + note if note else "")))
@@ -590,7 +611,7 @@ class PromptBuilder(QWidget):
             if row.get("lora") and item in self._lora_queue:                 # its picture is not loaded yet: the loader will draw the mark
                 continue
             active = self._lora_active(row["text"]) if row.get("lora") else self.doc.has(row["slot"], row["text"])
-            item.setIcon(tile_icon(self.book, row, active))
+            item.setIcon(tile_icon(self.book, row, active, self.tile))
 
     def _tile_clicked(self, item: QListWidgetItem) -> None:
         row = item.data(Qt.ItemDataRole.UserRole)
@@ -1016,7 +1037,7 @@ class PromptBuilder(QWidget):
             row = item.data(Qt.ItemDataRole.UserRole)
             if not row.get("lora") and row["id"] == tag_id:
                 row["image"] = self.book.tag(tag_id)["image"]
-                item.setIcon(tile_icon(self.book, row, self.doc.has(row["slot"], row["text"])))
+                item.setIcon(tile_icon(self.book, row, self.doc.has(row["slot"], row["text"]), self.tile))
                 break
         self._refresh_doc()
 

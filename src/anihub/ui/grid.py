@@ -5,16 +5,18 @@ mouse rests on a thumbnail (ТЗ 3.5), a context-menu signal and a Delete-key si
 """
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Callable
 
-from PySide6.QtCore import QPoint, QRectF, QSize, Qt, QTimer, Signal
+from PySide6.QtCore import QBuffer, QIODevice, QPoint, QRectF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import (
-    QColor, QFont, QFontMetrics, QGuiApplication, QIcon, QImage, QKeyEvent, QPainter, QPainterPath, QPen, QPixmap)
+    QColor, QFont, QFontMetrics, QGuiApplication, QIcon, QImage, QImageReader, QKeyEvent, QPainter, QPainterPath, QPen,
+    QPixmap)
 from PySide6.QtWidgets import (
     QAbstractItemView, QLabel, QListView, QListWidget, QListWidgetItem, QStyle, QStyledItemDelegate)
 
 from anihub.ui import theme
-from anihub.ui.workers import run_async
+from anihub.ui.workers import run_async, thumb_pool
 
 PAYLOAD = Qt.ItemDataRole.UserRole
 CAPTION = Qt.ItemDataRole.UserRole + 1
@@ -41,9 +43,24 @@ def _stamp(painter: QPainter, text: str, x: int, y: int, size: int, anchor_right
     painter.drawText(x, y, w, h, Qt.AlignmentFlag.AlignCenter, text)
 
 
-def image_to_thumb(data: bytes, size: int, badge: str = "", mark: str = "") -> QImage | None:
-    """Scale to a thumbnail. `badge` ("▶", "GIF", unread count) goes top-left, `mark` ("♥ ★3") bottom-left."""
-    img = QImage.fromData(data)
+def decode_image(source: "bytes | Path | str") -> QImage:
+    """Decode a picture from memory or from a file through QImageReader.
+
+    QImage.fromData(bytes) keeps Python's GIL for the whole decode, so a page full of big generated PNGs decoded on the
+    worker threads starved the GUI thread for seconds (the app "froze" after every generation, when the history grid
+    reloaded). QImageReader releases the GIL while it decodes, so the window stays responsive."""
+    if isinstance(source, (str, Path)):
+        return QImageReader(str(source)).read()
+    buf = QBuffer()
+    buf.setData(bytes(source))
+    buf.open(QIODevice.OpenModeFlag.ReadOnly)
+    return QImageReader(buf).read()
+
+
+def image_to_thumb(data: "bytes | Path | str", size: int, badge: str = "", mark: str = "") -> QImage | None:
+    """Scale to a thumbnail. `badge` ("▶", "GIF", unread count) goes top-left, `mark` ("♥ ★3") bottom-left.
+    `data` is the picture's bytes or its path."""
+    img = decode_image(data)
     if img.isNull():
         return None
     img = img.scaled(size, size, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
@@ -222,7 +239,7 @@ class ThumbGrid(QListWidget):
             if img is not None and generation == self._generation:
                 item.setIcon(QIcon(QPixmap.fromImage(img)))
 
-        run_async(loader, on_done=done)
+        run_async(loader, on_done=done, pool=thumb_pool())
 
     def payloads(self) -> list:
         return [self.item(i).data(PAYLOAD) for i in range(self.count())]

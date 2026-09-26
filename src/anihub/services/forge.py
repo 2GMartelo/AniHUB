@@ -31,7 +31,9 @@ class ForgeApi:
     def __init__(self, cfg: Config, port: int | None = None):
         self.cfg = cfg
         self._port = port  # None = the primary backend's port from the settings
-        self._client = httpx.Client(trust_env=False, timeout=httpx.Timeout(30.0, connect=3.0))
+        # verify=False: only ever talks plain http to 127.0.0.1, and building a TLS context (certificate bundle load) per
+        # backend cost ~0.15 s each at every start
+        self._client = httpx.Client(trust_env=False, verify=False, timeout=httpx.Timeout(30.0, connect=3.0))
 
     @property
     def port(self) -> int:

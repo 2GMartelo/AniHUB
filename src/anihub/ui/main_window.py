@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
     QToolButton, QWidget, QHBoxLayout, QVBoxLayout,
 )
 
-from anihub import APP_NAME
+from anihub import APP_NAME, __version__
 from anihub.context import AppContext
 from anihub.core.i18n import tr
 from anihub.ui.anime_page import AnimePage
@@ -43,6 +43,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.ctx = ctx
         self._quitting = False
+        self._taskbar_done = False
         self.setWindowTitle(APP_NAME)
         self.setWindowIcon(make_app_icon())
         self.resize(1300, 850)
@@ -167,6 +168,7 @@ class MainWindow(QMainWindow):
         self._tutorial: TutorialOverlay | None = None
         QTimer.singleShot(6000, self._auto_check_updates)          # after startup, in the background
         QTimer.singleShot(20000, self._auto_backup)
+        QTimer.singleShot(4000, self._scan_png_info)                # once per app version, in the background
         self._subs_timer = QTimer(self)
         self._subs_timer.timeout.connect(self._poll_subscriptions)
         self._subs_timer.start(5 * 60 * 1000)
@@ -254,6 +256,24 @@ class MainWindow(QMainWindow):
         from anihub.services import backup
 
         run_async(lambda: backup.run_if_due(self.ctx.paths, self.ctx.cfg), on_error=lambda exc: None)
+
+    def _scan_png_info(self) -> None:
+        """Once after every update (and on the first run): read the prompt / seed / model out of the library's PNGs that
+        have none recorded, like Forge's "PNG Info" -- pictures generated earlier and later downloaded or dropped into
+        the local arts folder then show their parameters too. Only empty records are filled."""
+        cfg = self.ctx.cfg
+        if cfg.get("library.pnginfo_scanned") == __version__:
+            return
+
+        def done(counts: dict) -> None:
+            cfg.set("library.pnginfo_scanned", __version__)
+            if counts["found"]:
+                self.library.reload()
+                if self.sd_page is not None:
+                    self.sd_page.saved.reload()
+                self.statusBar().showMessage(tr("library.pnginfo_done", found=counts["found"]), 15000)
+
+        run_async(self.ctx.library.scan_png_info, on_done=done, on_error=lambda exc: None)
 
     def _auto_check_updates(self) -> None:
         if self.ctx.cfg.get("network.offline", False):
@@ -512,6 +532,29 @@ class MainWindow(QMainWindow):
             if url.isLocalFile() and cookie_import.is_cookie_file(url.toLocalFile()):
                 cookie_import.import_path(self.ctx, Path(url.toLocalFile()), self)
         event.acceptProposedAction()
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        if not self._taskbar_done:
+            self._taskbar_done = True
+            self._set_taskbar_icon()
+
+    def _set_taskbar_icon(self) -> None:
+        """Our own icon on the taskbar button (a run from source shows pythonw.exe's otherwise; see ui/taskbar.py)."""
+        import sys
+
+        from anihub.core.config import config_dir
+        from anihub.ui import taskbar
+
+        try:
+            ico = config_dir() / "anihub.ico"
+            ico.parent.mkdir(parents=True, exist_ok=True)
+            icon = make_app_icon()
+            taskbar.write_ico([icon.pixmap(s, s) for s in taskbar.ICON_SIZES], ico)
+            command = f'"{sys.executable}"' if getattr(sys, "frozen", False) else f'"{sys.executable}" -m anihub'
+            taskbar.set_relaunch_identity(int(self.winId()), ico, command, APP_NAME)
+        except OSError:
+            pass
 
     def closeEvent(self, event: QCloseEvent) -> None:
         # The first time the user chooses between quitting and the tray (and may remember it); the tray keeps background

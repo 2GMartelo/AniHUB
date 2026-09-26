@@ -1455,4 +1455,23 @@ sd.animate_hint
 sd.animate_no_model
 sd.animate_frames
 sd.animate_fps
+sd.tab.pnginfo
+pnginfo.open
+pnginfo.paste
+pnginfo.drop_hint
+pnginfo.params
+pnginfo.tags
+pnginfo.copy_tags
+pnginfo.tags_to_prompt
+pnginfo.tags_to_negative
+pnginfo.insert
+pnginfo.replace
+pnginfo.send_all
+pnginfo.none
+pnginfo.no_text
+pnginfo.copied
+pnginfo.added
+pnginfo.loaded
+pnginfo.loaded_from
+library.pnginfo_done
 """.split("\n") if k]

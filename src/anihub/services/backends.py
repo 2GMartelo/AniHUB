@@ -2,6 +2,7 @@
 GPU and listening on its own port (multi-GPU, ТЗ 5.9 / 5.11)."""
 from __future__ import annotations
 
+import functools
 import re
 import shutil
 import subprocess
@@ -12,16 +13,18 @@ from anihub.services.forge import ForgeManager
 from anihub.services.procservice import NO_WINDOW
 
 
-def gpu_list() -> list[tuple[int, str, float]]:
-    """(index, name, VRAM GB) of the NVIDIA GPUs; empty without nvidia-smi."""
+@functools.lru_cache(maxsize=1)
+def gpu_list() -> tuple[tuple[int, str, float], ...]:
+    """(index, name, VRAM GB) of the NVIDIA GPUs; empty without nvidia-smi. Cached: asking nvidia-smi takes ~0.6 s, so the
+    app starts it in the background at launch and the Settings page just reads the answer."""
     exe = shutil.which("nvidia-smi")
     if not exe:
-        return []
+        return ()
     try:
         out = subprocess.run([exe, "--query-gpu=index,name,memory.total", "--format=csv,noheader,nounits"],
                              capture_output=True, text=True, timeout=10, creationflags=NO_WINDOW).stdout
     except (OSError, subprocess.SubprocessError):
-        return []
+        return ()
     gpus = []
     for line in out.strip().splitlines():
         parts = [p.strip() for p in line.split(",")]
@@ -30,7 +33,7 @@ def gpu_list() -> list[tuple[int, str, float]]:
                 gpus.append((int(parts[0]), parts[1], float(parts[2]) / 1024))
             except ValueError:
                 pass
-    return gpus
+    return tuple(gpus)
 
 
 def _safe_name(name: str) -> str:

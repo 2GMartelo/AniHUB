@@ -42,12 +42,14 @@ COLLECT(exe_main, a_main.binaries, a_main.zipfiles, a_main.datas,
 def make_icon() -> Path:
     from PySide6.QtGui import QGuiApplication
 
+    from anihub.ui.taskbar import ICON_SIZES, write_ico
     from anihub.ui.theme import make_app_icon
 
     app = QGuiApplication.instance() or QGuiApplication([])
     out = ROOT / "build" / "anihub.ico"
     out.parent.mkdir(exist_ok=True)
-    make_app_icon().pixmap(256, 256).save(str(out), "ICO")
+    icon = make_app_icon()
+    write_ico([icon.pixmap(size, size) for size in ICON_SIZES], out)
     assert out.exists() and out.stat().st_size > 0, "icon was not written"
     return out
 

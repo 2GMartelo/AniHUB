@@ -193,3 +193,40 @@ def test_previews_are_generated_with_the_api_and_stored(env, qapp):
     assert v.book.tag(row["id"])["image"]
     # the seed is no longer a fixed 12345: PictureMaker salts it per batch so a later redraw differs from this one
     assert "kimono" in calls[0].prompt and 0 <= calls[0].seed < SEED_MAX
+
+
+def test_ctrl_wheel_zooms_the_tag_tiles_and_remembers_it(env):
+    from PySide6.QtCore import QPoint, QPointF
+    from PySide6.QtGui import QWheelEvent
+    from PySide6.QtWidgets import QApplication
+
+    from anihub.ui.prompt_builder import TILE
+
+    view = env.view
+    select_node(view, view.book.nodes()[0]["key"])
+    assert view.tile == TILE and view.grid.iconSize().width() == TILE
+    viewport = view.grid.viewport()
+    ctrl_up = QWheelEvent(QPointF(5, 5), QPointF(5, 5), QPoint(0, 0), QPoint(0, 120), Qt.MouseButton.NoButton,
+                          Qt.KeyboardModifier.ControlModifier, Qt.ScrollPhase.NoScrollPhase, False)
+    QApplication.sendEvent(viewport, ctrl_up)
+    assert view.tile == round(TILE * 1.1) and view.grid.iconSize().width() == view.tile
+    assert env.cfg.get("ui.builder_zoom") == 1.1
+    if view.grid.count():
+        assert view.grid.item(0).sizeHint().width() == view.tile + 22
+        assert view.grid.item(0).icon().actualSize(view.grid.iconSize()).width() <= view.tile
+    view.page_zoom.set_factor(2.0)
+    assert view.tile == TILE * 2
+    view.page_zoom.set_factor(0.1)                                            # clamped
+    assert view.tile == round(TILE * 0.6)
+
+
+def test_saved_zoom_is_applied_on_the_next_start(qapp, tmp_path):
+    from anihub.ui.prompt_builder import TILE
+
+    cfg = Config({"filter": {"mode": "all"}, "ui": {"builder_zoom": 1.5}}, tmp_path / "config.json")
+    db = Database(tmp_path / "lib.db")
+    ctx = SimpleNamespace(cfg=cfg, db=db, paths=LibraryPaths(tmp_path), blocker=agemode.Blocker.from_tags([]))
+    view = PromptBuilder(ctx, form={"get": lambda: ("", ""), "set": lambda p, n: None, "api": lambda: None})
+    assert view.tile == round(TILE * 1.5) and view.grid.iconSize().width() == view.tile
+    view.close()
+    db.close()

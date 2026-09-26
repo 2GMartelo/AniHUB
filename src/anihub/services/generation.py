@@ -283,43 +283,54 @@ def record_history(db, root: Path, results: list[GenResult], backend: str = "mai
 # --- reading parameters back from images (PNG info) ------------------------------------------------------
 
 def read_png_text(path: Path) -> dict[str, str]:
-    """tEXt / zTXt / iTXt chunks of a PNG (Forge stores the infotext under 'parameters'). No third-party library."""
-    data = path.read_bytes()
-    if data[:8] != b"\x89PNG\r\n\x1a\n":
-        return {}
+    """tEXt / zTXt / iTXt chunks of a PNG (Forge stores the infotext under 'parameters'). No third-party library.
+
+    Reads chunk by chunk and seeks over the pixel data (IDAT) instead of loading the whole file: scanning a library of
+    thousands of multi-megabyte pictures for their prompts must cost a few header bytes each, not the whole picture."""
     out: dict[str, str] = {}
-    pos = 8
-    while pos + 8 <= len(data):
-        length, kind = struct.unpack(">I4s", data[pos:pos + 8])
-        body = data[pos + 8:pos + 8 + length]
-        pos += 12 + length
-        try:
-            if kind == b"tEXt":
-                key, _, text = body.partition(b"\0")
-                out[key.decode("latin-1")] = text.decode("utf-8", "replace")
-            elif kind == b"zTXt":
-                key, _, rest = body.partition(b"\0")
-                out[key.decode("latin-1")] = zlib.decompress(rest[1:]).decode("utf-8", "replace")
-            elif kind == b"iTXt":
-                key, _, rest = body.partition(b"\0")
-                flag, rest = rest[0], rest[2:]
-                _lang, _, rest = rest.partition(b"\0")
-                _trans, _, text = rest.partition(b"\0")
-                out[key.decode("utf-8", "replace")] = (zlib.decompress(text) if flag else text).decode("utf-8", "replace")
-        except (ValueError, zlib.error, IndexError):
-            continue
-        if kind == b"IEND":
-            break
+    try:
+        fh = path.open("rb")
+    except OSError:
+        return out
+    with fh:
+        if fh.read(8) != b"\x89PNG\r\n\x1a\n":
+            return {}
+        while True:
+            head = fh.read(8)
+            if len(head) < 8:
+                break
+            length, kind = struct.unpack(">I4s", head)
+            if kind not in (b"tEXt", b"zTXt", b"iTXt"):
+                if kind == b"IEND":
+                    break
+                fh.seek(length + 4, 1)                       # body + CRC
+                continue
+            body = fh.read(length)
+            fh.seek(4, 1)
+            try:
+                if kind == b"tEXt":
+                    key, _, text = body.partition(b"\0")
+                    out[key.decode("latin-1")] = text.decode("utf-8", "replace")
+                elif kind == b"zTXt":
+                    key, _, rest = body.partition(b"\0")
+                    out[key.decode("latin-1")] = zlib.decompress(rest[1:]).decode("utf-8", "replace")
+                else:
+                    key, _, rest = body.partition(b"\0")
+                    flag, rest = rest[0], rest[2:]
+                    _lang, _, rest = rest.partition(b"\0")
+                    _trans, _, text = rest.partition(b"\0")
+                    out[key.decode("utf-8", "replace")] = (zlib.decompress(text) if flag else text).decode("utf-8", "replace")
+            except (ValueError, zlib.error, IndexError):
+                continue
     return out
 
 
 _INFO_PAIR = re.compile(r'\s*([\w ]+):\s*("(?:\\.|[^\\"])*"|[^,]*)(?:,|$)')
 
 
-def parse_infotext(text: str) -> dict:
-    """A1111/Forge 'parameters' text -> GenParams field values (only what it contains)."""
+def split_infotext(text: str) -> tuple[str, str, str]:
+    """A1111/Forge 'parameters' text -> (prompt, negative prompt, the trailing "Steps: 20, Sampler: ..." line)."""
     lines = text.strip().splitlines()
-    result: dict = {}
     settings_line = ""
     if lines and re.match(r"^Steps: ", lines[-1]):
         settings_line = lines.pop()
@@ -327,9 +338,16 @@ def parse_infotext(text: str) -> dict:
     prompt, sep, negative = body.partition("\nNegative prompt:")
     if not sep and body.startswith("Negative prompt:"):
         prompt, negative = "", body[len("Negative prompt:"):]
-    result["prompt"] = prompt.strip()
+    return prompt.strip(), negative.strip(), settings_line.strip()
+
+
+def parse_infotext(text: str) -> dict:
+    """A1111/Forge 'parameters' text -> GenParams field values (only what it contains)."""
+    result: dict = {}
+    prompt, negative, settings_line = split_infotext(text)
+    result["prompt"] = prompt
     if negative:
-        result["negative_prompt"] = negative.strip()
+        result["negative_prompt"] = negative
     pairs = {k.strip(): v.strip().strip('"') for k, v in _INFO_PAIR.findall(settings_line)}
     simple = {"Steps": ("steps", int), "Sampler": ("sampler_name", str), "Schedule type": ("scheduler", str),
               "CFG scale": ("cfg_scale", float), "Seed": ("seed", int), "Clip skip": ("clip_skip", int),
@@ -361,6 +379,21 @@ def parse_infotext(text: str) -> dict:
     return result
 
 
+def png_info_meta(path: Path) -> dict | None:
+    """What Forge's own "PNG Info" tab shows for a picture: its generation parameters, in the shape the library stores
+    for generated pictures (prompt, negative_prompt, seed, steps ... plus the raw `infotext`). None when the file is
+    not a PNG or carries no A1111/Forge parameters."""
+    if path.suffix.lower() != ".png":
+        return None
+    text = read_png_text(path).get("parameters", "").strip()
+    if not text:
+        return None
+    meta = parse_infotext(text)
+    if not meta.get("prompt") and "steps" not in meta:
+        return None
+    return {**meta, "infotext": text}
+
+
 def model_hash_of(path: Path) -> str:
     """The checkpoint hash Forge/A1111 stamps into a picture's own metadata ("" for a picture with no such text, or
     one not made by Forge/A1111 at all) -- the AUTOV2 short hash CivitAI's own by-hash lookup expects."""
@@ -382,6 +415,30 @@ def prompt_tags(prompt: str, limit: int = 60) -> list[str]:
         if tag and tag not in tags and len(tag) <= 60 and tag != "break":
             tags.append(tag)
     return tags[:limit]
+
+
+def split_prompt(prompt: str) -> list[str]:
+    """The prompt's comma-separated pieces exactly as written -- weights "(blue eyes:1.2)", "<lora:x:0.8>" and commas
+    inside brackets kept intact -- for copying one piece somewhere else (unlike prompt_tags, which normalises them into
+    library tags). Falls back to a plain comma split when the brackets do not balance."""
+    text = prompt.replace("\r", "").replace("\n", ", ")
+    parts: list[str] = []
+    current: list[str] = []
+    depth = 0
+    for ch in text:
+        if ch in "([{<":
+            depth += 1
+        elif ch in ")]}>":
+            depth = max(depth - 1, 0)
+        if ch == "," and depth == 0:
+            parts.append("".join(current))
+            current = []
+        else:
+            current.append(ch)
+    parts.append("".join(current))
+    if depth:
+        parts = text.split(",")
+    return [p.strip() for p in parts if p.strip()]
 
 
 def progress_text(progress: dict) -> tuple[float, str]:

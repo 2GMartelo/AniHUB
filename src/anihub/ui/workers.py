@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 from typing import Callable
 
-from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal, Slot
+from PySide6.QtCore import QObject, QRunnable, QThread, QThreadPool, Signal, Slot
 
 log = logging.getLogger(__name__)
 
@@ -61,9 +61,24 @@ class _Runnable(QRunnable):
             pass  # the application is shutting down and the bridge is already gone
 
 
-def run_async(fn: Callable, *args, on_done: Callable | None = None, on_error: Callable | None = None) -> None:
+_thumb_pool: QThreadPool | None = None
+
+
+def thumb_pool() -> QThreadPool:
+    """A small, low-priority pool for thumbnails: a page of them used to be handed to the global pool (one thread per
+    core), so decoding a couple of hundred pictures kept every core busy and the window lagged for seconds."""
+    global _thumb_pool
+    if _thumb_pool is None:
+        _thumb_pool = QThreadPool()
+        _thumb_pool.setMaxThreadCount(4)
+        _thumb_pool.setThreadPriority(QThread.Priority.LowPriority)
+    return _thumb_pool
+
+
+def run_async(fn: Callable, *args, on_done: Callable | None = None, on_error: Callable | None = None,
+              pool: QThreadPool | None = None) -> None:
     """Call from the GUI thread. `on_done(result)` / `on_error(exc)` run on the GUI thread."""
-    QThreadPool.globalInstance().start(_Runnable(fn, args, on_done, on_error, _get_bridge()))
+    (pool or QThreadPool.globalInstance()).start(_Runnable(fn, args, on_done, on_error, _get_bridge()))
 
 
 def post_to_gui(callback: Callable, arg=None) -> None:
