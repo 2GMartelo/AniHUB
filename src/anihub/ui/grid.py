@@ -8,7 +8,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable
 
-from PySide6.QtCore import QBuffer, QIODevice, QPoint, QRectF, QSize, Qt, QTimer, Signal
+from PySide6.QtCore import QPoint, QRectF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import (
     QColor, QFont, QFontMetrics, QGuiApplication, QIcon, QImage, QImageReader, QKeyEvent, QPainter, QPainterPath, QPen,
     QPixmap)
@@ -44,17 +44,17 @@ def _stamp(painter: QPainter, text: str, x: int, y: int, size: int, anchor_right
 
 
 def decode_image(source: "bytes | Path | str") -> QImage:
-    """Decode a picture from memory or from a file through QImageReader.
+    """Decode a picture from a file (by path) or from memory.
 
-    QImage.fromData(bytes) keeps Python's GIL for the whole decode, so a page full of big generated PNGs decoded on the
-    worker threads starved the GUI thread for seconds (the app "froze" after every generation, when the history grid
-    reloaded). QImageReader releases the GIL while it decodes, so the window stays responsive."""
+    From a path it goes through QImageReader, which releases Python's GIL while it decodes: QImage.fromData(bytes)
+    keeps the GIL for the whole decode, so a page of big generated PNGs decoded on worker threads starved the GUI thread
+    for seconds (the app "froze" after every generation, when the history grid reloaded). The reader opens the file
+    itself, in C++ -- never hand it a Python-side QBuffer / QIODevice: Qt's image plugins then call back into Python
+    from the worker thread, which needs the GIL the GUI thread holds while it waits for the plugin lock (a deadlock:
+    the whole window froze at start-up). Bytes -- small network thumbnails -- keep the plain fromData."""
     if isinstance(source, (str, Path)):
         return QImageReader(str(source)).read()
-    buf = QBuffer()
-    buf.setData(bytes(source))
-    buf.open(QIODevice.OpenModeFlag.ReadOnly)
-    return QImageReader(buf).read()
+    return QImage.fromData(bytes(source))
 
 
 def image_to_thumb(data: "bytes | Path | str", size: int, badge: str = "", mark: str = "") -> QImage | None:

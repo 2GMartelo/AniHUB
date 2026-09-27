@@ -289,3 +289,45 @@ def test_relaunch_icon_is_accepted_by_the_shell(qapp, tmp_path):
     ok = set_relaunch_identity(int(win.winId()), tmp_path / "a.ico", '"x.exe"', "AniHUB")
     assert isinstance(ok, bool) and (ok is False or sys.platform == "win32")      # offscreen test windows have no real HWND
     win.close()
+
+
+def test_thumbnail_decoding_on_workers_never_deadlocks_with_the_gui_thread(qapp, tmp_path):
+    """A Python-side QBuffer handed to QImageReader made Qt's image plugins call back into Python from the worker
+    thread while the GUI thread held the GIL and waited for the plugin lock: the whole window froze at start-up."""
+    import threading
+
+    from PySide6.QtGui import QPixmap
+
+    paths = [make_png(tmp_path / f"{i}.png", color=("red", "green", "blue", "yellow")[i % 4]) for i in range(6)]
+    blobs = [p.read_bytes() for p in paths]
+    stop = threading.Event()
+    failures = []
+
+    def work(n):
+        try:
+            while not stop.is_set():
+                for path, blob in zip(paths, blobs):
+                    assert image_to_thumb(path, 32) is not None
+                    assert image_to_thumb(blob, 32) is not None
+        except Exception as exc:  # noqa: BLE001
+            failures.append(exc)
+
+    threads = [threading.Thread(target=work, args=(i,), daemon=True) for i in range(6)]
+    for t in threads:
+        t.start()
+    finished = threading.Event()
+
+    def gui_side():
+        for _ in range(300):                                    # what the GUI thread does meanwhile: decode and paint
+            for path in paths:
+                QPixmap(str(path))
+                decode_image(path)
+        finished.set()
+
+    gui = threading.Thread(target=gui_side, daemon=True)        # a second Python thread stands in for "holds the GIL"
+    gui.start()
+    assert finished.wait(60), "decoding deadlocked"
+    stop.set()
+    for t in threads:
+        t.join(10)
+    assert not failures

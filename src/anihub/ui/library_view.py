@@ -468,16 +468,16 @@ class LibraryView(QWidget):
         size, badge, mark = self.grid.thumb_size, badge_for_ext(row["ext"]), self._mark(row)
         cache = self.ctx.paths.thumbs / f"{row['id']}_{size}.jpg"
         if cache.exists():
-            return image_to_thumb(cache.read_bytes(), size, badge, mark)
+            return image_to_thumb(cache, size, badge, mark)
         # Videos have no still frame Qt can read: use the site preview saved together with the item.
         source = self.ctx.paths.preview_file(row["id"]) if row["ext"] in VIDEO_EXTS else self._file_of(row)
         if not source.exists():
             return None
-        img = image_to_thumb(source.read_bytes(), size)  # cache the clean thumbnail, stamp the marks on top
+        img = image_to_thumb(source, size)  # cache the clean thumbnail, stamp the marks on top
         if img is None:
             return None
         img.save(str(cache), "JPG", 85)
-        return image_to_thumb(cache.read_bytes(), size, badge, mark)
+        return image_to_thumb(cache, size, badge, mark)
 
     def _hover_loader(self, row: sqlite3.Row):
         source = self.ctx.paths.preview_file(row["id"]) if row["ext"] in VIDEO_EXTS else self._file_of(row)
