@@ -26,6 +26,7 @@ DEFAULTS: dict[str, Any] = {
         "zerochan": {"username": ""},
     },
     "forge": {"path": "", "port": 7860, "nowebui": False, "extra_args": "", "idle_minutes": 30, "backends": []},
+    "comfyui": {"path": "", "port": 8188, "idle_minutes": 30},   # video/sound/PSD-layers/3D (ТЗ_rasshirenie_prilozheniya.md)
     "sd": {"last": {}, "schedule": {}},
     "civitai": {"token": ""},
     "manga": {"port": 4567, "autostart": False, "poll_minutes": 30, "seen_chapter_id": -1,

@@ -12,6 +12,8 @@ dependencies = [
     "httpx>=0.27",
     "onnxruntime>=1.20",
     "numpy>=1.26",
+    "pytoshop>=1.2",   # writes the layered PSD the VTube pipeline hands off to Krita/Photoshop/a Live2D rigger
+    "six",             # pytoshop's own runtime dependency; missing from its declared metadata
 ]
 
 [project.optional-dependencies]
