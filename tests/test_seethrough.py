@@ -199,3 +199,87 @@ def test_run_refuses_when_the_plugin_is_not_installed(tmp_path):
     with pytest.raises(st.SeeThroughError, match="not installed"):
         st.run(api, tmp_path, tmp_path / "art.png", tmp_path / "out.psd")
     assert api.uploaded == []                                       # never even tries to upload
+
+
+def test_run_acquires_and_releases_the_gpu_scheduler_slot(tmp_path, monkeypatch, qapp):
+    out_dir = tmp_path / "comfy_output"
+    src = tmp_path / "art.png"
+    make_png(src, "blue", size=(6, 4))
+    api = FakeApi()
+    seen_holder_during_run = []
+
+    def fake_run_workflow(api_, workflow, on_progress=None, should_stop=None, poll_interval=0.7):
+        seen_holder_during_run.append(scheduler.holder(0))
+        prefix = workflow["7"]["inputs"]["filename_prefix"]
+        make_png(out_dir / f"{prefix}_ts_uid_x.png", "blue", size=(6, 4))
+        write_layers_json(out_dir, prefix, [{"name": "x", "filename": f"{prefix}_ts_uid_x.png", "left": 0, "top": 0,
+                                             "right": 6, "bottom": 4, "depth_median": 0.5}], width=6, height=4)
+        return {}
+
+    monkeypatch.setattr(st, "run_workflow", fake_run_workflow)
+    from anihub.services.gpu_scheduler import GpuScheduler
+    scheduler = GpuScheduler()
+    assert scheduler.holder(0) is None
+
+    st.run(api, out_dir, src, tmp_path / "out.psd", scheduler=scheduler, gpu=0)
+
+    assert seen_holder_during_run == ["comfyui"]                     # held while the workflow was actually running
+    assert scheduler.holder(0) is None                                # released once the job is done
+
+
+def test_run_releases_the_slot_even_when_the_job_fails(tmp_path, monkeypatch, qapp):
+    from anihub.services.gpu_scheduler import GpuScheduler
+
+    api = FakeApi()
+    monkeypatch.setattr(st, "run_workflow", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
+    scheduler = GpuScheduler()
+
+    with pytest.raises(RuntimeError):
+        st.run(api, tmp_path, tmp_path / "art.png", tmp_path / "out.psd", scheduler=scheduler, gpu=0)
+
+    assert scheduler.holder(0) is None
+
+
+def test_run_calls_free_others_after_acquiring_the_slot(tmp_path, monkeypatch, qapp):
+    from anihub.services.gpu_scheduler import GpuScheduler
+
+    out_dir = tmp_path / "comfy_output"
+    src = tmp_path / "art.png"
+    make_png(src, "green", size=(6, 4))
+    api = FakeApi()
+    calls = []
+
+    def fake_run_workflow(api_, workflow, on_progress=None, should_stop=None, poll_interval=0.7):
+        calls.append("run_workflow")
+        prefix = workflow["7"]["inputs"]["filename_prefix"]
+        make_png(out_dir / f"{prefix}_ts_uid_x.png", "green", size=(6, 4))
+        write_layers_json(out_dir, prefix, [{"name": "x", "filename": f"{prefix}_ts_uid_x.png", "left": 0, "top": 0,
+                                             "right": 6, "bottom": 4, "depth_median": 0.5}], width=6, height=4)
+        return {}
+
+    monkeypatch.setattr(st, "run_workflow", fake_run_workflow)
+    scheduler = GpuScheduler()
+
+    st.run(api, out_dir, src, tmp_path / "out.psd", scheduler=scheduler,
+          free_others=lambda: calls.append("free_others"))
+
+    assert calls == ["free_others", "run_workflow"]                  # asked Forge to free VRAM before submitting
+
+
+def test_run_without_a_scheduler_still_works(tmp_path, monkeypatch, qapp):
+    """scheduler is optional: nothing here requires the caller to know about GpuScheduler yet."""
+    out_dir = tmp_path / "comfy_output"
+    src = tmp_path / "art.png"
+    make_png(src, "cyan", size=(6, 4))
+    api = FakeApi()
+
+    def fake_run_workflow(api_, workflow, on_progress=None, should_stop=None, poll_interval=0.7):
+        prefix = workflow["7"]["inputs"]["filename_prefix"]
+        make_png(out_dir / f"{prefix}_ts_uid_x.png", "cyan", size=(6, 4))
+        write_layers_json(out_dir, prefix, [{"name": "x", "filename": f"{prefix}_ts_uid_x.png", "left": 0, "top": 0,
+                                             "right": 6, "bottom": 4, "depth_median": 0.5}], width=6, height=4)
+        return {}
+
+    monkeypatch.setattr(st, "run_workflow", fake_run_workflow)
+    result = st.run(api, out_dir, src, tmp_path / "out.psd")
+    assert result.tags == ["x"]

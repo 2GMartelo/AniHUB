@@ -18,18 +18,22 @@ from anihub.ui.sd_queue import QueueController
 class FakeApi:
     def __init__(self):
         self.interrupted = False
+        self.unloaded = 0
 
     def interrupt(self):
         self.interrupted = True
+
+    def unload_checkpoint(self):
+        self.unloaded += 1
 
 
 class FakeController(QObject):
     state_changed = Signal(str)
 
-    def __init__(self, ready=True, start_becomes_ready=True):
+    def __init__(self, ready=True, start_becomes_ready=True, gpu=None):
         super().__init__()
         self.state = ServiceState.RUNNING if ready else ServiceState.STOPPED
-        self.manager = SimpleNamespace(api=FakeApi())
+        self.manager = SimpleNamespace(api=FakeApi(), gpu=gpu)
         self.busy = False
         self.started = self.stopped = 0
         self.start_becomes_ready = start_becomes_ready
@@ -114,7 +118,7 @@ def statuses(ctx):
 def test_two_backends_share_the_queue_without_double_runs(env, qapp):
     ctx, paths = env
     log = []
-    ctrls = {"main": FakeController(), "gpu1": FakeController()}
+    ctrls = {"main": FakeController(gpu=0), "gpu1": FakeController(gpu=1)}   # 2 distinct GPUs: run concurrently
     qc = QueueController(ctx, ctrls, run_job=make_runner(paths, log, delay=0.15))
     finished, done = [], []
     qc.job_finished.connect(finished.append)
@@ -173,7 +177,7 @@ def test_backend_that_becomes_ready_later_picks_the_queue_up(env, qapp):
 def test_manual_generation_reserves_a_backend(env, qapp):
     ctx, paths = env
     log = []
-    ctrls = {"main": FakeController(), "gpu1": FakeController()}
+    ctrls = {"main": FakeController(gpu=0), "gpu1": FakeController(gpu=1)}
     qc = QueueController(ctx, ctrls, run_job=make_runner(paths, log))
     qc.set_external_busy("main", True)
     done = []
@@ -293,3 +297,51 @@ def test_schedule_with_empty_queue_does_nothing_but_is_marked_as_used(env, qapp)
     scheduled(qc)
     qc._check_schedule()
     assert ctrl.started == 0 and not qc.running and qc.schedule()["last_run"] == "2026-09-20"
+
+
+# --- GpuScheduler wiring (ТЗ_rasshirenie_prilozheniya.md: one heavy model in VRAM at a time) ----------------------
+
+def test_a_job_holds_its_gpu_slot_while_running(env, qapp):
+    ctx, paths = env
+    ctrl = FakeController(gpu=0)
+    qc = QueueController(ctx, {"main": ctrl}, run_job=make_runner(paths, [], delay=0.2))
+    seen = []
+
+    def run(api, params, out_dir, on_batch=None, should_stop=None, wildcards=None):
+        seen.append(qc.scheduler.holder(0))
+        return make_runner(paths, [])(api, params, out_dir, on_batch=on_batch, should_stop=should_stop, wildcards=wildcards)
+
+    qc.run_job = run
+    assert qc.scheduler.holder(0) is None
+    qc.add(GenParams(prompt="a"))
+    qc.start()
+    assert pump(qapp, lambda: statuses(ctx) == ["done"])
+    assert seen == ["forge:main"]                                 # held by this backend while its job ran
+
+
+def test_the_gpu_slot_and_checkpoint_are_released_once_the_queue_drains(env, qapp):
+    ctx, paths = env
+    ctrl = FakeController(gpu=0)
+    qc = QueueController(ctx, {"main": ctrl}, run_job=make_runner(paths, []))
+    qc.add(GenParams(prompt="a"))
+    qc.start()
+    assert pump(qapp, lambda: statuses(ctx) == ["done"])
+    assert pump(qapp, lambda: ctrl.manager.api.unloaded > 0)        # checkpoint unloaded once idle (async call)
+    assert qc.scheduler.holder(0) is None
+
+
+def test_manual_generation_also_holds_the_gpu_slot(env, qapp):
+    """The manual "Generate" button path (sd_page.GenerateView.generate) goes through the same scheduler as the
+    queue -- simulated here the same way GenerateView's own work() closure does it."""
+    ctx, paths = env
+    ctrl = FakeController(gpu=0)
+    qc = QueueController(ctx, {"main": ctrl}, run_job=make_runner(paths, []))
+    qc.set_external_busy("main", True)
+
+    qc.scheduler.acquire(qc.gpu_index("main"), qc.gpu_owner("main"))
+    assert qc.scheduler.holder(0) == "forge:main"
+    qc.scheduler.release(qc.gpu_index("main"), qc.gpu_owner("main"))
+    qc.set_external_busy("main", False)
+
+    assert qc.scheduler.holder(0) is None
+    assert pump(qapp, lambda: ctrl.manager.api.unloaded > 0)         # release_gpu() ran once truly idle

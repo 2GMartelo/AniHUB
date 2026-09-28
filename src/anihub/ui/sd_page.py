@@ -741,6 +741,7 @@ class GenerateView(QWidget):
         wildcards = self.ctx.cfg.get("wildcards") or None
 
         def work() -> list[GenResult]:
+            self.queue.scheduler.acquire(self.queue.gpu_index("main"), self.queue.gpu_owner("main"))  # blocks (worker thread)
             results = run_generation(api, params, out_dir,
                                      on_batch=lambda partial: post_to_gui(self.add_results, partial),
                                      should_stop=lambda: self._interrupting,
@@ -905,7 +906,7 @@ class SDPage(QWidget):
         bar.addStretch(1)
         bar.addWidget(self.error)
 
-        self.queue_ctrl = QueueController(ctx, self.controllers, parent=self)
+        self.queue_ctrl = QueueController(ctx, self.controllers, scheduler=ctx.gpu_scheduler, parent=self)
         self.generate = GenerateView(ctx, controller, self.queue_ctrl)
         # "Generate", "Stop" and the progress are always at the top right, whatever tab is open
         gen = self.generate

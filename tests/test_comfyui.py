@@ -339,45 +339,63 @@ def test_log_file_path(tmp_path):
 
 def test_try_acquire_is_exclusive_and_reentrant_for_the_same_owner():
     sched = GpuScheduler()
-    assert sched.try_acquire("forge") is True
-    assert sched.try_acquire("forge") is True          # the same owner re-entering does not block itself
-    assert sched.try_acquire("comfyui") is False
-    assert sched.holder == "forge"
-    sched.release("forge")
-    assert sched.holder is None
-    assert sched.try_acquire("comfyui") is True
+    assert sched.try_acquire(0, "forge") is True
+    assert sched.try_acquire(0, "forge") is True          # the same owner re-entering does not block itself
+    assert sched.try_acquire(0, "comfyui") is False
+    assert sched.holder(0) == "forge"
+    sched.release(0, "forge")
+    assert sched.holder(0) is None
+    assert sched.try_acquire(0, "comfyui") is True
 
 
 def test_release_by_a_non_holder_is_a_no_op():
     sched = GpuScheduler()
-    sched.try_acquire("forge")
-    sched.release("comfyui")
-    assert sched.holder == "forge"
+    sched.try_acquire(0, "forge")
+    sched.release(0, "comfyui")
+    assert sched.holder(0) == "forge"
 
 
 def test_acquire_blocks_until_released_then_the_waiter_gets_it():
     sched = GpuScheduler()
-    assert sched.try_acquire("forge") is True
+    assert sched.try_acquire(0, "forge") is True
     order = []
 
     def waiter():
-        assert sched.acquire("comfyui", timeout=5) is True
+        assert sched.acquire(0, "comfyui", timeout=5) is True
         order.append("comfyui")
 
     t = threading.Thread(target=waiter)
     t.start()
     time.sleep(0.1)
-    assert sched.holder == "forge" and not order  # still waiting
+    assert sched.holder(0) == "forge" and not order  # still waiting
     order.append("forge-done")
-    sched.release("forge")
+    sched.release(0, "forge")
     t.join(5)
-    assert order == ["forge-done", "comfyui"] and sched.holder == "comfyui"
+    assert order == ["forge-done", "comfyui"] and sched.holder(0) == "comfyui"
 
 
 def test_acquire_times_out_without_acquiring():
     sched = GpuScheduler()
-    sched.try_acquire("forge")
+    sched.try_acquire(0, "forge")
     t0 = time.time()
-    assert sched.acquire("comfyui", timeout=0.2) is False
+    assert sched.acquire(0, "comfyui", timeout=0.2) is False
     assert time.time() - t0 < 2
-    assert sched.holder == "forge"
+    assert sched.holder(0) == "forge"
+
+
+def test_different_gpus_never_block_each_other():
+    """Regression: two DIFFERENT physical GPUs (sd_queue.py's own multi-GPU support already assumes concurrent
+    backends on separate cards) must run fully concurrently -- a single global slot keyed only by "owner" would
+    have serialized them, exactly the deadlock a real two-backend queue test caught."""
+    sched = GpuScheduler()
+    assert sched.try_acquire(0, "forge:main") is True
+    assert sched.try_acquire(1, "forge:gpu1") is True     # a different GPU: never blocked by GPU 0's holder
+    assert sched.holder(0) == "forge:main" and sched.holder(1) == "forge:gpu1"
+    sched.release(0, "forge:main")
+    assert sched.holder(0) is None and sched.holder(1) == "forge:gpu1"  # releasing GPU 0 does not touch GPU 1
+
+
+def test_holder_defaults_to_gpu_zero():
+    sched = GpuScheduler()
+    sched.try_acquire(0, "forge")
+    assert sched.holder() == "forge"

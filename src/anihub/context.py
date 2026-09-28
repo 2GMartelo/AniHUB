@@ -18,6 +18,7 @@ from anihub.services.autotag import Autotagger, model_dir_default
 from anihub.services.backends import build_backends
 from anihub.services.downloads import DownloadManager
 from anihub.services.forge import ForgeManager
+from anihub.services.gpu_scheduler import GpuScheduler
 from anihub.services.subscriptions import SubscriptionService
 from anihub.services.updater import Updater
 from anihub.services.suwayomi import SuwayomiManager
@@ -52,6 +53,8 @@ class AppContext:
     subscriptions: SubscriptionService
     novel_sources: dict[str, NovelSource]
     extensions: ExtensionManager
+    gpu_scheduler: GpuScheduler  # the shared "one heavy model in VRAM at a time" slot: sd_queue.py's QueueController
+                                 # and (once it exists) a ComfyUI job runner both acquire this same instance
 
     @classmethod
     def build(cls, cfg: Config) -> "AppContext":
@@ -68,7 +71,7 @@ class AppContext:
                   Autotagger(model_dir_default(config_dir())), AniList(http, cfg, db), NovelShelf(db, paths),
                   build_anime_sources(http, cfg, paths.anime, config_dir() / "plugins" / "anime"), None,
                   Updater(http, cfg), None, None, build_novel_sources(http, cfg, config_dir() / "plugins" / "novels"),
-                  ExtensionManager(http, cfg, config_dir() / "plugins"))
+                  ExtensionManager(http, cfg, config_dir() / "plugins"), GpuScheduler())
         ctx.watch = WatchService(db, ctx.anilist)
         ctx.downloads = DownloadManager(ctx.library, http, cfg)
         ctx.subscriptions = SubscriptionService(db, ctx.sources, ctx.downloads, cfg)

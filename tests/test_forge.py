@@ -2,6 +2,8 @@ import base64
 import json
 import sqlite3
 
+import pytest
+
 from anihub.core.db import SCHEMA_VERSION, Database
 from anihub.core.paths import LibraryPaths
 from anihub.library.service import LibraryService
@@ -176,3 +178,54 @@ def test_save_generation(tmp_path):
     assert svc.db.item_tags(row["id"]) == ["1girl", "blue_hair"]
     assert svc.db.search_items(kind="art") == []                     # separate section from arts
     assert svc.save_generation(img, meta).status == "duplicate"
+
+
+# --- ForgeApi: unload/reload checkpoint (services/forge.py) -- the GPU scheduler's way of freeing Forge's VRAM ----
+
+def make_api(tmp_path, handler):
+    import httpx
+
+    from anihub.core.config import Config
+    from anihub.services.forge import ForgeApi
+
+    api = ForgeApi(Config({}, tmp_path / "c.json"))
+    api._client = httpx.Client(transport=httpx.MockTransport(handler))
+    return api
+
+
+def test_unload_checkpoint_calls_the_real_endpoint(tmp_path):
+    import httpx
+
+    calls = []
+
+    def handler(request):
+        calls.append((request.method, request.url.path))
+        return httpx.Response(200, json={})
+
+    make_api(tmp_path, handler).unload_checkpoint()
+    assert calls == [("POST", "/sdapi/v1/unload-checkpoint")]
+
+
+def test_reload_checkpoint_calls_the_real_endpoint(tmp_path):
+    import httpx
+
+    calls = []
+
+    def handler(request):
+        calls.append((request.method, request.url.path))
+        return httpx.Response(200, json={})
+
+    make_api(tmp_path, handler).reload_checkpoint()
+    assert calls == [("POST", "/sdapi/v1/reload-checkpoint")]
+
+
+def test_unload_checkpoint_raises_forge_error_on_http_failure(tmp_path):
+    import httpx
+
+    from anihub.services.forge import ForgeError
+
+    def handler(request):
+        return httpx.Response(500, json={"error": "boom"})
+
+    with pytest.raises(ForgeError):
+        make_api(tmp_path, handler).unload_checkpoint()

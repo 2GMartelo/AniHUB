@@ -144,6 +144,17 @@ class ForgeApi:
     def interrupt(self) -> None:
         self._call("POST", "/sdapi/v1/interrupt", timeout=httpx.Timeout(5.0))
 
+    def unload_checkpoint(self) -> None:
+        """Drops the checkpoint from VRAM (sd_models.unload_model_weights()) without stopping Forge -- the GPU
+        scheduler's way of freeing this backend's VRAM for another heavy job (e.g. ComfyUI) without paying to
+        restart the whole process. The next txt2img/img2img call reloads it automatically."""
+        self._call("POST", "/sdapi/v1/unload-checkpoint", timeout=httpx.Timeout(60.0))
+
+    def reload_checkpoint(self) -> None:
+        """Puts a previously unload_checkpoint()-ed checkpoint back on the GPU ahead of time; not required before
+        generating (txt2img/img2img reload on demand), only useful to pre-warm it."""
+        self._call("POST", "/sdapi/v1/reload-checkpoint", timeout=httpx.Timeout(60.0))
+
 
 def _oem_encoding() -> str:
     if sys.platform != "win32":

@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 from anihub.context import AppContext
 from anihub.core.i18n import tr
 from anihub.services.generation import GenParams, params_from_dict, record_history, run_generation
+from anihub.services.gpu_scheduler import GpuScheduler
 from anihub.services.procservice import ServiceState
 from anihub.services.schedule import DEFAULT_SCHEDULE, next_run, schedule_due, system_idle_seconds
 from anihub.ui import style, theme
@@ -37,9 +38,15 @@ class QueueController(QObject):
     all_done = Signal()
 
     def __init__(self, ctx: AppContext, controllers: dict[str, ServiceController], run_job=run_generation,
-                 parent=None):
+                 scheduler: GpuScheduler | None = None, parent=None):
         super().__init__(parent)
         self.ctx, self.controllers, self.run_job = ctx, controllers, run_job
+        # The shared "one heavy model in VRAM at a time" slot (ТЗ_rasshirenie_prilozheniya.md): a job acquires the
+        # slot for its backend's GPU before it actually runs (see _launch below), and the whole queue gives every
+        # slot it might be holding back -- unloading each backend's checkpoint in the process -- once it goes fully
+        # idle (_release_gpu). Not yet given to callers from outside sd_page.py: once a ComfyUI job exists (Stage 3),
+        # it acquires/releases this same instance via AppContext, so Forge and ComfyUI never run at once.
+        self.scheduler = scheduler or GpuScheduler()
         self.running = False
         self.active: dict[str, int] = {}      # backend name -> job id
         self.external_busy: set[str] = set()  # backends used by the manual Generate button
@@ -94,9 +101,22 @@ class QueueController(QObject):
         (self.external_busy.add if busy else self.external_busy.discard)(name)
         if not busy:
             self._pump()
+            if not self.active and not self.external_busy and self.pending_count() == 0:
+                self._release_gpu()  # the manual Generate button just finished and nothing else needs the GPU
 
     def is_busy(self, name: str) -> bool:
         return name in self.active
+
+    def gpu_index(self, name: str) -> int:
+        """The physical GPU a backend runs on (defaulting to the primary one, index 0) -- what the GpuScheduler slot
+        is keyed by: two backends pinned to the *same* GPU must still take turns."""
+        gpu = getattr(self.controllers[name].manager, "gpu", None)
+        return gpu if gpu is not None else 0
+
+    def gpu_owner(self, name: str) -> str:
+        """This backend's own label in the GpuScheduler (distinguishes it from a *different* backend pinned to the
+        same GPU, which must not be treated as the same reentrant holder)."""
+        return f"forge:{name}"
 
     def _on_backend_state(self, _state: str) -> None:
         for name in list(self._awaiting_start):
@@ -126,13 +146,27 @@ class QueueController(QObject):
         if self.pending_count() == 0:
             self.running = False
             self.running_changed.emit(False)
+            if not self.external_busy:
+                self._release_gpu()
             self.all_done.emit()
             self._after_all_done()
         elif not self._backends_coming_up() and not any(c.state.ready for c in self.controllers.values()):
             self.running = False
             self.running_changed.emit(False)
+            if not self.external_busy:
+                self._release_gpu()
             self.message.emit(tr("queue.no_backend"))
             self._after_all_done()
+
+    def _release_gpu(self) -> None:
+        """The queue has gone fully idle: give back every GPU slot this controller's backends might be holding, and
+        ask each ready one to unload its checkpoint. Both calls are safe (no-ops) for a slot/backend that was never
+        actually acquired or never loaded anything, so this can be called unconditionally on every idle transition
+        instead of tracking exactly which slots this session holds."""
+        for name, ctrl in self.controllers.items():
+            self.scheduler.release(self.gpu_index(name), self.gpu_owner(name))
+            if ctrl.state.ready:
+                run_async(ctrl.manager.api.unload_checkpoint, on_error=lambda _e: None)
 
     def _launch(self, name: str, ctrl: ServiceController, row) -> None:
         job_id = row["id"]
@@ -140,10 +174,12 @@ class QueueController(QObject):
         self.active[name] = job_id
         ctrl.set_busy(True)
         api, db, paths = ctrl.manager.api, self.ctx.db, self.ctx.paths
+        gpu, owner = self.gpu_index(name), self.gpu_owner(name)
 
         wildcards = self.ctx.cfg.get("wildcards") or None
 
         def work():
+            self.scheduler.acquire(gpu, owner)  # blocks (worker thread) until this GPU is free of other jobs
             results = self.run_job(api, params, paths.sd / "generated",
                                    on_batch=lambda partial: post_to_gui(self.partial_results.emit, partial),
                                    should_stop=lambda: self._cancelling, wildcards=wildcards)

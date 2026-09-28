@@ -10,12 +10,13 @@ sidecar the SavePSD node itself writes straight into ComfyUI's output folder (bo
 machine, so no /view round trip is needed either) and `run()` reassembles them into a real PSD itself, via
 services/psd_writer.py.
 
-VRAM (RTX 5070-class, 12 GB): the plugin's own README benchmark shows ~14 GB *reserved* for LayerDiff alone at the
-default settings and resolution=1280 -- does not fit. `group_offload=True` brings reserved VRAM to ~7.3 GB total
-(LayerDiff + Marigold) at the cost of running 2-3x slower (138s -> 385s on an RTX 5090); SeeThroughSettings defaults
-to it off, since installing this is still a future step -- whoever wires this up on a 10-12 GB card should default it
-on instead, and comfy.py's GpuScheduler will need to have handed ComfyUI the VRAM slot Forge is not using, exactly
-per the "one heavy model at a time" architecture."""
+VRAM (confirmed live on this project's own RTX 5070, 12 GB): the plugin's own README benchmark shows ~14 GB
+*reserved* for LayerDiff alone at the default settings and resolution=1280 -- does not fit. `group_offload=True`
+brings reserved VRAM to ~7.3 GB total (LayerDiff + Marigold), matching a real run (peak 7.47 GB, 25:47 wall clock,
+vs. the README's 138s without it -- the 2-3x slowdown is real too); SeeThroughSettings defaults it off, since a
+caller building a workflow for a card known to have more headroom has no reason to pay the speed cost. `run()`'s
+`scheduler` parameter is services/gpu_scheduler.py's GpuScheduler, the same instance sd_queue.py's QueueController
+uses, so Forge and a See-through job never run at once on a shared GPU."""
 from __future__ import annotations
 
 import json
@@ -28,6 +29,7 @@ import numpy as np
 from PySide6.QtGui import QImage
 
 from anihub.services.comfyui import ComfyApi, run_workflow
+from anihub.services.gpu_scheduler import GpuScheduler
 from anihub.services.psd_writer import PsdLayer, write_psd
 
 # ComfyUI-See-through's own node class names (nodes.py NODE_CLASS_MAPPINGS) -- named constants so a typo shows up
@@ -156,18 +158,37 @@ def collect_output(output_dir: Path, filename_prefix: str) -> SeeThroughResult:
 
 def run(api: ComfyApi, output_dir: Path, image_path: Path, psd_path: Path,
        settings: SeeThroughSettings | None = None, on_progress: Callable[[dict], None] | None = None,
-       should_stop: Callable[[], bool] | None = None) -> SeeThroughResult:
+       should_stop: Callable[[], bool] | None = None, scheduler: GpuScheduler | None = None, gpu: int = 0,
+       free_others: Callable[[], None] | None = None) -> SeeThroughResult:
     """Blocking end-to-end: upload `image_path`, run the decomposition, write the layered PSD to `psd_path`. Returns
     the same SeeThroughResult that was written, so a caller can also show the layer list without re-reading the PSD.
 
     `output_dir` is this ComfyUI's own output folder (ComfyManager.comfy_dir / "output" by default) -- collect_output
-    reads the plugin's files straight from there, see the module docstring for why."""
+    reads the plugin's files straight from there, see the module docstring for why.
+
+    `scheduler`, if given, is the same GpuScheduler instance sd_queue.py's QueueController uses: acquired for `gpu`
+    (blocking -- call this off the GUI thread) before anything is submitted, and released once this job is done --
+    every call releases its own slot immediately rather than holding it like Forge does between queued jobs, because
+    See-through's own nodes already unload each stage's model back to CPU as they finish (seen live: "GenerateLayers
+    offloaded to CPU", "Marigold offloaded to CPU"), so there is nothing left in VRAM worth holding the slot for.
+    `free_others`, if given, is called right after the slot is acquired, before the workflow starts: the caller's own
+    way of asking whichever *other* backend (Forge) might still be sitting on this GPU to unload its checkpoint --
+    services/seethrough.py deliberately does not import forge.py itself to make that call directly."""
     if not is_installed(api):
         raise SeeThroughError("ComfyUI-See-through is not installed in this ComfyUI")
-    image_name = api.upload_image(image_path)
-    prefix = f"anihub_{uuid.uuid4().hex[:12]}"
-    workflow = build_workflow(image_name, prefix, settings)
-    run_workflow(api, workflow, on_progress=on_progress, should_stop=should_stop, poll_interval=1.0)
-    result = collect_output(output_dir, prefix)
-    write_psd(psd_path, result.layers, result.width, result.height)
-    return result
+    owner = "comfyui"
+    if scheduler is not None:
+        scheduler.acquire(gpu, owner)
+    try:
+        if free_others is not None:
+            free_others()
+        image_name = api.upload_image(image_path)
+        prefix = f"anihub_{uuid.uuid4().hex[:12]}"
+        workflow = build_workflow(image_name, prefix, settings)
+        run_workflow(api, workflow, on_progress=on_progress, should_stop=should_stop, poll_interval=1.0)
+        result = collect_output(output_dir, prefix)
+        write_psd(psd_path, result.layers, result.width, result.height)
+        return result
+    finally:
+        if scheduler is not None:
+            scheduler.release(gpu, owner)
