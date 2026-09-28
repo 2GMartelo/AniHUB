@@ -631,4 +631,29 @@ DATA = r"""
 1450|Kein Motion-Modul-Modell im eigenen Ordner von AnimateDiff gefunden — lade dort eines herunter, um zu animieren.
 1451|Bilder
 1452|FPS
+1472|VTube
+1473|ComfyUI starten
+1474|ComfyUI stoppen
+1475|ComfyUI-Protokoll
+1476|Bild öffnen…
+1477|Ziehe hier ein frontal aufgenommenes Anime-Bild hin oder öffne eines — am besten, wenn die Haare das Gesicht nicht verdecken und der Hintergrund einfarbig ist
+1478|Auflösung
+1479|Schritte
+1480|Augen / Ohren / Hände in links-rechts aufteilen
+1481|Bessere Trennung von vorderem/hinterem Haar (LaMa)
+1482|Sparmodus für wenig VRAM (10–12-GB-Karten; langsamer)
+1483|In Ebenen aufteilen
+1484|Abbrechen
+1485|ComfyUI-See-through ist in diesem ComfyUI nicht installiert (Ordner custom_nodes).
+1486|Wird in Ebenen aufgeteilt… das kann von wenigen Minuten bis zu mehreren zehn Minuten dauern
+1487|{m} Min {s} Sek vergangen
+1488|Fertig: {n} Ebenen
+1489|Abgebrochen.
+1490|Ebenen
+1491|PSD speichern unter…
+1492|Gespeichert unter {name}
+1493|Im Ordner anzeigen
+1494|Zuerst ein Bild öffnen.
+1495|ComfyUI-Ordner
+1496|ComfyUI-Port
 """

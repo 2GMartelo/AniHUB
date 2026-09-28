@@ -17,6 +17,7 @@ from anihub.services.anime_watch import WatchService
 from anihub.services.autotag import Autotagger, model_dir_default
 from anihub.services.backends import build_backends
 from anihub.services.downloads import DownloadManager
+from anihub.services.comfyui import ComfyManager
 from anihub.services.forge import ForgeManager
 from anihub.services.gpu_scheduler import GpuScheduler
 from anihub.services.subscriptions import SubscriptionService
@@ -54,7 +55,9 @@ class AppContext:
     novel_sources: dict[str, NovelSource]
     extensions: ExtensionManager
     gpu_scheduler: GpuScheduler  # the shared "one heavy model in VRAM at a time" slot: sd_queue.py's QueueController
-                                 # and (once it exists) a ComfyUI job runner both acquire this same instance
+                                 # and a ComfyUI job (services/seethrough.py's run()) both acquire this same instance
+    comfy: ComfyManager  # video/sound/2D-VTube backend (ТЗ_rasshirenie_prilozheniya.md); always constructed, like
+                         # `forge` -- comfyui.path empty just means check_install() reports it as not set up yet
 
     @classmethod
     def build(cls, cfg: Config) -> "AppContext":
@@ -71,7 +74,7 @@ class AppContext:
                   Autotagger(model_dir_default(config_dir())), AniList(http, cfg, db), NovelShelf(db, paths),
                   build_anime_sources(http, cfg, paths.anime, config_dir() / "plugins" / "anime"), None,
                   Updater(http, cfg), None, None, build_novel_sources(http, cfg, config_dir() / "plugins" / "novels"),
-                  ExtensionManager(http, cfg, config_dir() / "plugins"), GpuScheduler())
+                  ExtensionManager(http, cfg, config_dir() / "plugins"), GpuScheduler(), ComfyManager(cfg, config_dir()))
         ctx.watch = WatchService(db, ctx.anilist)
         ctx.downloads = DownloadManager(ctx.library, http, cfg)
         ctx.subscriptions = SubscriptionService(db, ctx.sources, ctx.downloads, cfg)
@@ -98,6 +101,12 @@ class AppContext:
         chance, so the tab only appears once the user turns it on in Settings AND actually points it at a folder --
         same switch either way, "Обучение LoRA"."""
         return self.sd_enabled and bool(self.cfg.get("lora_train.enabled", False)) and bool(self.cfg.get("lora_train.sd_scripts_path"))
+
+    @property
+    def vtube_enabled(self) -> bool:
+        """The "VTube" tab (picture -> ComfyUI-See-through -> layered PSD) only appears once a ComfyUI folder is
+        actually set in Settings -- same on/off switch as sd_enabled uses for forge.path, no separate toggle."""
+        return self.sd_enabled and bool(self.cfg.get("comfyui.path"))
 
     def reload_extensions(self) -> None:
         """Re-read the plugin folders (after an extension was installed, updated or removed)."""

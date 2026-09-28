@@ -631,4 +631,29 @@ DATA = r"""
 1450|No se encontró ningún modelo de módulo de movimiento en la carpeta propia de AnimateDiff — descarga uno allí para animar.
 1451|Fotogramas
 1452|FPS
+1472|VTube
+1473|Iniciar ComfyUI
+1474|Detener ComfyUI
+1475|Registro de ComfyUI
+1476|Abrir imagen…
+1477|Suelta aquí una imagen de anime de frente, o abre una — funciona mejor si el pelo no cubre la cara y el fondo es liso
+1478|Resolución
+1479|Pasos
+1480|Dividir ojos / orejas / manos en izquierda-derecha
+1481|Mejor división del pelo delantero/trasero (LaMa)
+1482|Modo de poca VRAM (tarjetas de 10–12 GB; más lento)
+1483|Dividir en capas
+1484|Cancelar
+1485|ComfyUI-See-through no está instalado en este ComfyUI (su carpeta custom_nodes).
+1486|Dividiendo en capas… esto puede tardar desde unos minutos hasta decenas de minutos
+1487|{m} min {s} s transcurridos
+1488|Listo: {n} capas
+1489|Cancelado.
+1490|Capas
+1491|Guardar PSD como…
+1492|Guardado en {name}
+1493|Mostrar en la carpeta
+1494|Abre primero una imagen.
+1495|Carpeta de ComfyUI
+1496|Puerto de ComfyUI
 """

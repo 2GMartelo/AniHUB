@@ -179,6 +179,22 @@ class SettingsPage(QWidget):
         self.train_box = QGroupBox(tr("train.group"))
         self.train_box.setLayout(train_form)
 
+        # ComfyUI (video/sound/2D-VTube, ТЗ_rasshirenie_prilozheniya.md): its own local service, same shape as Forge
+        self.comfyui_path = QLineEdit(str(cfg.get("comfyui.path") or ""))
+        browse_comfyui = QPushButton(tr("wizard.browse"))
+        browse_comfyui.clicked.connect(self._pick_comfyui)
+        comfyui_row = QHBoxLayout()
+        comfyui_row.addWidget(self.comfyui_path, 1)
+        comfyui_row.addWidget(browse_comfyui)
+        self.comfyui_port = QSpinBox(minimum=1024, maximum=65535, value=int(cfg.get("comfyui.port", 8188)))
+        self.comfyui_idle = QSpinBox(minimum=0, maximum=1440, value=int(cfg.get("comfyui.idle_minutes", 0) or 0))
+        comfyui_form = QFormLayout()
+        comfyui_form.addRow(tr("settings.comfyui_path"), comfyui_row)
+        comfyui_form.addRow(tr("settings.comfyui_port"), self.comfyui_port)
+        comfyui_form.addRow(tr("settings.forge_idle"), self.comfyui_idle)
+        self.comfyui_box = QGroupBox("ComfyUI")
+        self.comfyui_box.setLayout(comfyui_form)
+
         self.manga_port = QSpinBox(minimum=1024, maximum=65535, value=int(cfg.get("manga.port", 4567)))
         self.manga_poll = QSpinBox(minimum=1, maximum=1440, value=int(cfg.get("manga.poll_minutes", 30)))
         manga = QFormLayout()
@@ -278,7 +294,7 @@ class SettingsPage(QWidget):
         creds.addRow(import_hint)
         creds_box = QGroupBox(tr("settings.creds"))
         creds_box.setLayout(creds)
-        for group in (forge_box, manga_box, gen_box, self.train_box, lib_box, tag_box):
+        for group in (forge_box, manga_box, gen_box, self.train_box, self.comfyui_box, lib_box, tag_box):
             lay = group.layout()
             if isinstance(lay, QFormLayout):
                 lay.setHorizontalSpacing(18)
@@ -295,7 +311,7 @@ class SettingsPage(QWidget):
         # Categorised into tabs (was one long scroll of a dozen-plus group boxes -- hard to find anything in).
         gen_boxes = [self.sd_box]
         if ctx.sd_enabled:
-            gen_boxes += [forge_box, gen_box, self.train_box]    # hidden together with the whole tab when the PC cannot run Forge
+            gen_boxes += [forge_box, gen_box, self.train_box, self.comfyui_box]  # hidden together when the PC cannot run Forge
         categories = [
             (tr("settings.cat_appearance"), [look_box]),
             (tr("settings.cat_library"), [storage_box, lib_box, tag_box]),
@@ -528,6 +544,11 @@ class SettingsPage(QWidget):
         if folder:
             self.forge_path.setText(os.path.normpath(folder))
 
+    def _pick_comfyui(self) -> None:
+        folder = QFileDialog.getExistingDirectory(self, tr("settings.comfyui_path"), self.comfyui_path.text())
+        if folder:
+            self.comfyui_path.setText(os.path.normpath(folder))
+
     def _pick_train_path(self) -> None:
         folder = QFileDialog.getExistingDirectory(self, tr("train.path"), self.train_path.text())
         if folder:
@@ -606,6 +627,9 @@ class SettingsPage(QWidget):
             cfg.set("civitai.token", self.civitai_token.text().strip(), save=False)
             cfg.set("lora_train.enabled", self.train_enabled.isChecked(), save=False)
             cfg.set("lora_train.sd_scripts_path", self.train_path.text().strip(), save=False)
+            cfg.set("comfyui.path", self.comfyui_path.text().strip(), save=False)
+            cfg.set("comfyui.port", self.comfyui_port.value(), save=False)
+            cfg.set("comfyui.idle_minutes", self.comfyui_idle.value(), save=False)
         cfg.set("library.near_dedup", self.near_mode.currentData(), save=False)
         cfg.set("library.trash_days", self.trash_days.value(), save=False)
         cfg.set("ui.confirm_trash", self.confirm_trash.isChecked(), save=False)

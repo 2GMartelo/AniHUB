@@ -39,6 +39,7 @@ from anihub.ui.sd_dialogs import InsertDialog
 from anihub.ui.sd_history import HistoryView
 from anihub.ui.sd_queue import QueueController, QueueView
 from anihub.ui.viewer import ViewItem, Viewer
+from anihub.ui.vtube_view import VTubeView
 from anihub.ui.workers import post_to_gui, run_async
 
 STATE_COLORS = {"stopped": "#8a8f94", "starting": "#f0a030", "running": "#3fb95a", "external": "#3fb95a",
@@ -46,10 +47,10 @@ STATE_COLORS = {"stopped": "#8a8f94", "starting": "#f0a030", "running": "#3fb95a
 
 
 class ForgeLogDialog(QDialog):
-    def __init__(self, controller: ForgeController, parent=None):
+    def __init__(self, controller: ForgeController, parent=None, title: str | None = None):
         super().__init__(parent)
         self.controller = controller
-        self.setWindowTitle(tr("sd.log"))
+        self.setWindowTitle(title or tr("sd.log"))
         self.resize(900, 500)
         self.text = QPlainTextEdit(readOnly=True)
         self.text.setMaximumBlockCount(2000)
@@ -952,6 +953,12 @@ class SDPage(QWidget):
             "regenerate": self._regenerate_pictures,
         })
         tabs.addTab(self.character, tr("sd.tab.character"))
+        self.vtube = None
+        if ctx.vtube_enabled:
+            self.comfy = ForgeController(ctx.comfy, idle_minutes=lambda: int(ctx.cfg.get("comfyui.idle_minutes", 0) or 0),
+                                         parent=self)
+            self.vtube = VTubeView(ctx, self.comfy, self.controllers, parent=self)
+            tabs.addTab(self.vtube, tr("sd.tab.vtube"))
         layout = QVBoxLayout(self)
         layout.addLayout(bar)
         layout.addWidget(tabs, 1)
