@@ -114,16 +114,22 @@ class SeeThroughResult:
 
 
 def _load_rgba(path: Path) -> np.ndarray:
-    """A PNG on disk -> an owned (H, W, 4) uint8 numpy array, straight alpha. Same safe QImage-buffer idiom as
-    services/autotag.py's preprocess(): the array is copied out (ascontiguousarray) before the QImage that backs it
-    can go out of scope."""
+    """A PNG on disk -> an owned (H, W, 4) uint8 numpy array, straight alpha.
+
+    `.copy()`, not `ascontiguousarray()`: when a row has no stride padding (common for RGBA8888 -- width % 4 == 0
+    already makes each row a whole number of pixels), the sliced/reshaped view IS already contiguous, so
+    ascontiguousarray returns it as-is instead of copying. That view still aliases the QImage's own pixel buffer, and
+    once `image` goes out of scope here nothing else keeps the QImage alive, so the array ends up reading freed
+    memory -- garbage pixels at best, a segfault at worst the first time something (pytoshop, in this module's own
+    real-data test) actually reads every byte instead of just a corner pixel. `.copy()` always allocates fresh,
+    independent memory, unconditionally."""
     image = QImage(str(path)).convertToFormat(QImage.Format.Format_RGBA8888)
     if image.isNull():
         raise SeeThroughError(f"could not read layer picture {path.name}")
     w, h = image.width(), image.height()
     stride = image.bytesPerLine()
     raw = np.frombuffer(image.constBits(), dtype=np.uint8, count=stride * h).reshape(h, stride)
-    return np.ascontiguousarray(raw[:, : w * 4].reshape(h, w, 4))
+    return raw[:, : w * 4].reshape(h, w, 4).copy()
 
 
 def collect_output(output_dir: Path, filename_prefix: str) -> SeeThroughResult:

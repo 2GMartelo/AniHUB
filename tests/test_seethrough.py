@@ -78,6 +78,25 @@ def test_is_installed_true_only_when_every_node_is_present():
     assert st.is_installed(unreachable) is False
 
 
+# --- _load_rgba: the QImage-buffer lifetime bug found by the real ComfyUI/See-through run -----------------------
+
+def test_load_rgba_owns_its_memory_independently_of_the_source_qimage(tmp_path, qapp):
+    """Regression: ascontiguousarray() is a no-op (returns a view, not a copy) whenever the sliced/reshaped array is
+    already contiguous -- true for every Format_RGBA8888 picture, since 4 bytes/pixel never needs scanline padding.
+    That view aliased QImage.constBits()'s buffer; once the QImage went out of scope nothing kept it alive, and the
+    array silently read freed memory -- a real, reproducible segfault building a PSD from an actual multi-layer
+    See-through run (small synthetic test pixels never triggered it -- this is why the module docstring insists on
+    running this against real output, not just fakes)."""
+    import gc
+
+    make_png(tmp_path / "a.png", "red", size=(37, 29))  # an odd width: also exercises any leftover padding maths
+    img = st._load_rgba(tmp_path / "a.png")
+    assert img.base is None and img.flags["OWNDATA"]           # no live reference back to the QImage's own buffer
+    gc.collect()                                                # drop the QImage for real, not just out of scope
+    assert img.shape == (29, 37, 4)
+    assert tuple(int(v) for v in img[10, 10]) == (255, 0, 0, 255)  # still readable, still correct, after collection
+
+
 # --- collect_output ---------------------------------------------------------------------------------------------
 
 def test_collect_output_reverses_back_to_front_into_top_to_bottom(tmp_path):
