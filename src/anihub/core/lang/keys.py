@@ -1499,4 +1499,5 @@ vtube.reveal
 vtube.no_picture
 settings.comfyui_path
 settings.comfyui_port
+vtube.send
 """.split("\n") if k]

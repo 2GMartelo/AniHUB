@@ -656,4 +656,5 @@ DATA = r"""
 1494|Zuerst ein Bild öffnen.
 1495|ComfyUI-Ordner
 1496|ComfyUI-Port
+1497|An VTube senden
 """

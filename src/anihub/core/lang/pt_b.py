@@ -656,4 +656,5 @@ DATA = r"""
 1494|Abra uma imagem primeiro.
 1495|Pasta do ComfyUI
 1496|Porta do ComfyUI
+1497|Enviar para VTube
 """

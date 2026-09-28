@@ -84,6 +84,9 @@ class MainWindow(QMainWindow):
             # library -> img2img bridge (ТЗ 5.3)
             self.library.send_to_img2img.connect(self._to_img2img)
             self.sd_page.saved.send_to_img2img.connect(self._to_img2img)
+            # library -> VTube bridge (ТЗ_rasshirenie_prilozheniya.md, Stage 3); sd_page.saved's own copy of this
+            # signal is handled locally by SDPage itself (no section switch needed, it is already inside sd_page)
+            self.library.send_to_vtube.connect(self._to_vtube)
         self.manga_ctrl = MangaController(ctx, parent=self)
         self.manga_page = MangaPage(ctx, self.manga_ctrl)
         self.manga_ctrl.new_chapters.connect(self._on_new_chapters)
@@ -406,6 +409,13 @@ class MainWindow(QMainWindow):
         self.go("sd")
         self.sd_page.show_generate_tab()
         self.sd_page.generate.use_as_init(Path(path), prompt, negative)
+
+    def _to_vtube(self, path: Path) -> None:
+        """Open the SD section with the chosen library picture loaded into the VTube tab's own picture picker."""
+        self.go("sd")
+        if self.sd_page.vtube is not None:
+            self.sd_page.tabs.setCurrentWidget(self.sd_page.vtube)
+            self.sd_page.vtube.load_path(path)
 
     def _on_manga_state(self, state: str) -> None:
         self.manga_status.setText(f'<span style="color:{state_color(state)}">●</span>&nbsp; {tr("nav.manga")}: {tr(f"forge.state.{state}")}')

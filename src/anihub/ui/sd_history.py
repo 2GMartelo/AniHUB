@@ -28,6 +28,7 @@ class HistoryView(QWidget):
     load_params = Signal(dict)          # parameters of the chosen entry -> the Generate form
     to_queue = Signal(dict)
     to_img2img = Signal(Path, str, str)  # image, prompt, negative
+    send_to_vtube = Signal(Path)
     presets_changed = Signal()
     library_changed = Signal()
 
@@ -195,6 +196,8 @@ class HistoryView(QWidget):
         menu.addAction(tr("hist.open"), lambda: self._open(self.grid.currentItem()))
         menu.addAction(tr("hist.load"), self._load)
         menu.addAction(tr("lib.to_img2img"), self._img2img)
+        if self.ctx.vtube_enabled:
+            menu.addAction(tr("vtube.send"), self._to_vtube)
         menu.addAction(tr("hist.repeat"), self._repeat)
         menu.addSeparator()
         menu.addAction(tr("hist.show_folder"), lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(self._file(row).parent))))
@@ -236,6 +239,11 @@ class HistoryView(QWidget):
         row = self._first()
         if row and self._file(row).exists():
             self.to_img2img.emit(self._file(row), row["prompt"] or "", row["negative"] or "")
+
+    def _to_vtube(self) -> None:
+        row = self._first()
+        if row and self._file(row).exists():
+            self.send_to_vtube.emit(self._file(row))
 
     def _add_to_library(self) -> None:
         rows = [r for r in self._selected() if self._file(r).exists()]

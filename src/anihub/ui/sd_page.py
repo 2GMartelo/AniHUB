@@ -82,6 +82,7 @@ class GenerateView(QWidget):
     library_changed = Signal()
     history_changed = Signal()
     presets_changed = Signal()
+    send_to_vtube = Signal(Path)  # the one selected result's file, for the VTube tab's own file picker
 
     def __init__(self, ctx: AppContext, controller: ForgeController, queue: QueueController, parent=None):
         super().__init__(parent)
@@ -312,6 +313,9 @@ class GenerateView(QWidget):
         self.up_scale = QDoubleSpinBox(minimum=1.0, maximum=8.0, singleStep=0.5, decimals=1, value=2.0)
         self.up_btn = style.secondary(QPushButton(tr("sd.upscale")), "arrow-up")
         self.up_btn.setEnabled(False)
+        self.vtube_btn = style.secondary(QPushButton(tr("vtube.send")), "layers")
+        self.vtube_btn.setEnabled(False)
+        self.vtube_btn.setVisible(ctx.vtube_enabled)
         self.clear_btn = style.ghost(QPushButton(tr("sd.clear")), "x")
         bottom = QHBoxLayout()
         bottom.addWidget(QLabel(tr("sd.rating")))
@@ -321,6 +325,7 @@ class GenerateView(QWidget):
         bottom.addWidget(self.upscaler)
         bottom.addWidget(self.up_scale)
         bottom.addWidget(self.up_btn)
+        bottom.addWidget(self.vtube_btn)
         bottom.addStretch(1)
         bottom.addWidget(self.clear_btn)
         right = QWidget()
@@ -347,6 +352,7 @@ class GenerateView(QWidget):
         self.refresh_btn.clicked.connect(self.load_forge_data)
         self.add_btn.clicked.connect(self._add_selected)
         self.up_btn.clicked.connect(self._upscale_selected)
+        self.vtube_btn.clicked.connect(self._send_selected_to_vtube)
         self.clear_btn.clicked.connect(self.grid.clear_items)
         self.grid.itemDoubleClicked.connect(self._open_viewer)
         self.grid.itemSelectionChanged.connect(self._update_buttons)
@@ -396,6 +402,7 @@ class GenerateView(QWidget):
         self.stop_btn.setEnabled(self._generating)
         self.add_btn.setEnabled(bool(self.grid.selectedItems()))
         self.up_btn.setEnabled(bool(self.grid.selectedItems()) and ready and not self._generating)
+        self.vtube_btn.setEnabled(len(self.grid.selectedItems()) == 1)
         for b in (self.lora_btn, self.embed_btn):
             b.setEnabled(ready)
         if not ready and not self._generating:
@@ -887,6 +894,11 @@ class GenerateView(QWidget):
 
         run_async(work, on_done=done, on_error=failed)
 
+    def _send_selected_to_vtube(self) -> None:
+        results = self.grid.selected_payloads()
+        if results:
+            self.send_to_vtube.emit(results[0].path)
+
 
 class SDPage(QWidget):
     def __init__(self, ctx: AppContext, controller: ForgeController, controllers: dict | None = None, parent=None):
@@ -980,6 +992,9 @@ class SDPage(QWidget):
         self.history.to_img2img.connect(lambda path, p, n: (self.show_generate_tab(), self.generate.use_as_init(path, p, n)))
         self.history.presets_changed.connect(self.generate.refresh_presets)
         self.history.library_changed.connect(self.saved.reload)
+        self.generate.send_to_vtube.connect(self._to_vtube)
+        self.history.send_to_vtube.connect(self._to_vtube)
+        self.saved.send_to_vtube.connect(self._to_vtube)
         self.queue_ctrl.partial_results.connect(self.generate.add_results)  # shown as soon as each piece is ready
         self.queue_ctrl.job_finished.connect(lambda _results: self.history.reload())
         # a freshly installed file is only visible to a running Forge (it was told to rescan already)
@@ -1006,6 +1021,15 @@ class SDPage(QWidget):
 
     def show_generate_tab(self) -> None:
         self.tabs.setCurrentWidget(self.generate)
+
+    def _to_vtube(self, path: Path) -> None:
+        """The bridge from Generate/History/Saved: load `path` straight into the VTube tab's own picture picker.
+        The signal is only ever emitted from actions already gated on ctx.vtube_enabled, so self.vtube exists --
+        the None check is just defensive, in case a future caller forgets that."""
+        if self.vtube is None:
+            return
+        self.tabs.setCurrentWidget(self.vtube)
+        self.vtube.load_path(path)
 
     def _start(self) -> None:
         self.error.clear()

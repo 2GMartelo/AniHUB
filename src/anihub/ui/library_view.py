@@ -52,6 +52,7 @@ def row_prompt(ctx: AppContext, row: sqlite3.Row | dict) -> tuple[str, str]:
 
 class LibraryView(QWidget):
     send_to_img2img = Signal(dict)  # the library row of the chosen item
+    send_to_vtube = Signal(Path)
     changed = Signal()
 
     def __init__(self, ctx: AppContext, kind: str = "art", parent=None):
@@ -565,6 +566,8 @@ class LibraryView(QWidget):
         if len(rows) == 1:
             if self.ctx.sd_enabled:                                     # no generation on this computer: no img2img
                 menu.addAction(tr("lib.to_img2img"), lambda: self.send_to_img2img.emit(dict(rows[0])))
+            if self.ctx.vtube_enabled:
+                menu.addAction(tr("vtube.send"), lambda: self.send_to_vtube.emit(self._file_of(rows[0])))
             menu.addAction(tr("lib.show_folder"), lambda: os.startfile(self._file_of(rows[0]).parent))
             if rows[0]["ext"] not in VIDEO_EXTS:
                 menu.addAction(tr("lib.upload_rule34"), lambda: self._upload_rule34(rows[0]))
