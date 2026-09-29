@@ -705,4 +705,19 @@ DATA = r"""
 1543|Añadidos: {saved}, duplicados: {dup}, fallidos: {failed}
 1544|Ninguna carpeta abierta
 1545|Añade una carpeta a la izquierda, o abre una para ver sus imágenes aquí -- no se copia nada.
+1546|Descargar ComfyUI…
+1547|Instalando ComfyUI
+1548|Descargando ComfyUI (aprox. 1,9 GB) y descomprimiendo en:\n{dest}
+1549|Listo. ComfyUI está instalado: {path}
+1550|Personaje {n} — {name}
+1551|Personajes:
+1552|Una etiqueta pulsada en el catálogo se añade a este personaje
+1553|Editar…
+1554|Sección
+1555|Nombre
+1556|Pertenece a un personaje (una instancia por personaje activo)
+1557|Editar…
+1558|Categoría
+1559|Nombre
+1560|Permitir varias etiquetas a la vez
 """

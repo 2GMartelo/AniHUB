@@ -46,7 +46,7 @@ def env(qapp, tmp_path):
     make_lora(root, "watercolor_style", category="style", keywords="watercolor", weight=0.7)
     make_lora(root, "miku_v2", category="character", keywords="hatsune miku", negative="bad hands")
     make_lora(root, "unsorted_one")
-    cfg = Config({"forge": {"path": str(tmp_path / "forge")}}, tmp_path / "config.json")
+    cfg = Config({"forge": {"path": str(tmp_path / "forge")}, "promptbuilder": {"default_character_seeded": True}}, tmp_path / "config.json")
     db = Database(tmp_path / "lib.db")
     ctx = SimpleNamespace(cfg=cfg, db=db, paths=LibraryPaths(tmp_path), blocker=agemode.Blocker.from_tags([]))
     form = {"prompt": "", "negative": ""}

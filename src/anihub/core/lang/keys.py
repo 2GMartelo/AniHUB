@@ -1548,4 +1548,19 @@ extfolders.to_library
 extfolders.imported
 extfolders.empty_title
 extfolders.empty_hint
+comfyui.download.button
+comfyui.install.title
+comfyui.install.text
+comfyui.install.done
+pb.character_card_title
+pb.characters_label
+pb.character_switch_tip
+pb.edit_section
+pb.edit_section.title
+pb.edit_section.name
+pb.edit_section.character
+pb.edit_category
+pb.edit_category.title
+pb.edit_category.name
+pb.edit_category.multi
 """.split("\n") if k]

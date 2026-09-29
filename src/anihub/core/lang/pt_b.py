@@ -705,4 +705,19 @@ DATA = r"""
 1543|Adicionados: {saved}, duplicados: {dup}, falhas: {failed}
 1544|Nenhuma pasta aberta
 1545|Adicione uma pasta à esquerda, ou abra uma para ver as imagens aqui -- nada é copiado.
+1546|Baixar ComfyUI…
+1547|Instalando o ComfyUI
+1548|Baixando o ComfyUI (cerca de 1,9 GB) e extraindo em:\n{dest}
+1549|Concluído. ComfyUI está instalado: {path}
+1550|Personagem {n} — {name}
+1551|Personagens:
+1552|Uma tag clicada no catálogo é adicionada a este personagem
+1553|Editar…
+1554|Seção
+1555|Nome
+1556|Pertence a um personagem (uma instância por personagem ativo)
+1557|Editar…
+1558|Categoria
+1559|Nome
+1560|Permitir várias tags ao mesmo tempo
 """

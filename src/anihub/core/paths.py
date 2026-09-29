@@ -28,6 +28,13 @@ class LibraryPaths:
         return Path(override) if override else default
 
     @property
+    def apps(self) -> Path:
+        """Where the in-app installers (Forge, ComfyUI, sd-scripts...) put a fresh download by default --
+        ui/settings.py's "Download" buttons start their folder picker here, pointing an existing install
+        elsewhere is untouched by this."""
+        return self._overridable("apps", self.root / "apps")
+
+    @property
     def generations(self) -> Path:
         """Where Stable Diffusion results are written (sd_page.py's GenerateView)."""
         return self._overridable("generations", self.sd / "generated")
@@ -44,7 +51,7 @@ class LibraryPaths:
 
     def ensure(self) -> None:
         for p in (self.arts, self.manga, self.sd, self.novels, self.novels / "covers", self.anime, self.trash, self.thumbs, self.media,
-                  self.db_file.parent, self.generations, self.vtube_out, self.music):
+                  self.db_file.parent, self.apps, self.generations, self.vtube_out, self.music):
             p.mkdir(parents=True, exist_ok=True)
 
     def preview_file(self, item_id: int) -> Path:

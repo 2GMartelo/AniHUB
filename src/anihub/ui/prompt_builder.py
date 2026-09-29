@@ -9,8 +9,8 @@ from pathlib import Path
 from PySide6.QtCore import QPoint, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QAction, QBrush, QClipboard, QColor, QGuiApplication, QIcon, QImage, QLinearGradient, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
-    QAbstractItemView, QCheckBox, QDialog, QFileDialog, QFormLayout, QFrame, QHBoxLayout, QInputDialog, QLabel, QLineEdit,
-    QListWidget, QListWidgetItem, QMenu, QMessageBox, QPlainTextEdit, QPushButton, QScrollArea, QSplitter, QToolButton, QTreeWidget,
+    QAbstractItemView, QButtonGroup, QCheckBox, QDialog, QFileDialog, QFormLayout, QFrame, QHBoxLayout, QInputDialog, QLabel, QLineEdit,
+    QListWidget, QListWidgetItem, QMenu, QMessageBox, QPlainTextEdit, QPushButton, QScrollArea, QSpinBox, QSplitter, QToolButton, QTreeWidget,
     QTreeWidgetItem, QVBoxLayout, QWidget,
 )
 
@@ -143,6 +143,46 @@ class TagDialog(QDialog):
             self.accept()
 
 
+class SlotEditDialog(QDialog):
+    """A section (top-level category/slot): rename it (built-ins keep their name -- the field is disabled, not
+    hidden, so it is still obvious what is being edited) and toggle "belongs to a character"."""
+
+    def __init__(self, name: str, character: bool, editable_name: bool, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(tr("pb.edit_section.title"))
+        self.name_edit = QLineEdit(name)
+        self.name_edit.setEnabled(editable_name)
+        self.character_box = QCheckBox(tr("pb.edit_section.character"), checked=character)
+        ok = style.primary(QPushButton(tr("settings.save")), "check")
+        form = QFormLayout()
+        form.addRow(tr("pb.edit_section.name"), self.name_edit)
+        form.addRow("", self.character_box)
+        layout = QVBoxLayout(self)
+        layout.addLayout(form)
+        layout.addWidget(ok, 0, Qt.AlignmentFlag.AlignRight)
+        ok.clicked.connect(self.accept)
+
+
+class NodeEditDialog(QDialog):
+    """A category/subcategory: rename it and toggle whether several of its tags can be active at once ("одновременный
+    выбор") -- the same thing as the existing exclusive flag, just worded from the other side and reachable from one
+    consolidated Edit dialog instead of only the tree's own checkable menu item."""
+
+    def __init__(self, name: str, multi: bool, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(tr("pb.edit_category.title"))
+        self.name_edit = QLineEdit(name)
+        self.multi_box = QCheckBox(tr("pb.edit_category.multi"), checked=multi)
+        ok = style.primary(QPushButton(tr("settings.save")), "check")
+        form = QFormLayout()
+        form.addRow(tr("pb.edit_category.name"), self.name_edit)
+        form.addRow("", self.multi_box)
+        layout = QVBoxLayout(self)
+        layout.addLayout(form)
+        layout.addWidget(ok, 0, Qt.AlignmentFlag.AlignRight)
+        ok.clicked.connect(self.accept)
+
+
 class TagGrid(DragGrid):
     """Tag tiles: picture over name. Dropping a picture file on a tile sets that tag's picture."""
     picture_dropped = Signal(int, str)
@@ -230,13 +270,17 @@ class EntryChip(QFrame):
 
 
 class SlotCard(QFrame):
-    """The paragraph of one slot: its title, the tags in it and a line to type an own tag."""
+    """The paragraph of one slot: its title, a line to type an own tag, and its tags grouped by subcategory
+    (each subcategory gets its own sub-header, a bit apart from the next; entries with no catalogue subcategory
+    -- typed in by hand -- fall into a trailing, unlabelled group). Still just one paragraph in the compiled
+    prompt: the grouping here is visual only, ui/prompt_builder.py's PromptDoc.paragraphs() is unaffected."""
     own_tag = Signal(str, str)
 
-    def __init__(self, slot: str):
+    def __init__(self, slot: str, title: str | None = None):
         super().__init__()
         self.setObjectName("card")
         self.slot = slot
+        self._title_override = title
         self.title = QLabel()
         self.title.setStyleSheet("font-weight: 600;")
         self.count = style.role(QLabel(), "dim")
@@ -248,18 +292,20 @@ class SlotCard(QFrame):
         head.addWidget(self.count)
         head.addStretch(1)
         head.addWidget(self.add_line)
-        self.chips = QWidget()
-        self.flow = FlowLayout(self.chips, spacing=6)
+        self.groups_area = QWidget()
+        self.groups_layout = QVBoxLayout(self.groups_area)
+        self.groups_layout.setContentsMargins(0, 0, 0, 0)
+        self.groups_layout.setSpacing(12)                # "чуть отдалённо друг от друга" between subcategories
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 8, 12, 8)
         layout.setSpacing(6)
         layout.addLayout(head)
-        layout.addWidget(self.chips)
+        layout.addWidget(self.groups_area)
         self.add_line.returnPressed.connect(self._add)
         self.set_title()
 
     def set_title(self) -> None:
-        self.title.setText(pb.slot_name(self.slot, get_language()))
+        self.title.setText(self._title_override or pb.slot_name(self.slot, get_language()))
 
     def _add(self) -> None:
         text = self.add_line.text()
@@ -267,18 +313,54 @@ class SlotCard(QFrame):
             self.own_tag.emit(self.slot, text)
             self.add_line.clear()
 
-    def set_chips(self, chips: list[EntryChip]) -> None:
-        while self.flow.count():
-            item = self.flow.takeAt(0)
-            if item.widget() is not None:
-                item.widget().hide()
-                item.widget().setParent(None)
-                item.widget().deleteLater()
-        for chip in chips:
-            self.flow.addWidget(chip)
-        self.chips.setVisible(bool(chips))
-        self.count.setText(f"· {len(chips)}" if chips else "")
-        self.chips.updateGeometry()
+    def set_groups(self, groups: list[tuple[str, list[EntryChip]]]) -> None:
+        """`groups`: [(subcategory label, chips), ...], already in catalogue order; label "" (only ever the last
+        group) gets no sub-header, for hand-typed tags that belong to no subcategory."""
+        while self.groups_layout.count():
+            item = self.groups_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.hide()
+                widget.setParent(None)
+                widget.deleteLater()
+        total = 0
+        for label, chips in groups:
+            if not chips:
+                continue
+            total += len(chips)
+            box = QWidget()
+            box_layout = QVBoxLayout(box)
+            box_layout.setContentsMargins(0, 0, 0, 0)
+            box_layout.setSpacing(4)
+            if label:
+                box_layout.addWidget(style.role(QLabel(label), "h3"))
+            row = QWidget()
+            flow = FlowLayout(row, spacing=6)
+            for chip in chips:
+                flow.addWidget(chip)
+            box_layout.addWidget(row)
+            self.groups_layout.addWidget(box)
+        self.groups_area.setVisible(total > 0)
+        self.count.setText(f"· {total}" if total else "")
+        self.groups_area.updateGeometry()
+
+    def all_chips(self) -> list[EntryChip]:
+        """Every chip across every subcategory group, in display order -- for callers that just want "the chips
+        of this slot" without caring how they are grouped (e.g. a test, or the token/paragraph preview)."""
+        chips: list[EntryChip] = []
+        for i in range(self.groups_layout.count()):
+            box = self.groups_layout.itemAt(i).widget()
+            if box is None or box.layout() is None:
+                continue
+            row = box.layout().itemAt(box.layout().count() - 1).widget()
+            flow = row.layout() if row is not None else None
+            if flow is None:
+                continue
+            for j in range(flow.count()):
+                widget = flow.itemAt(j).widget()
+                if isinstance(widget, EntryChip):
+                    chips.append(widget)
+        return chips
 
 
 class PromptBuilder(QWidget):
@@ -296,6 +378,11 @@ class PromptBuilder(QWidget):
         self.book = PromptBook(ctx.db, ctx.paths.root)
         self.book.seed()
         self.doc = PromptDoc()
+        if not ctx.cfg.get("promptbuilder.default_character_seeded", False):
+            self.book.seed_default_character(self.doc)
+            ctx.cfg.set("promptbuilder.default_character_seeded", True)
+        self.character_count = max(1, min(4, int(ctx.cfg.get("promptbuilder.character_count", 1) or 1)))
+        self.active_character = 1
         self._last_pushed: tuple[str, str] | None = None
         self._dirty = False                                  # changes in the builder the form has not received yet
         self._cancel_previews = False
@@ -338,12 +425,12 @@ class PromptBuilder(QWidget):
         self.cards_layout.setContentsMargins(0, 0, 6, 0)
         self.cards_layout.setSpacing(8)
         for key in pb.POSITIVE:
-            self._add_card(key)
+            self._add_cards_for(key)
         self.negative_title = style.role(QLabel(tr("pb.negative_title")), "h2")
         self.cards_layout.addSpacing(6)
         self.cards_layout.addWidget(self.negative_title)
         for key in pb.NEGATIVE:
-            self._add_card(key)
+            self._add_cards_for(key)
         self.cards_layout.addStretch(1)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -367,9 +454,29 @@ class PromptBuilder(QWidget):
         previews = QHBoxLayout()
         previews.addWidget(self.positive_view, 3)
         previews.addWidget(self.negative_view, 2)
+        self.character_spin = QSpinBox(minimum=1, maximum=4, value=self.character_count)
+        self.character_switch_group = QButtonGroup(self)
+        self.character_switch_group.setExclusive(True)
+        self.character_buttons: list[QToolButton] = []
+        character_row = QHBoxLayout()
+        character_row.addWidget(QLabel(tr("pb.characters_label")))
+        character_row.addWidget(self.character_spin)
+        character_row.addSpacing(10)
+        for i in range(1, 5):
+            btn = QToolButton(text=str(i), checkable=True)
+            btn.setToolTip(tr("pb.character_switch_tip"))
+            btn.setChecked(i == self.active_character)
+            self.character_switch_group.addButton(btn, i)
+            character_row.addWidget(btn)
+            self.character_buttons.append(btn)
+        character_row.addStretch(1)
+        self.character_spin.valueChanged.connect(self._set_character_count)
+        self.character_switch_group.idClicked.connect(self._set_active_character)
+
         right = QWidget()
         rl = QVBoxLayout(right)
         rl.setContentsMargins(0, 0, 0, 0)
+        rl.addLayout(character_row)
         rl.addWidget(scroll, 1)
         rl.addLayout(previews)
         info = QHBoxLayout()
@@ -419,6 +526,7 @@ class PromptBuilder(QWidget):
         self._fill_tree()
         self._refresh_grid()
         self._refresh_doc()
+        self._update_character_buttons()
         self.page_zoom = PageZoom(self, on_zoom=self._zoom_tiles)
         saved = ctx.cfg.get("ui.builder_zoom")
         if isinstance(saved, (int, float)) and saved != 1.0:
@@ -433,11 +541,22 @@ class PromptBuilder(QWidget):
 
     # --- helpers ---------------------------------------------------------------------------------------------------
 
-    def _add_card(self, key: str) -> None:
-        card = SlotCard(key)
+    def _add_card(self, key: str, title: str | None = None) -> None:
+        card = SlotCard(key, title)
         card.own_tag.connect(self._own_tag)
         self.cards[key] = card
         self.cards_layout.addWidget(card)
+
+    def _add_cards_for(self, slot: str) -> None:
+        """One card, or with more than one active character and a character slot, one card per character
+        (ui/prompt_builder.py's character switcher only decides which of these a catalogue click lands in --
+        every character's card is always shown at once, per the ТЗ's own example layout)."""
+        if self.character_count > 1 and pb.is_character_slot(slot):
+            name = pb.slot_name(slot, get_language())
+            for i in range(1, self.character_count + 1):
+                self._add_card(pb.character_key(slot, i), tr("pb.character_card_title", n=i, name=name))
+        else:
+            self._add_card(slot)
 
     def _allowed(self, row: dict) -> bool:
         """Positive tags obey the age mode and the user's hidden tags (negative ones are what the user does NOT want: never hidden)."""
@@ -599,7 +718,7 @@ class PromptBuilder(QWidget):
             item.setData(Qt.ItemDataRole.UserRole, row)
             item.setData(ROLE + 1, (TAG_MIME, [row["id"]]))
             item.setToolTip(row["text"] + ("\n" + pb.slot_name(row["slot"], get_language())))
-            item.setIcon(tile_icon(self.book, row, self.doc.has(row["slot"], row["text"]), self.tile))
+            item.setIcon(tile_icon(self.book, row, self.doc.has(self._target_key(row["slot"]), row["text"]), self.tile))
             item.setSizeHint(QSize(self.tile + 22, self.tile + 56))
             self.grid.addItem(item)
         note = tr("pb.hidden", n=hidden) if hidden else ""
@@ -612,15 +731,23 @@ class PromptBuilder(QWidget):
             row = item.data(Qt.ItemDataRole.UserRole)
             if row.get("lora") and item in self._lora_queue:                 # its picture is not loaded yet: the loader will draw the mark
                 continue
-            active = self._lora_active(row["text"]) if row.get("lora") else self.doc.has(row["slot"], row["text"])
+            active = self._lora_active(row["text"]) if row.get("lora") else self.doc.has(self._target_key(row["slot"]), row["text"])
             item.setIcon(tile_icon(self.book, row, active, self.tile))
+
+    def _target_key(self, slot: str) -> str:
+        """Where a click in the catalogue actually lands: the active character's own instance of a character slot
+        (ui/prompt_builder.py's character switcher) once more than one is active, otherwise the slot itself."""
+        if self.character_count > 1 and pb.is_character_slot(slot):
+            return pb.character_key(slot, self.active_character)
+        return slot
 
     def _tile_clicked(self, item: QListWidgetItem) -> None:
         row = item.data(Qt.ItemDataRole.UserRole)
         if row.get("lora"):
             self._toggle_lora(row)
             return
-        self.doc.toggle(row["slot"], row["text"], group=str(row["group_id"]), exclusive=bool(row["exclusive"]), tag_id=row["id"])
+        key = self._target_key(row["slot"])
+        self.doc.toggle(key, row["text"], group=str(row["group_id"]), exclusive=bool(row["exclusive"]), tag_id=row["id"])
         self._doc_changed()
 
     # --- the document ----------------------------------------------------------------------------------------------------
@@ -651,10 +778,32 @@ class PromptBuilder(QWidget):
         chip.menu_requested.connect(self._chip_menu)
         return chip
 
+    def _grouped_chips(self, slot: str) -> list[tuple[str, list[EntryChip]]]:
+        """Entries of `slot` (a plain key, or a character's own composite key -- character_key()), grouped by
+        subcategory (Entry.group is already the catalogue node's own id, as a string -- set for every
+        catalogue-sourced entry when it is toggled/added; empty for a hand-typed one) and ordered the way the
+        subcategories themselves appear in the tree. The catalogue itself only knows the BASE slot name -- a
+        composite key has no pb_nodes rows of its own."""
+        buckets: dict[str, list[Entry]] = {}
+        for e in self.doc.entries(slot):
+            buckets.setdefault(e.group, []).append(e)
+        nodes = self.book.nodes(slot.split("::", 1)[0])
+        seen = set()
+        groups = []
+        for n in nodes:
+            gid = str(n["id"])
+            if gid in buckets:
+                groups.append((node_name(n), [self._chip_for(slot, e) for e in buckets[gid]]))
+                seen.add(gid)
+        other = [e for gid, es in buckets.items() if gid not in seen for e in es]
+        if other:
+            groups.append(("", [self._chip_for(slot, e) for e in other]))
+        return groups
+
     def _refresh_doc(self) -> None:
         for key, card in self.cards.items():
-            card.set_chips([self._chip_for(key, e) for e in self.doc.entries(key)])
-        positive, negative = self.doc.positive(), self.doc.negative()
+            card.set_groups(self._grouped_chips(key))
+        positive, negative = self.doc.positive(self.character_count), self.doc.negative(self.character_count)
         self.positive_view.setPlainText(positive)
         self.negative_view.setPlainText(negative)
         n = pb.estimate_tokens(positive)
@@ -678,9 +827,10 @@ class PromptBuilder(QWidget):
         menu.addAction(tr("pb.chip.left"), lambda: (self.doc.move(slot, text, -1), self._doc_changed()))
         menu.addAction(tr("pb.chip.right"), lambda: (self.doc.move(slot, text, 1), self._doc_changed()))
         move = menu.addMenu(tr("pb.chip.move_to"))
-        positive = slot in pb.POSITIVE
+        base = slot.split("::", 1)[0]                     # a character slot's own composite key is not itself a POSITIVE/NEGATIVE entry
+        positive = base in pb.POSITIVE
         for key in (pb.POSITIVE if positive else pb.NEGATIVE):
-            if key != slot:
+            if key != base and key != slot:
                 move.addAction(pb.slot_name(key, get_language()), lambda k=key: (self.doc.move_to_slot(slot, text, k), self._doc_changed()))
         menu.addSeparator()
         menu.addAction(tr("pb.chip.remove"), lambda: self._remove_entry(slot, text))
@@ -690,7 +840,7 @@ class PromptBuilder(QWidget):
 
     def push(self) -> None:
         """Send the assembled prompt to the Generate form."""
-        positive, negative = self.doc.positive(), self.doc.negative()
+        positive, negative = self.doc.positive(self.character_count), self.doc.negative(self.character_count)
         self._last_pushed, self._dirty = (positive, negative), False
         if self.form is not None:
             self.form["set"](positive, negative)
@@ -713,7 +863,7 @@ class PromptBuilder(QWidget):
                 if match:
                     e.tag_id = match["id"]
         self.doc = doc
-        self._last_pushed, self._dirty = (doc.positive(), doc.negative()), False
+        self._last_pushed, self._dirty = (doc.positive(self.character_count), doc.negative(self.character_count)), False
         self._refresh_doc()
         self._refresh_tiles()
         return doc.count(pb.SLOT_KEYS)
@@ -728,7 +878,9 @@ class PromptBuilder(QWidget):
             self.pull()            # the form was edited by hand (or loaded from an image / history) since the builder last wrote to it
 
     def _copy(self) -> None:
-        QGuiApplication.clipboard().setText(self.doc.positive() + ("\n\nNegative prompt: " + self.doc.negative() if self.doc.negative() else ""))
+        n = self.character_count
+        positive, negative = self.doc.positive(n), self.doc.negative(n)
+        QGuiApplication.clipboard().setText(positive + (f"\n\nNegative prompt: {negative}" if negative else ""))
         self.status.setText(tr("pb.copied"))
 
     def _clear(self) -> None:
@@ -809,6 +961,7 @@ class PromptBuilder(QWidget):
             exclusive.setCheckable(True)
             exclusive.setChecked(bool(node["exclusive"]))
             exclusive.toggled.connect(lambda v: (self.book.set_exclusive(node["id"], v), self._fill_tree(), self._refresh_grid()))
+            menu.addAction(tr("pb.edit_category"), lambda: self._edit_node(node))
             menu.addSeparator()
         if node is not None or sel[0] == "slot":
             menu.addAction(tr("pb.tree.previews"), self._previews_for_view)
@@ -816,14 +969,39 @@ class PromptBuilder(QWidget):
             menu.addAction(tr("pb.tree.delete"), lambda: self._delete_node(node))
         menu.addSeparator()
         menu.addAction(tr("pb.tree.new_section"), self._new_slot)
+        menu.addAction(tr("pb.edit_section"), lambda: self._edit_slot(slot))
         if sel[0] == "slot" and pb.is_custom_slot(sel[1]):
             menu.addAction(tr("pb.tree.rename_section"), lambda: self._rename_slot(sel[1]))
             menu.addAction(tr("pb.tree.delete_section"), lambda: self._delete_slot(sel[1]))
         menu.exec(self.tree.viewport().mapToGlobal(pos))
 
+    def _edit_node(self, node: dict) -> None:
+        dlg = NodeEditDialog(node_name(node), not bool(node["exclusive"]), self)
+        if dlg.exec():
+            name = dlg.name_edit.text().strip()
+            if name:
+                self.book.rename_node(node["id"], name)
+            self.book.set_exclusive(node["id"], not dlg.multi_box.isChecked())
+            self._fill_tree(("node", node["id"]))
+            self._refresh_grid()
+
+    def _edit_slot(self, key: str) -> None:
+        is_custom = pb.is_custom_slot(key)
+        dlg = SlotEditDialog(pb.slot_name(key, get_language()), pb.is_character_slot(key), is_custom, self)
+        if dlg.exec():
+            if is_custom:
+                new_name = dlg.name_edit.text().strip()
+                if new_name:
+                    pb.rename_custom_slot(self.ctx.cfg, key, new_name)
+            pb.set_character_flag(self.ctx.cfg, key, dlg.character_box.isChecked())
+            self._rebuild_cards()
+            self._fill_tree(("slot", key))
+            self._refresh_grid()
+
     def _rebuild_cards(self) -> None:
         """Re-derives the right-side paragraph panel from pb.POSITIVE/pb.NEGATIVE (after a section was added,
-        renamed, deleted or reordered) without losing what is already in negative_title (reused, not recreated)."""
+        renamed, deleted or reordered, or the character count/a character flag changed) without losing what is
+        already in negative_title (reused, not recreated)."""
         while self.cards_layout.count():
             item = self.cards_layout.takeAt(0)
             widget = item.widget()
@@ -834,13 +1012,32 @@ class PromptBuilder(QWidget):
                 widget.deleteLater()
         self.cards.clear()
         for key in pb.POSITIVE:
-            self._add_card(key)
+            self._add_cards_for(key)
         self.cards_layout.addSpacing(6)
         self.cards_layout.addWidget(self.negative_title)
         for key in pb.NEGATIVE:
-            self._add_card(key)
+            self._add_cards_for(key)
         self.cards_layout.addStretch(1)
         self._refresh_doc()
+
+    def _set_character_count(self, value: int) -> None:
+        self.character_count = max(1, min(4, int(value)))
+        self.ctx.cfg.set("promptbuilder.character_count", self.character_count)
+        if self.active_character > self.character_count:
+            self._set_active_character(1)
+        self._update_character_buttons()
+        self._rebuild_cards()
+
+    def _set_active_character(self, character: int) -> None:
+        self.active_character = character
+        self._update_character_buttons()
+
+    def _update_character_buttons(self) -> None:
+        for i, btn in enumerate(self.character_buttons, start=1):
+            btn.setVisible(i <= self.character_count)
+            block = btn.blockSignals(True)
+            btn.setChecked(i == self.active_character)
+            btn.blockSignals(block)
 
     def _new_slot(self) -> None:
         negative = self._current_slot() in pb.NEGATIVE
@@ -1099,7 +1296,7 @@ class PromptBuilder(QWidget):
             row = item.data(Qt.ItemDataRole.UserRole)
             if not row.get("lora") and row["id"] == tag_id:
                 row["image"] = self.book.tag(tag_id)["image"]
-                item.setIcon(tile_icon(self.book, row, self.doc.has(row["slot"], row["text"]), self.tile))
+                item.setIcon(tile_icon(self.book, row, self.doc.has(self._target_key(row["slot"]), row["text"]), self.tile))
                 break
         self._refresh_doc()
 

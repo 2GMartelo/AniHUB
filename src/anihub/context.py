@@ -91,16 +91,17 @@ class AppContext:
 
     @property
     def sd_enabled(self) -> bool:
-        """False on a computer the first-run check found unsuitable for Stable Diffusion (or the user turned it off):
-        the generation section is hidden. Old configs have no such key and keep generation.
+        """False when Settings' "check my PC" found this computer unsuitable for Stable Diffusion (or the user
+        turned it off there). Old configs have no such key and keep generation.
 
-        Also False when Forge itself is not actually set up yet (no folder picked, and no download queued from the
-        wizard) -- there is nothing useful to do in an empty Generation tab, so it stays out of the way, the same as
-        it does on an unsuitable PC, until a folder exists. `sd.install_pending` keeps this True across the wizard's
-        own "download Forge now" flow (main_window.maybe_install_forge), which itself only runs while this is True."""
+        Also False when Forge itself is not actually set up yet (no folder picked, nothing installed) -- there is
+        nothing useful to do in an empty Generation tab, so it stays out of the way, the same as it does on an
+        unsuitable PC, until a folder exists. A fresh install starts with `forge.path` empty and no auto-detect
+        wizard step for it any more (ТЗ: a clean install shows only arts/manga/novels/anime/music; Generation is
+        opted into later, from Settings' "Download Forge" or "browse to an existing install")."""
         if self.cfg.get("sd.enabled", True) is False:
             return False
-        return bool(self.cfg.get("forge.path")) or bool(self.cfg.get("sd.install_pending"))
+        return bool(self.cfg.get("forge.path"))
 
     @property
     def lora_train_enabled(self) -> bool:

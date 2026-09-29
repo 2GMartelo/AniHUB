@@ -705,4 +705,19 @@ DATA = r"""
 1543|Hinzugefügt: {saved}, Duplikate: {dup}, fehlgeschlagen: {failed}
 1544|Kein Ordner geöffnet
 1545|Fügen Sie links einen Ordner hinzu oder öffnen Sie einen, um die Bilder hier zu sehen -- es wird nichts kopiert.
+1546|ComfyUI herunterladen…
+1547|ComfyUI wird installiert
+1548|ComfyUI (ca. 1,9 GB) wird heruntergeladen und entpackt nach:\n{dest}
+1549|Fertig. ComfyUI ist installiert: {path}
+1550|Charakter {n} — {name}
+1551|Charaktere:
+1552|Ein im Katalog angeklickter Tag wird diesem Charakter hinzugefügt
+1553|Bearbeiten…
+1554|Abschnitt
+1555|Name
+1556|Gehört zu einem Charakter (eine Instanz pro aktivem Charakter)
+1557|Bearbeiten…
+1558|Kategorie
+1559|Name
+1560|Mehrere Tags gleichzeitig erlauben
 """

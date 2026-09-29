@@ -705,4 +705,19 @@ DATA = r"""
 1543|Ajoutés : {saved}, doublons : {dup}, échecs : {failed}
 1544|Aucun dossier ouvert
 1545|Ajoutez un dossier à gauche, ou ouvrez-en un pour voir ses images ici -- rien n'est copié.
+1546|Télécharger ComfyUI…
+1547|Installation de ComfyUI
+1548|Téléchargement de ComfyUI (environ 1,9 Go) et extraction dans :\n{dest}
+1549|Terminé. ComfyUI est installé : {path}
+1550|Personnage {n} — {name}
+1551|Personnages :
+1552|Une balise cliquée dans le catalogue est ajoutée à ce personnage
+1553|Modifier…
+1554|Section
+1555|Nom
+1556|Appartient à un personnage (une instance par personnage actif)
+1557|Modifier…
+1558|Catégorie
+1559|Nom
+1560|Autoriser plusieurs balises à la fois
 """

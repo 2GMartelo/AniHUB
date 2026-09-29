@@ -254,6 +254,7 @@ QLabel[role="muted"] { color: $muted; }
 QLabel[role="dim"] { color: $dim; }
 QLabel[role="title"] { font-size: 22px; font-weight: 700; }
 QLabel[role="h2"] { font-size: 15px; font-weight: 600; }
+QLabel[role="h3"] { font-size: 14px; font-weight: 600; }
 QLabel[role="error"] { color: $danger; }
 QLabel[role="chip"] { background: $surface3; color: $dim; border-radius: 9px; padding: 2px 10px; }
 

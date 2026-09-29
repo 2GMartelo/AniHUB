@@ -569,19 +569,6 @@ class MainWindow(QMainWindow):
         ]
         return steps
 
-    def maybe_install_forge(self) -> None:
-        """The first-run wizard chose "download Forge": do it now (once), with a progress window."""
-        dest = str(self.ctx.cfg.get("sd.install_pending") or "")
-        if not dest or not self.sd_enabled or self._tutorial is not None:
-            return
-        from anihub.ui.forge_install_dialog import ForgeInstallDialog
-
-        self.ctx.cfg.set("sd.install_pending", "")
-        dlg = ForgeInstallDialog(self.ctx, Path(dest), self)
-        dlg.exec()
-        if dlg.installed is not None:
-            self.settings.forge_path.setText(str(dlg.installed))
-
     def start_tutorial(self) -> None:
         """The guided tour (after the first run, or from Settings / the command palette)."""
         if self._tutorial is not None:
@@ -595,7 +582,6 @@ class MainWindow(QMainWindow):
         self.ctx.cfg.set("tutorial.pending", False)
         self.go("arts")
         self.arts.setCurrentIndex(0)
-        QTimer.singleShot(500, self.maybe_install_forge)
 
     def paintEvent(self, event) -> None:  # noqa: N802
         paint_backdrop(self)                                       # smooth gradient, glows and sparkles (translucent over Mica in glass mode)

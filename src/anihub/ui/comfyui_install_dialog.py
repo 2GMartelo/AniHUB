@@ -1,4 +1,5 @@
-"""Downloads and unpacks Stable Diffusion Forge (about 1.8 GB) with a progress bar; the result becomes `forge.path`."""
+"""Downloads and unpacks the official ComfyUI portable build (about 1.9 GB) with a progress bar; the result
+becomes `comfyui.path`. Mirrors ForgeInstallDialog -- same two stages (download, extract)."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -8,12 +9,12 @@ from PySide6.QtWidgets import QDialog, QLabel, QProgressBar, QPushButton, QVBoxL
 
 from anihub.context import AppContext
 from anihub.core.i18n import tr
-from anihub.services import forge_install
+from anihub.services import comfyui_install
 from anihub.ui import style
 from anihub.ui.workers import run_async
 
 
-class ForgeInstallDialog(QDialog):
+class ComfyuiInstallDialog(QDialog):
     _progress = Signal(str, int, int)                 # from the worker thread
 
     def __init__(self, ctx: AppContext, dest: Path, parent=None):
@@ -22,10 +23,10 @@ class ForgeInstallDialog(QDialog):
         self.installed: Path | None = None
         self._cancel = False
         self._paused = False
-        self.setWindowTitle(tr("forge.install.title"))
+        self.setWindowTitle(tr("comfyui.install.title"))
         self.setModal(True)
         self.setMinimumWidth(520)
-        self.info = QLabel(tr("forge.install.text", dest=str(dest)))
+        self.info = QLabel(tr("comfyui.install.text", dest=str(dest)))
         self.info.setWordWrap(True)
         self.state = style.role(QLabel(tr("status.loading")), "dim")
         self.state.setWordWrap(True)
@@ -49,8 +50,8 @@ class ForgeInstallDialog(QDialog):
         run_async(self._work, on_done=self._done, on_error=self._failed)
 
     def _work(self) -> Path | None:
-        return forge_install.install(self.ctx.http, self.dest, lambda s, d, t: self._progress.emit(s, d, t),
-                                     lambda: self._cancel, lambda: self._paused)
+        return comfyui_install.install(self.ctx.http, self.dest, lambda s, d, t: self._progress.emit(s, d, t),
+                                       lambda: self._cancel, lambda: self._paused)
 
     def _on_progress(self, stage: str, done: int, total: int) -> None:
         self.pause_btn.setEnabled(stage == "download")  # only the download itself can be paused
@@ -58,9 +59,12 @@ class ForgeInstallDialog(QDialog):
             self.bar.setRange(0, 1000)
             self.bar.setValue(int(done / total * 1000))
             self.state.setText(tr("forge.install.download", done=f"{done / 1024**2:.0f}", total=f"{total / 1024**2:.0f}"))
+        elif stage == "extract":
+            self.bar.setRange(0, 0)
+            self.state.setText(tr("forge.install.extract"))
         else:
             self.bar.setRange(0, 0)
-            self.state.setText(tr(f"forge.install.{stage}") if stage in ("release", "extract") else tr("status.loading"))
+            self.state.setText(tr("status.loading"))
 
     def _toggle_pause(self) -> None:
         self._paused = not self._paused
@@ -76,10 +80,10 @@ class ForgeInstallDialog(QDialog):
             self.close_btn.show()
             return
         self.installed = path
-        self.ctx.cfg.set("forge.path", str(path))
+        self.ctx.cfg.set("comfyui.path", str(path))
         self.bar.setRange(0, 1)
         self.bar.setValue(1)
-        self.state.setText(tr("forge.install.done", path=str(path)))
+        self.state.setText(tr("comfyui.install.done", path=str(path)))
         self.pause_btn.hide()
         self.cancel_btn.hide()
         self.close_btn.show()
@@ -88,6 +92,7 @@ class ForgeInstallDialog(QDialog):
         self.bar.setRange(0, 1)
         self.bar.setValue(0)
         self.state.setText(tr("forge.install.failed", msg=str(exc)))
+        self.pause_btn.hide()
         self.cancel_btn.hide()
         self.close_btn.show()
 

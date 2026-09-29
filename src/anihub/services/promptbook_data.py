@@ -10,24 +10,27 @@ the next line lists its tags as `tag=русское название; tag; tag=.
 """
 from __future__ import annotations
 
-# (key, English, Русский, negative?) in the order the paragraphs are written
+# (key, English, Русский, negative?, per-character?) in the order the paragraphs are written. "per-character":
+# with more than one active character (ui/prompt_builder.py's character switcher), this slot gets one instance
+# per character instead of being shared -- character/appearance/expression/clothing/pose are naturally about ONE
+# specific character, "who and how many" (subject) and everything after pose is scene-level and stays shared.
 SLOTS = [
-    ("quality", "Quality", "Качество", False),
-    ("style", "Style and medium", "Стиль и техника", False),
-    ("subject", "Who and how many", "Кто и сколько", False),
-    ("character", "Character", "Персонаж", False),
-    ("appearance", "Appearance", "Внешность", False),
-    ("expression", "Expression", "Эмоции", False),
-    ("clothing", "Clothing", "Одежда", False),
-    ("pose", "Pose and action", "Поза и действие", False),
-    ("camera", "Camera and composition", "Кадр и композиция", False),
-    ("background", "Background and place", "Фон и место", False),
-    ("lighting", "Light, time, mood", "Свет, время, настроение", False),
-    ("extra", "Extra (LoRA, own tags)", "Прочее (LoRA, свои теги)", False),
-    ("neg_quality", "Bad quality", "Плохое качество", True),
-    ("neg_anatomy", "Bad anatomy", "Плохая анатомия", True),
-    ("neg_artifacts", "Text and artifacts", "Текст и артефакты", True),
-    ("neg_unwanted", "Unwanted things", "Нежелательное", True),
+    ("quality", "Quality", "Качество", False, False),
+    ("style", "Style and medium", "Стиль и техника", False, False),
+    ("subject", "Who and how many", "Кто и сколько", False, False),
+    ("character", "Character", "Персонаж", False, True),
+    ("appearance", "Appearance", "Внешность", False, True),
+    ("expression", "Expression", "Эмоции", False, True),
+    ("clothing", "Clothing", "Одежда", False, True),
+    ("pose", "Pose and action", "Поза и действие", False, True),
+    ("camera", "Camera and composition", "Кадр и композиция", False, False),
+    ("background", "Background and place", "Фон и место", False, False),
+    ("lighting", "Light, time, mood", "Свет, время, настроение", False, False),
+    ("extra", "Extra (LoRA, own tags)", "Прочее (LoRA, свои теги)", False, False),
+    ("neg_quality", "Bad quality", "Плохое качество", True, False),
+    ("neg_anatomy", "Bad anatomy", "Плохая анатомия", True, False),
+    ("neg_artifacts", "Text and artifacts", "Текст и артефакты", True, False),
+    ("neg_unwanted", "Unwanted things", "Нежелательное", True, False),
 ]
 
 RAW = r"""

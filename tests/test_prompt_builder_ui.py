@@ -16,7 +16,9 @@ from anihub.ui.prompt_builder import EntryChip, PromptBuilder
 
 @pytest.fixture
 def env(qapp, tmp_path):
-    cfg = Config({"filter": {"mode": "all"}}, tmp_path / "config.json")
+    # promptbuilder.default_character_seeded=True: this fixture's builder starts on a blank slate like before the
+    # Hori Kyouko default (tested on its own, on a fixture that leaves the flag unset, below) was added.
+    cfg = Config({"filter": {"mode": "all"}, "promptbuilder": {"default_character_seeded": True}}, tmp_path / "config.json")
     db = Database(tmp_path / "lib.db")
     ctx = SimpleNamespace(cfg=cfg, db=db, paths=LibraryPaths(tmp_path), blocker=agemode.Blocker.from_tags([]))
     form = {"prompt": "", "negative": ""}
@@ -65,7 +67,7 @@ def test_a_clicked_tag_lands_in_its_own_paragraph(env):
     assert text.index("masterpiece") < text.index("school uniform")
     assert v.doc.has("quality", "masterpiece") and v.doc.has("clothing", "school uniform")
     assert [e.text for e in v.doc.entries("quality")] == ["masterpiece"]
-    assert v.cards["clothing"].count.text() and len(v.cards["clothing"].flow._items) == 1
+    assert v.cards["clothing"].count.text() and len(v.cards["clothing"].all_chips()) == 1
     v._tile_clicked(tile(v, "masterpiece"))                                             # a second click takes it out again
     assert not v.doc.has("quality", "masterpiece") and "masterpiece" not in env.form["prompt"]
 
@@ -86,7 +88,7 @@ def test_own_tag_and_weight_and_chip_menu_actions(env):
     assert "(handstand:1.5)" in env.form["prompt"]
     v._remove_entry("pose", "handstand")
     assert "handstand" not in env.form["prompt"]
-    chips = [v.cards["pose"].flow.itemAt(i).widget() for i in range(v.cards["pose"].flow.count())]
+    chips = v.cards["pose"].all_chips()
     assert len(chips) == 1 and isinstance(chips[0], EntryChip) and chips[0].weight.text() == "×1.3"
 
 
@@ -218,6 +220,109 @@ def test_ctrl_wheel_zooms_the_tag_tiles_and_remembers_it(env):
     assert view.tile == TILE * 2
     view.page_zoom.set_factor(0.1)                                            # clamped
     assert view.tile == round(TILE * 0.6)
+
+
+def test_the_character_spinner_creates_one_card_per_character_for_character_slots_only(env):
+    v = env.view
+    assert "clothing" in v.cards and "quality" in v.cards
+    v.character_spin.setValue(3)
+    assert v.character_count == 3 and env.cfg.get("promptbuilder.character_count") == 3
+    assert "clothing" in v.cards and "clothing::2" in v.cards and "clothing::3" in v.cards  # character 1 keeps the plain key
+    assert "quality" in v.cards and "quality::2" not in v.cards                          # not a character slot: stays single
+
+
+def test_clicking_a_tag_lands_on_the_active_characters_own_card(env):
+    v = env.view
+    v.character_spin.setValue(2)
+    select_node(v, "clothing.outfit")
+    v._tile_clicked(tile(v, "kimono"))                                                  # character 1 is active by default
+    assert v.doc.has("clothing", "kimono") and not v.doc.has("clothing::2", "kimono")
+    v.character_switch_group.idClicked.emit(2)
+    select_node(v, "clothing.outfit")
+    v._tile_clicked(tile(v, "school uniform"))
+    assert v.doc.has("clothing::2", "school uniform") and not v.doc.has("clothing", "school uniform")
+
+
+def test_switching_active_character_updates_the_toggle_buttons(env):
+    v = env.view
+    v.character_spin.setValue(4)
+    v._set_active_character(3)
+    assert [b.isChecked() for b in v.character_buttons] == [False, False, True, False]
+    assert all(b.isVisible() for b in v.character_buttons)
+    v.character_spin.setValue(2)
+    assert v.active_character == 1                                                      # dropped below the old active character: reset to 1
+    assert [b.isVisible() for b in v.character_buttons] == [True, True, False, False]
+
+
+def test_edit_section_dialog_toggles_the_character_flag_and_rebuilds_cards(env, monkeypatch):
+    from anihub.services import promptbook as pb
+
+    v = env.view
+
+    class FakeSlotDialog:
+        def __init__(self, name, character, editable_name, parent=None):
+            self.name_edit = SimpleNamespace(text=lambda: name, isEnabled=lambda: editable_name)
+            self.character_box = SimpleNamespace(isChecked=lambda: True)
+
+        def exec(self):
+            return 1
+
+    monkeypatch.setattr("anihub.ui.prompt_builder.SlotEditDialog", FakeSlotDialog)
+    assert not pb.is_character_slot("camera")
+    v._edit_slot("camera")
+    assert pb.is_character_slot("camera")
+    v.character_spin.setValue(2)
+    assert "camera" in v.cards and "camera::2" in v.cards
+
+
+def test_edit_category_dialog_renames_and_toggles_multi_select(env, monkeypatch):
+    v = env.view
+    node = select_node(v, "appearance.hair_color")
+    assert bool(node["exclusive"])                                                       # was exclusive before the edit
+
+    class FakeNodeDialog:
+        def __init__(self, name, multi, parent=None):
+            self.name_edit = SimpleNamespace(text=lambda: "Hair colour")
+            self.multi_box = SimpleNamespace(isChecked=lambda: True)
+
+        def exec(self):
+            return 1
+
+    monkeypatch.setattr("anihub.ui.prompt_builder.NodeEditDialog", FakeNodeDialog)
+    v._edit_node(node)
+    assert v.book.node(node["id"])["name"] == "Hair colour"
+    assert not v.book.node(node["id"])["exclusive"]
+    v._refresh_grid()
+    v._tile_clicked(tile(v, "blue hair"))
+    v._tile_clicked(tile(v, "red hair"))
+    assert {e.text for e in v.doc.entries("appearance")} == {"blue hair", "red hair"}    # multi-select on: both stick
+
+
+def test_a_fresh_library_starts_with_the_default_hori_kyouko_character(qapp, tmp_path):
+    cfg = Config({"filter": {"mode": "all"}}, tmp_path / "config.json")
+    db = Database(tmp_path / "lib.db")
+    ctx = SimpleNamespace(cfg=cfg, db=db, paths=LibraryPaths(tmp_path), blocker=agemode.Blocker.from_tags([]))
+    hooks = {"get": lambda: ("", ""), "set": lambda p, n: None, "api": lambda: None}
+    v = PromptBuilder(ctx, form=hooks)
+    assert v.doc.has("character", "hori kyouko (horimiya)")
+    assert v.doc.has("appearance", "brown hair") and v.doc.has("clothing", "school uniform")
+    assert cfg.get("promptbuilder.default_character_seeded") is True
+    v.close()
+    db.close()
+
+
+def test_the_default_character_is_seeded_only_once(qapp, tmp_path):
+    cfg = Config({"filter": {"mode": "all"}}, tmp_path / "config.json")
+    db = Database(tmp_path / "lib.db")
+    ctx = SimpleNamespace(cfg=cfg, db=db, paths=LibraryPaths(tmp_path), blocker=agemode.Blocker.from_tags([]))
+    hooks = {"get": lambda: ("", ""), "set": lambda p, n: None, "api": lambda: None}
+    first = PromptBuilder(ctx, form=hooks)
+    assert first.doc.has("character", "hori kyouko (horimiya)")
+    first.close()
+    second = PromptBuilder(ctx, form=hooks)
+    assert not second.doc.has("character", "hori kyouko (horimiya)")                     # the flag is set: it is not forced back
+    second.close()
+    db.close()
 
 
 def test_saved_zoom_is_applied_on_the_next_start(qapp, tmp_path):

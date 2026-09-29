@@ -1,5 +1,5 @@
-"""Standard save folders (generations, VTube output, music) auto-created under the library root, each
-independently overridable via config -- core/paths.py's LibraryPaths.generations/vtube_out/music, and the
+"""Standard save folders (apps, generations, VTube output, music) auto-created under the library root, each
+independently overridable via config -- core/paths.py's LibraryPaths.apps/generations/vtube_out/music, and the
 Settings "Folders" box on top of it."""
 from types import SimpleNamespace
 
@@ -9,6 +9,7 @@ from anihub.core.paths import LibraryPaths
 
 def test_without_a_cfg_the_defaults_are_plain_subfolders(tmp_path):
     paths = LibraryPaths(tmp_path / "lib")
+    assert paths.apps == paths.root / "apps"
     assert paths.generations == paths.sd / "generated"
     assert paths.vtube_out == paths.root / "vtube"
     assert paths.music == paths.root / "music"
@@ -35,6 +36,7 @@ def test_ensure_creates_all_three_standard_folders_including_overridden_ones(tmp
     cfg.set("paths.music", str(elsewhere), save=False)
     paths = LibraryPaths(tmp_path / "lib", cfg)
     paths.ensure()
+    assert paths.apps.is_dir()
     assert paths.generations.is_dir()
     assert paths.vtube_out.is_dir()
     assert elsewhere.is_dir()                                      # the override itself, not the default music/ subfolder

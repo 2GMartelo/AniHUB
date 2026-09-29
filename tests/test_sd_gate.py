@@ -140,55 +140,18 @@ def test_install_returns_none_when_paused_before_extracting(tmp_path, monkeypatc
     assert (tmp_path / "dest" / "webui_forge_cu121_torch21.7z").exists()  # kept, ready to resume
 
 
-# --- the wizard page ------------------------------------------------------------------------------------------------------
+# --- the wizard: no hardware-driven Forge step any more --------------------------------------------------------------
 
-def make_page(qapp, tmp_path, assessment):
-    from anihub.ui.wizard import ForgePage, LibraryPage
-
-    cfg = Config.load(tmp_path / "c.json")
-    library = LibraryPage(cfg)
-    page = ForgePage(cfg, library)
-    return cfg, page, assessment
-
-
-def test_wizard_page_switches_generation_off_on_an_unsuitable_pc(qapp, tmp_path, monkeypatch):
-    cfg, page, _ = make_page(qapp, tmp_path, None)
-    monkeypatch.setattr(sysreq, "assess_forge", lambda p="": judge_forge("", 0, 32, 100))
-    page.initializePage()
-    assert not page.options.isVisibleTo(page) and "NVIDIA" in page.report.text() or page.report.text()
-    assert page.validatePage()
-    assert cfg.get("sd.enabled") is False
-
-
-def test_wizard_page_download_existing_and_later(qapp, tmp_path, monkeypatch):
-    cfg, page, _ = make_page(qapp, tmp_path, None)
-    monkeypatch.setattr(sysreq, "assess_forge", lambda p="": judge_forge("RTX 4070", 12, 32, 300))
-    page.initializePage()
-    assert page.options.isVisibleTo(page) and page.download.isChecked()
-    page.install_dir.setText(str(tmp_path / "ForgeHere"))
-    assert page.validatePage() and cfg.get("sd.enabled") is True and cfg.get("sd.install_pending") == str(tmp_path / "ForgeHere")
-    # an existing installation: the folder must really hold Forge
-    page.existing.setChecked(True)
-    page.existing_dir.setText(str(tmp_path / "nothing"))
-    assert not page.validatePage() and page.hint.text()
-    pkg = make_package(tmp_path / "have")
-    page.existing_dir.setText(str(pkg))
-    assert page.validatePage() and Path(cfg.get("forge.path")) == pkg / "webui"
-    page.later.setChecked(True)
-    cfg.set("sd.install_pending", "", save=False)
-    assert page.validatePage() and not cfg.get("sd.install_pending")
-    # weak but working PCs stay on, with a warning
-    monkeypatch.setattr(sysreq, "assess_forge", lambda p="": judge_forge("GTX 1650", 4, 8, 300))
-    page.initializePage()
-    assert page.options.isVisibleTo(page) and page.verdict.text()
-
-
-def test_wizard_has_the_forge_page_before_the_end(qapp, tmp_path):
-    from anihub.ui.wizard import ForgePage, SetupWizard
+def test_wizard_has_no_forge_page_a_fresh_install_starts_with_generation_off(qapp, tmp_path):
+    """ТЗ: a clean install shows only arts/manga/novels/anime/music; Stable Diffusion generation (and everything
+    that hangs off it -- LoRA training, VTube) is opted into later, from Settings, not decided by a wizard step
+    that used to auto-detect the GPU and offer to download Forge on the spot."""
+    from anihub.ui.wizard import SetupWizard
 
     wizard = SetupWizard(Config.load(tmp_path / "c.json"))
     kinds = [type(wizard.page(i)).__name__ for i in wizard.pageIds()]
-    assert kinds.index("ForgePage") == kinds.index("SystemPage") + 1 and kinds[-1] == "DonePage"
+    assert "ForgePage" not in kinds
+    assert kinds[-1] == "DonePage"
 
 
 # --- the main window without generation ---------------------------------------------------------------------------------------
@@ -229,26 +192,6 @@ def test_generation_stays_off_until_forge_is_actually_set_up(qapp, tmp_path):
     win, ctx = make_window(qapp, tmp_path, True)                        # sd.enabled=True, but no forge.path
     assert not ctx.sd_enabled and win.sd_page is None
     assert list(win.rows) == ["arts", "manga", "novels", "anime", "settings"]
-    win._quitting = True
-    win.close()
-
-
-def test_a_pending_wizard_download_keeps_generation_available(qapp, tmp_path):
-    """The wizard's own "download Forge now" queues sd.install_pending instead of forge.path; main_window's
-    maybe_install_forge() only runs while sd_enabled is True, so this must count too, or the queued download would
-    never get the chance to run."""
-    from anihub.context import AppContext
-    from anihub.ui.main_window import MainWindow
-
-    cfg = Config.load(tmp_path / "c.json")
-    cfg.set("library_path", str(tmp_path / "lib"), save=False)
-    cfg.set("first_run_done", True, save=False)
-    cfg.set("sd.install_pending", str(tmp_path / "ForgeHere"), save=False)
-    ctx = AppContext.build(cfg)
-    assert ctx.sd_enabled
-    win = MainWindow(ctx)
-    win.resize(1400, 850)
-    assert win.sd_page is not None
     win._quitting = True
     win.close()
 

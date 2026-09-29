@@ -115,6 +115,55 @@ def test_tags_land_in_their_own_paragraph_in_writing_order():
     assert "lowres" not in doc.positive()
 
 
+def test_character_count_1_renders_exactly_as_before_with_no_composite_keys():
+    pb.set_custom_slots([], [])  # a clean baseline: the built-in character flags, no overrides
+    doc = PromptDoc()
+    doc.add("clothing", "school uniform")
+    doc.add("quality", "masterpiece")
+    assert doc.positive() == doc.positive(character_count=1) == "masterpiece,\nschool uniform"
+
+
+def test_character_count_above_1_expands_only_character_slots_into_one_paragraph_each():
+    pb.set_custom_slots([], [])
+    doc = PromptDoc()
+    doc.add("quality", "masterpiece")                                           # shared: stays one paragraph
+    doc.add(pb.character_key("clothing", 1), "school uniform")
+    doc.add(pb.character_key("clothing", 2), "swimsuit")
+    assert doc.positive(character_count=2) == "masterpiece,\nschool uniform,\nswimsuit"
+
+
+def test_an_empty_characters_paragraph_is_skipped_not_blank():
+    pb.set_custom_slots([], [])
+    doc = PromptDoc()
+    doc.add(pb.character_key("clothing", 1), "school uniform")
+    # character 2 never got any clothing tag
+    assert doc.positive(character_count=2) == "school uniform"
+
+
+def test_clear_sweeps_every_characters_composite_key_for_a_slot():
+    pb.set_custom_slots([], [])
+    doc = PromptDoc()
+    doc.add(pb.character_key("clothing", 1), "school uniform")
+    doc.add(pb.character_key("clothing", 3), "swimsuit")
+    doc.add("quality", "masterpiece")
+    doc.clear(negative=False)
+    assert doc.positive(character_count=4) == ""
+    assert doc.is_empty()
+
+
+def test_seed_default_character_gives_character_1_a_hori_kyouko_look(book):
+    doc = PromptDoc()
+    book.seed_default_character(doc)
+    assert doc.has("character", "hori kyouko (horimiya)")
+    assert doc.has("appearance", "brown hair") and doc.has("appearance", "brown eyes") and doc.has("appearance", "long hair")
+    assert doc.has("clothing", "school uniform")
+    hair_color = book.find_tag("brown hair")
+    entry = doc.find("appearance", "brown hair")
+    assert entry.group == str(hair_color["group_id"]) and entry.tag_id == hair_color["id"]  # catalogue-sourced, not a typed tag
+    own = doc.find("character", "hori kyouko (horimiya)")
+    assert own.group == "" and own.tag_id == 0                                            # not in the catalogue: added as plain text
+
+
 def test_add_remove_toggle_move_and_weights():
     doc = PromptDoc()
     assert doc.add("appearance", "blue hair") is not None and doc.add("appearance", "Blue  Hair") is None    # never twice

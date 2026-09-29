@@ -210,10 +210,13 @@ class SettingsPage(QWidget):
         comfyui_row = QHBoxLayout()
         comfyui_row.addWidget(self.comfyui_path, 1)
         comfyui_row.addWidget(browse_comfyui)
+        self.comfyui_download_btn = style.secondary(QPushButton(tr("comfyui.download.button")), "download")
+        self.comfyui_download_btn.clicked.connect(self._download_comfyui)
         self.comfyui_port = QSpinBox(minimum=1024, maximum=65535, value=int(cfg.get("comfyui.port", 8188)))
         self.comfyui_idle = QSpinBox(minimum=0, maximum=1440, value=int(cfg.get("comfyui.idle_minutes", 0) or 0))
         comfyui_form = QFormLayout()
         comfyui_form.addRow(tr("settings.comfyui_path"), comfyui_row)
+        comfyui_form.addRow("", self.comfyui_download_btn)
         comfyui_form.addRow(tr("settings.comfyui_port"), self.comfyui_port)
         comfyui_form.addRow(tr("settings.forge_idle"), self.comfyui_idle)
         self.comfyui_box = QGroupBox("ComfyUI")
@@ -542,7 +545,6 @@ class SettingsPage(QWidget):
         self.sd_download_btn = style.secondary(QPushButton(tr("sd.download.button")), "download")
         self.sd_check_btn.clicked.connect(self._recheck_pc)
         self.sd_download_btn.clicked.connect(self._download_forge)
-        self.sd_download_btn.setVisible(self.ctx.sd_enabled)
         self._show_sd_state()
         row = QHBoxLayout()
         row.addWidget(self.sd_check_btn)
@@ -586,10 +588,10 @@ class SettingsPage(QWidget):
 
         from anihub.ui.forge_install_dialog import ForgeInstallDialog
 
-        folder = QFileDialog.getExistingDirectory(self, tr("sd.download.button"), str(Path.home()))
+        folder = QFileDialog.getExistingDirectory(self, tr("sd.download.button"), str(self.ctx.paths.apps))
         if not folder:
             return
-        dlg = ForgeInstallDialog(self.ctx, Path(folder) / "AniHUB-Forge", self)
+        dlg = ForgeInstallDialog(self.ctx, Path(folder) / "Forge", self)
         dlg.exec()
         if dlg.installed is not None:
             self.forge_path.setText(str(dlg.installed))
@@ -603,6 +605,17 @@ class SettingsPage(QWidget):
         folder = QFileDialog.getExistingDirectory(self, tr("settings.comfyui_path"), self.comfyui_path.text())
         if folder:
             self.comfyui_path.setText(os.path.normpath(folder))
+
+    def _download_comfyui(self) -> None:
+        from anihub.ui.comfyui_install_dialog import ComfyuiInstallDialog
+
+        folder = QFileDialog.getExistingDirectory(self, tr("comfyui.download.button"), str(self.ctx.paths.apps))
+        if not folder:
+            return
+        dlg = ComfyuiInstallDialog(self.ctx, Path(folder) / "ComfyUI", self)
+        dlg.exec()
+        if dlg.installed is not None:
+            self.comfyui_path.setText(str(dlg.installed))
 
     def _pick_train_path(self) -> None:
         folder = QFileDialog.getExistingDirectory(self, tr("train.path"), self.train_path.text())
@@ -640,10 +653,10 @@ class SettingsPage(QWidget):
     def _download_train_scripts(self) -> None:
         from anihub.ui.lora_train_install_dialog import LoraTrainInstallDialog
 
-        folder = QFileDialog.getExistingDirectory(self, tr("train.install"), str(Path.home()))
+        folder = QFileDialog.getExistingDirectory(self, tr("train.install"), str(self.ctx.paths.apps))
         if not folder:
             return
-        dlg = LoraTrainInstallDialog(self.ctx, Path(folder) / "AniHUB-sd-scripts", self)
+        dlg = LoraTrainInstallDialog(self.ctx, Path(folder) / "sd-scripts", self)
         dlg.exec()
         if dlg.installed is not None:
             self.train_path.setText(str(dlg.installed))

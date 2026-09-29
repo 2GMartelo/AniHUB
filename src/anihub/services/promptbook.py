@@ -19,11 +19,23 @@ from anihub.services.promptbook_data import SLOTS, parse_catalog
 SLOT_KEYS = [s[0] for s in SLOTS]
 POSITIVE = [s[0] for s in SLOTS if not s[3]]
 NEGATIVE = [s[0] for s in SLOTS if s[3]]
-SLOT_NAMES = {key: (en, ru) for key, en, ru, _neg in SLOTS}
+SLOT_NAMES = {key: (en, ru) for key, en, ru, _neg, _char in SLOTS}
+CHARACTER_SLOTS = {key for key, _en, _ru, _neg, char in SLOTS if char}
 SEED_VERSION = 1
 PACK_FILE = Path(__file__).resolve().parents[1] / "data" / "promptbook_pack.zip"     # the pictures of the built-in tags that ship with the app
 IMAGE_SIZE = 256
 MIN_W, MAX_W, STEP_W = 0.1, 2.0, 0.1
+
+# A fresh library's Character 1 starts looking like Hori Kyouko (Horimiya) rather than blank (ТЗ item 5).
+DEFAULT_CHARACTER_TAGS = [
+    ("character", "hori kyouko (horimiya)"),
+    ("appearance", "long hair"),
+    ("appearance", "straight hair"),
+    ("appearance", "brown hair"),
+    ("appearance", "brown eyes"),
+    ("expression", "gentle smile"),
+    ("clothing", "school uniform"),
+]
 
 
 def slot_name(key: str, lang: str = "en") -> str:
@@ -42,6 +54,18 @@ def is_custom_slot(key: str) -> bool:
     return not any(s[0] == key for s in SLOTS)
 
 
+def is_character_slot(key: str) -> bool:
+    """Whether this slot gets one instance per active character (ui/prompt_builder.py's character switcher) once
+    more than one is active, instead of staying a single shared paragraph."""
+    return key in CHARACTER_SLOTS
+
+
+def character_key(slot: str, character: int) -> str:
+    """The composite storage key a character slot actually uses in PromptDoc.slots once character 2, 3 or 4 is
+    involved (character 1 keeps the plain key, so a single-character prompt is byte-for-byte what it always was)."""
+    return slot if character <= 1 else f"{slot}::{character}"
+
+
 def custom_slot_key(existing: set[str], label: str) -> str:
     """A short, stable, unique key for a user-typed section name."""
     base = "custom_" + re.sub(r"[^a-z0-9]+", "_", label.strip().lower()).strip("_")
@@ -53,27 +77,41 @@ def custom_slot_key(existing: set[str], label: str) -> str:
     return key
 
 
-def set_custom_slots(custom: list[dict], order: list[str]) -> None:
-    """Rebuilds SLOT_KEYS/POSITIVE/NEGATIVE/SLOT_NAMES from the built-ins plus `custom` ({key, label, negative}
-    dicts), in `order` (missing keys are appended in their original order)."""
-    global SLOT_KEYS, POSITIVE, NEGATIVE, SLOT_NAMES
+def set_custom_slots(custom: list[dict], order: list[str], character_overrides: dict[str, bool] | None = None) -> None:
+    """Rebuilds SLOT_KEYS/POSITIVE/NEGATIVE/SLOT_NAMES/CHARACTER_SLOTS from the built-ins plus `custom` ({key,
+    label, negative} dicts), in `order` (missing keys are appended in their original order). `character_overrides`
+    ({key: bool}) is the one place "belongs to a character" is recorded for EVERY slot, built-in or custom --
+    simpler than also carrying it inside `custom`'s own dicts, since a built-in slot has no dict of its own to
+    carry it in either."""
+    global SLOT_KEYS, POSITIVE, NEGATIVE, SLOT_NAMES, CHARACTER_SLOTS
+    overrides = character_overrides or {}
     by_key = {s[0]: s for s in SLOTS}
     for c in custom:
-        by_key[c["key"]] = (c["key"], c["label"], c["label"], bool(c.get("negative", False)))
+        by_key[c["key"]] = (c["key"], c["label"], c["label"], bool(c.get("negative", False)), False)
     keys = [k for k in order if k in by_key] + [k for k in by_key if k not in order]
     entries = [by_key[k] for k in keys]
     SLOT_KEYS = [e[0] for e in entries]
     POSITIVE = [e[0] for e in entries if not e[3]]
     NEGATIVE = [e[0] for e in entries if e[3]]
     SLOT_NAMES = {e[0]: (e[1], e[2]) for e in entries}
+    CHARACTER_SLOTS = {e[0] for e in entries if overrides.get(e[0], e[4])}
 
 
 def apply_custom_slots(cfg) -> None:
-    """Call once when the app (or a test) starts, and again whenever the user's sections change."""
-    set_custom_slots(cfg.get("promptbuilder.custom_slots", []) or [], cfg.get("promptbuilder.slot_order", []) or [])
+    """Call once when the app (or a test) starts, and again whenever the user's sections (or their
+    belongs-to-character flag) change."""
+    set_custom_slots(cfg.get("promptbuilder.custom_slots", []) or [], cfg.get("promptbuilder.slot_order", []) or [],
+                     cfg.get("promptbuilder.character_overrides", {}) or {})
 
 
-def add_custom_slot(cfg, label: str, negative: bool) -> str:
+def set_character_flag(cfg, key: str, value: bool) -> None:
+    overrides = dict(cfg.get("promptbuilder.character_overrides", {}) or {})
+    overrides[key] = bool(value)
+    cfg.set("promptbuilder.character_overrides", overrides, save=False)
+    apply_custom_slots(cfg)
+
+
+def add_custom_slot(cfg, label: str, negative: bool, character: bool = False) -> str:
     custom = list(cfg.get("promptbuilder.custom_slots", []) or [])
     existing = {s[0] for s in SLOTS} | {c["key"] for c in custom}
     key = custom_slot_key(existing, label)
@@ -83,6 +121,10 @@ def add_custom_slot(cfg, label: str, negative: bool) -> str:
     # config with no stored slot_order yet must still put a new section at the very end, not first.
     order = list(SLOT_KEYS) + [key]
     cfg.set("promptbuilder.slot_order", order)
+    if character:
+        overrides = dict(cfg.get("promptbuilder.character_overrides", {}) or {})
+        overrides[key] = True
+        cfg.set("promptbuilder.character_overrides", overrides, save=False)
     apply_custom_slots(cfg)
     return key
 
@@ -98,15 +140,21 @@ def rename_custom_slot(cfg, key: str, label: str) -> None:
 
 def delete_custom_slot(cfg, key: str, doc: "PromptDoc | None" = None) -> None:
     """Removes a user-created section. Any tags it held move to "extra" / "neg_unwanted", the same fallback
-    parse_prompt() already uses for text it does not recognise."""
+    parse_prompt() already uses for text it does not recognise -- including a character slot's per-character
+    composite keys (character_key()), if it had any tags stashed under characters 2-4."""
     custom = [c for c in cfg.get("promptbuilder.custom_slots", []) or [] if c["key"] != key]
     cfg.set("promptbuilder.custom_slots", custom, save=False)
     order = [k for k in (cfg.get("promptbuilder.slot_order", []) or []) if k != key]
     cfg.set("promptbuilder.slot_order", order)
+    overrides = cfg.get("promptbuilder.character_overrides", {}) or {}
+    if key in overrides:
+        overrides = {k: v for k, v in overrides.items() if k != key}
+        cfg.set("promptbuilder.character_overrides", overrides, save=False)
     if doc is not None:
         fallback = "neg_unwanted" if key in NEGATIVE else "extra"
-        doc.entries(fallback).extend(doc.entries(key))
-        doc.slots.pop(key, None)
+        for stored_key in [key] + [character_key(key, c) for c in (2, 3, 4)]:
+            doc.entries(fallback).extend(doc.entries(stored_key))
+            doc.slots.pop(stored_key, None)
     apply_custom_slots(cfg)
 
 
@@ -202,8 +250,11 @@ class PromptDoc:
             entry.weight = round(max(MIN_W, min(MAX_W, weight)), 2)
 
     def clear(self, negative: bool | None = None) -> None:
-        for key in SLOT_KEYS:
-            if negative is None or (key in NEGATIVE) == negative:
+        """Also sweeps character 2-4's composite keys (character_key()) for any slot actually present, not just
+        the SLOT_KEYS themselves -- character_count is not known here, so this goes by whatever keys exist."""
+        for key in list(self.slots):
+            base = key.split("::", 1)[0]
+            if base in SLOT_KEYS and (negative is None or (base in NEGATIVE) == negative):
                 self.slots[key] = []
 
     def is_empty(self) -> bool:
@@ -212,12 +263,22 @@ class PromptDoc:
     def paragraphs(self, keys: list[str]) -> list[str]:
         return [", ".join(e.render() for e in self.slots.get(k, [])) for k in keys if self.slots.get(k)]
 
-    def positive(self) -> str:
-        """One paragraph per slot, in writing order; each ends with a comma so the paragraphs read as one prompt."""
-        return ",\n".join(self.paragraphs(POSITIVE))
+    def _expand(self, keys: list[str], character_count: int) -> list[str]:
+        """With more than one active character, a character slot ("clothing"...) becomes one paragraph per
+        character (character_key()'s composite keys) instead of a single shared one."""
+        if character_count <= 1:
+            return keys
+        out = []
+        for k in keys:
+            out += [character_key(k, c) for c in range(1, character_count + 1)] if k in CHARACTER_SLOTS else [k]
+        return out
 
-    def negative(self) -> str:
-        return ",\n".join(self.paragraphs(NEGATIVE))
+    def positive(self, character_count: int = 1) -> str:
+        """One paragraph per slot, in writing order; each ends with a comma so the paragraphs read as one prompt."""
+        return ",\n".join(self.paragraphs(self._expand(POSITIVE, character_count)))
+
+    def negative(self, character_count: int = 1) -> str:
+        return ",\n".join(self.paragraphs(self._expand(NEGATIVE, character_count)))
 
     def count(self, keys: list[str]) -> int:
         return sum(len(self.slots.get(k, [])) for k in keys)
@@ -496,6 +557,18 @@ class PromptBook:
         for r in sorted(self.tags(), key=lambda r: order.get(r["slot"], 99)):
             table.setdefault(norm(r["text"]), (r["slot"], str(r["group_id"]) if r["exclusive"] else ""))
         return table
+
+    def seed_default_character(self, doc: "PromptDoc") -> None:
+        """Character 1 starts out looking like Hori Kyouko (Horimiya) instead of a blank slate. Catalogue tags are
+        pulled in exactly the way a catalogue click would (group/exclusive/tag_id, so they land in their own
+        subcategory group and stay highlighted in the tiles); "hori kyouko (horimiya)" itself is not in the
+        catalogue, so it is added as a plain typed tag, same as any hand-written one."""
+        for slot, text in DEFAULT_CHARACTER_TAGS:
+            row = self.find_tag(text)
+            if row:
+                doc.add(slot, text, group=str(row["group_id"]), exclusive=bool(row["exclusive"]), tag_id=row["id"])
+            else:
+                doc.add(slot, text)
 
     # --- editing ---------------------------------------------------------------------------------------------------
 
