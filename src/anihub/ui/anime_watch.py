@@ -19,7 +19,7 @@ from anihub.ui.extensions_dialog import ExtensionsDialog
 from anihub.ui.grid import ThumbGrid, image_to_thumb
 from anihub.ui.lang_filter import LangFilter, lang_name
 from anihub.ui.novels_page import placeholder_cover
-from anihub.ui.workers import run_async
+from anihub.ui.workers import run_async, run_status
 
 
 def source_title(source: AnimeSource) -> str:
@@ -75,8 +75,7 @@ class LinkDialog(QDialog):
                 self.list.addItem(item)
             self.message.setText(tr("track.found", n=self.list.count()))
 
-        run_async(lambda: self.ctx.anilist.search(text, 1, adult), on_done=done,
-                  on_error=lambda exc: self.message.setText(tr("status.error", msg=str(exc))))
+        run_status(lambda: self.ctx.anilist.search(text, 1, adult), on_done=done, status=self.message)
 
     def _accept(self) -> None:
         item = self.list.currentItem()
@@ -368,8 +367,7 @@ class WatchTab(QWidget):
             self.message.setText(tr("watch.episodes_n", n=len(episodes)) if episodes else tr("watch.no_episodes"))
             self._fill_tree()
 
-        run_async(lambda: source.episodes(entry), on_done=done,
-                  on_error=lambda exc: self.message.setText(tr("status.error", msg=str(exc))))
+        run_status(lambda: source.episodes(entry), on_done=done, status=self.message)
 
     def _show_link(self) -> None:
         media = self.ctx.watch.linked_media(self._src.name, self.entry.id) if self.entry and self._src else None

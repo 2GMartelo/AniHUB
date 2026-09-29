@@ -40,7 +40,7 @@ from anihub.ui.sd_history import HistoryView
 from anihub.ui.sd_queue import QueueController, QueueView
 from anihub.ui.viewer import ViewItem, Viewer
 from anihub.ui.vtube_view import VTubeView
-from anihub.ui.workers import post_to_gui, run_async
+from anihub.ui.workers import post_to_gui, run_async, run_status
 
 STATE_COLORS = {"stopped": "#8a8f94", "starting": "#f0a030", "running": "#3fb95a", "external": "#3fb95a",
                 "failed": "#e0575a"}
@@ -452,7 +452,7 @@ class GenerateView(QWidget):
             self.upscaler.addItems(upscalers or [wanted_up])
             self.upscaler.setCurrentIndex(max(self.upscaler.findText(wanted_up), 0))
 
-        run_async(fetch, on_done=done, on_error=lambda exc: self.message.setText(tr("status.error", msg=str(exc))))
+        run_status(fetch, on_done=done, status=self.message)
 
     # --- parameters ------------------------------------------------------------------------------------------
 
@@ -814,8 +814,7 @@ class GenerateView(QWidget):
         self._interrupting = True
         self.stop_btn.setEnabled(False)
         self.progress_text.setText(tr("sd.interrupting"))
-        run_async(self.controller.manager.api.interrupt,
-                  on_error=lambda exc: self.message.setText(tr("status.error", msg=str(exc))))
+        run_status(self.controller.manager.api.interrupt, status=self.message)
 
     def _poll_progress(self) -> None:
         if self._polling or not self._generating:
@@ -868,7 +867,7 @@ class GenerateView(QWidget):
             self.message.setText(tr("status.saved", saved=counts["saved"], dup=counts["duplicate"], failed=counts["failed"]))
             self.library_changed.emit()
 
-        run_async(work, on_done=done, on_error=lambda exc: self.message.setText(tr("status.error", msg=str(exc))))
+        run_status(work, on_done=done, status=self.message)
 
     def _upscale_selected(self) -> None:
         results = self.grid.selected_payloads()

@@ -119,7 +119,8 @@ class StatsDialog(QDialog):
                    (str(s.favorites), tr("stats.favorites")), (str(s.rated), tr("stats.rated")),
                    (f"{s.tags_total:,}".replace(",", " "), tr("stats.tags")), (str(s.collections), tr("stats.collections")),
                    (f"{s.novels_finished}/{s.novels}", tr("stats.novels")), (str(s.episodes_watched), tr("stats.episodes")),
-                   (str(s.subscriptions), tr("stats.subscriptions")), (str(s.trashed), tr("stats.trash"))]
+                   (str(s.subscriptions), tr("stats.subscriptions")), (str(s.trashed), tr("stats.trash")),
+                   (str(s.generations), tr("stats.generations"))]
         for i, (value, caption) in enumerate(entries):
             cards.addWidget(self._card(value, caption), i // 5, i % 5)
         holder = QWidget()
@@ -129,7 +130,8 @@ class StatsDialog(QDialog):
                     (tr("stats.by_source"), BarChart(s.by_source)),
                     (tr("stats.by_rating"), BarChart([(tr(f"rating.{k}") if k in ("general", "sensitive", "questionable", "explicit") else k, v)
                                                       for k, v in sorted(s.by_rating.items(), key=lambda kv: -kv[1])])),
-                    (tr("stats.top_tags"), BarChart(s.top_tags)), (tr("stats.top_artists"), BarChart(s.top_artists))]
+                    (tr("stats.top_tags"), BarChart(s.top_tags)), (tr("stats.top_artists"), BarChart(s.top_artists)),
+                    (tr("stats.by_model"), BarChart(s.generations_by_model))]
         for title, chart in sections:
             self.body.addWidget(style.role(QLabel(title), "h2"))
             self.body.addWidget(chart)

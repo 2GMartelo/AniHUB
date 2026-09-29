@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (
 
 from anihub.core.i18n import tr
 from anihub.ui import style
-from anihub.ui.workers import run_async
+from anihub.ui.workers import run_status
 
 TRI_NEXT = {"IGNORE": "INCLUDE", "INCLUDE": "EXCLUDE", "EXCLUDE": "IGNORE"}
 
@@ -352,8 +352,7 @@ class SourceSettingsDialog(QDialog):
         layout.addLayout(self.form)
         layout.addWidget(self.status)
         layout.addLayout(bottom)
-        run_async(api.source_preferences, source["id"], on_done=self._loaded,
-                  on_error=lambda exc: self.status.setText(tr("status.error", msg=str(exc))))
+        run_status(api.source_preferences, source["id"], on_done=self._loaded, status=self.status)
 
     def _sign_in(self) -> None:
         """Saves what is typed in the account fields (Enter was never pressed in them) and closes: the caller reloads the source."""
@@ -397,8 +396,7 @@ class SourceSettingsDialog(QDialog):
             self.changed = True
             self.status.setText(tr("srcset.saved"))
 
-        run_async(self.api.set_source_preference, self.source["id"], pref, value, on_done=done,
-                  on_error=lambda exc: self.status.setText(tr("status.error", msg=str(exc))))
+        run_status(self.api.set_source_preference, self.source["id"], pref, value, on_done=done, status=self.status)
 
     def _widget_for(self, pref: dict) -> QWidget:
         kind, value = pref["kind"], pref["value"]

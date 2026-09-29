@@ -657,4 +657,31 @@ DATA = r"""
 1495|Dossier ComfyUI
 1496|Port ComfyUI
 1497|Envoyer vers VTube
+1498|Notifications
+1499|Effacer
+1500|Aucune notification pour le moment
+1501|Raccourcis clavier
+1502|Raccourcis clavier
+1503|Réinitialiser
+1504|Palette de commandes
+1505|Notifications
+1506|Annuler
+1507|Rétablir
+1508|Aller à Arts
+1509|Aller à Manga
+1510|Aller à Light novels
+1511|Aller à Génération
+1512|Aller à Anime
+1513|Aller à Paramètres
+1514|Annulé : {label}
+1515|Rétabli : {label}
+1516|Discord Rich Presence
+1517|Afficher l'activité sur Discord
+1518|ID d'application
+1519|depuis discord.com/developers/applications
+1520|Navigation : {section}
+1521|Génération avec Stable Diffusion
+1522|génération
+1523|générations Stable Diffusion
+1524|Par modèle
 """

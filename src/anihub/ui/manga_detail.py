@@ -16,7 +16,7 @@ from anihub.ui.manga_controller import MangaController
 from anihub.ui import style
 from anihub.ui.manga_reader import Reader
 from anihub.ui.manga_tracking import TrackDialog
-from anihub.ui.workers import run_async
+from anihub.ui.workers import run_async, run_status
 
 ID_ROLE = Qt.ItemDataRole.UserRole
 
@@ -133,7 +133,7 @@ class MangaDetail(QWidget):
                 chapter, self._start_chapter = self._start_chapter, None
                 self._open_reader(chapter)
 
-        run_async(work, on_done=done, on_error=lambda exc: self.status.setText(tr("status.error", msg=str(exc))))
+        run_status(work, on_done=done, status=self.status)
 
     def _show(self) -> None:
         m = self.manga
@@ -203,7 +203,7 @@ class MangaDetail(QWidget):
             self._update_library_ui()
             self.changed.emit()
 
-        run_async(work, on_done=done, on_error=lambda exc: self.status.setText(tr("status.error", msg=str(exc))))
+        run_status(work, on_done=done, status=self.status)
 
     def _category_chosen(self) -> None:
         if self._loading_cats:
@@ -220,7 +220,7 @@ class MangaDetail(QWidget):
             self.manga = manga
             self.changed.emit()
 
-        run_async(work, on_done=done, on_error=lambda exc: self.status.setText(tr("status.error", msg=str(exc))))
+        run_status(work, on_done=done, status=self.status)
 
     # --- reading -----------------------------------------------------------------------------------------
 
@@ -270,16 +270,14 @@ class MangaDetail(QWidget):
             self.api.update_chapters(ids, is_read=read, last_page_read=0 if not read else None)
             self.api.sync_tracking(mid)
 
-        run_async(work, on_done=lambda _: (self.load_quiet(), self.changed.emit()),
-                  on_error=lambda exc: self.status.setText(tr("status.error", msg=str(exc))))
+        run_status(work, on_done=lambda _: (self.load_quiet(), self.changed.emit()), status=self.status)
 
     def _download(self) -> None:
         ids = self._selected_ids()
         if not ids:
             return
         self.status.setText(tr("manga.downloading"))
-        run_async(lambda: self.api.enqueue_downloads(ids), on_done=lambda _: self.dl_timer.start(2000),
-                  on_error=lambda exc: self.status.setText(tr("status.error", msg=str(exc))))
+        run_status(lambda: self.api.enqueue_downloads(ids), on_done=lambda _: self.dl_timer.start(2000), status=self.status)
 
     def _poll_downloads(self) -> None:
         def done(status: dict) -> None:

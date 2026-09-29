@@ -16,7 +16,7 @@ from anihub.ui.extensions_dialog import ExtensionsDialog
 from anihub.ui.grid import ThumbGrid, image_to_thumb
 from anihub.ui.lang_filter import LangFilter, lang_name
 from anihub.ui.novels_page import NovelsPage, placeholder_cover
-from anihub.ui.workers import run_async
+from anihub.ui.workers import run_async, run_status
 
 
 def blocked_by_filter(ctx: AppContext, entry: NovelEntry) -> bool:
@@ -89,7 +89,7 @@ class NovelDialog(QDialog):
                 self.read_btn.setEnabled(True)
                 self.shelf_btn.setEnabled(True)
 
-        run_async(work, on_done=done, on_error=lambda exc: self.message.setText(tr("status.error", msg=str(exc))))
+        run_status(work, on_done=done, status=self.message)
 
     def _to_shelf(self, read: bool) -> None:
         self.read_btn.setEnabled(False)
@@ -116,7 +116,7 @@ class NovelDialog(QDialog):
                 self.read_btn.setEnabled(True)
                 self.changed = True
 
-        run_async(work, on_done=done, on_error=lambda exc: self.message.setText(tr("status.error", msg=str(exc))))
+        run_status(work, on_done=done, status=self.message)
 
 
 class OnlineNovelsTab(QWidget):

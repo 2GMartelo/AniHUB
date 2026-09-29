@@ -4,14 +4,15 @@ import os
 from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QKeySequence
 from PySide6.QtWidgets import (
-    QApplication, QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, QFormLayout, QGroupBox, QProgressBar, QTableWidget,
-    QTableWidgetItem, QHBoxLayout, QLabel, QLineEdit, QPushButton,
-    QMessageBox, QPlainTextEdit, QScrollArea, QSpinBox, QTabWidget, QVBoxLayout, QWidget,
+    QApplication, QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, QFormLayout, QGroupBox, QKeySequenceEdit, QProgressBar,
+    QTableWidget, QTableWidgetItem, QHBoxLayout, QLabel, QLineEdit, QPushButton,
+    QMessageBox, QPlainTextEdit, QScrollArea, QSpinBox, QTabWidget, QToolButton, QVBoxLayout, QWidget,
 )
 
 from anihub.context import AppContext
-from anihub.core import agemode
+from anihub.core import agemode, keymap
 from anihub.core.i18n import LANGUAGES, tr
 from anihub.services.autotag import download_model
 from anihub.services.backends import gpu_list
@@ -259,6 +260,21 @@ class SettingsPage(QWidget):
             box.setLayout(form)
             return box
 
+        self.hotkey_edits: dict[str, QKeySequenceEdit] = {}
+        hotkey_rows = []
+        for action in keymap.ACTIONS:
+            edit = QKeySequenceEdit(QKeySequence(keymap.key_for(cfg, action.id)))
+            reset_btn = style.ghost(QToolButton(), "refresh")
+            reset_btn.setToolTip(tr("settings.hotkey_reset"))
+            reset_btn.clicked.connect(lambda _=False, a=action, e=edit: e.setKeySequence(QKeySequence(a.default)))
+            row_widget = QWidget()
+            row_layout = QHBoxLayout(row_widget)
+            row_layout.setContentsMargins(0, 0, 0, 0)
+            row_layout.addWidget(edit, 1)
+            row_layout.addWidget(reset_btn)
+            self.hotkey_edits[action.id] = edit
+            hotkey_rows.append((tr(action.label_key), row_widget))
+
         look_box = form_box(tr("settings.g_appearance"), (tr("settings.language"), self.lang), (tr("settings.theme"), self.theme), ("", self.custom_row),
                             ("", self.glass), ("", self.smooth), (tr("settings.close"), self.close_action))
         storage_box = form_box(tr("settings.g_storage"), (tr("settings.library"), library_row),
@@ -267,6 +283,14 @@ class SettingsPage(QWidget):
                            (tr("age.custom"), self.custom_tags))
         network_box = form_box(tr("settings.g_network"), (tr("settings.proxy"), self.proxy),
                                (tr("settings.interval"), self.interval), (tr("settings.parallel"), self.parallel))
+        hotkeys_box = form_box(tr("settings.hotkeys_title"), *hotkey_rows)
+
+        self.discord_enabled = QCheckBox(tr("settings.discord_enabled"))
+        self.discord_enabled.setChecked(bool(cfg.get("discord.enabled", False)))
+        self.discord_client_id = QLineEdit(str(cfg.get("discord.client_id", "") or ""))
+        self.discord_client_id.setPlaceholderText(tr("settings.discord_client_id_hint"))
+        discord_box = form_box(tr("settings.discord_title"), ("", self.discord_enabled),
+                               (tr("settings.discord_client_id"), self.discord_client_id))
 
         creds = QFormLayout()
         creds.setHorizontalSpacing(18)
@@ -314,12 +338,13 @@ class SettingsPage(QWidget):
             gen_boxes += [forge_box, gen_box, self.train_box, self.comfyui_box]  # hidden together when the PC cannot run Forge
         categories = [
             (tr("settings.cat_appearance"), [look_box]),
+            (tr("settings.cat_hotkeys"), [hotkeys_box]),
             (tr("settings.cat_library"), [storage_box, lib_box, tag_box]),
             (tr("age.title"), [age_box]),
             (tr("settings.cat_network"), [network_box, creds_box]),
             (tr("nav.manga"), [manga_box]),
             (tr("settings.cat_generation"), gen_boxes),
-            (tr("settings.cat_system"), [self.backup, self.about]),
+            (tr("settings.cat_system"), [self.backup, discord_box, self.about]),
         ]
         self.tabs = QTabWidget()
         for title, boxes in categories:
@@ -638,6 +663,11 @@ class SettingsPage(QWidget):
         cfg.set("autotag.character_threshold", self.tag_char.value(), save=False)
         cfg.set("manga.port", self.manga_port.value(), save=False)
         cfg.set("manga.poll_minutes", self.manga_poll.value(), save=False)
+        for action_id, edit in self.hotkey_edits.items():
+            text = edit.keySequence().toString()
+            cfg.set(f"hotkeys.{action_id}", "" if text == keymap.BY_ID[action_id].default else text, save=False)
+        cfg.set("discord.enabled", self.discord_enabled.isChecked(), save=False)
+        cfg.set("discord.client_id", self.discord_client_id.text().strip(), save=False)
         cfg.save()
         self.ctx.http.reconfigure()
         self.ctx.refresh_tagger()

@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
 from anihub.core.i18n import tr
 from anihub.services.suwayomi import oauth_callback
 from anihub.ui import style
-from anihub.ui.workers import run_async
+from anihub.ui.workers import run_async, run_status
 
 
 class TrackerAccountsDialog(QDialog):
@@ -310,7 +310,7 @@ class TrackDialog(QDialog):
         def work():
             return self.api.trackers(), self.api.track_records(self.manga["id"])
 
-        run_async(work, on_done=self._loaded, on_error=lambda exc: self.message.setText(tr("status.error", msg=str(exc))))
+        run_status(work, on_done=self._loaded, status=self.message)
 
     def _loaded(self, result) -> None:
         trackers, records = result

@@ -19,7 +19,7 @@ from anihub.services.generation import GenResult, prompt_tags
 from anihub.sources.base import RATINGS
 from anihub.ui.grid import PAYLOAD, ThumbGrid, image_to_thumb
 from anihub.ui.viewer import ViewItem, Viewer
-from anihub.ui.workers import run_async
+from anihub.ui.workers import run_status
 
 PAGE = 200
 
@@ -122,7 +122,7 @@ class HistoryView(QWidget):
             if rows and not self._exhausted:
                 self.grid.request_fill()
 
-        run_async(work, on_done=done, on_error=lambda exc: self.status.setText(tr("status.error", msg=str(exc))))
+        run_status(work, on_done=done, status=self.status)
 
     def _file(self, row: sqlite3.Row) -> Path:
         path = Path(row["path"])
@@ -184,9 +184,8 @@ class HistoryView(QWidget):
         def work():
             return self.ctx.library.save_generation(self._file(row), self._params(row), rating).status
 
-        run_async(work, on_done=lambda st: (self.status.setText(tr("status.saved", saved=int(st == "saved"), dup=int(st == "duplicate"),
-                                                                    failed=int(st == "failed"))), self.library_changed.emit()),
-                  on_error=lambda exc: self.status.setText(tr("status.error", msg=str(exc))))
+        run_status(work, on_done=lambda st: (self.status.setText(tr("status.saved", saved=int(st == "saved"), dup=int(st == "duplicate"),
+                                                                    failed=int(st == "failed"))), self.library_changed.emit()), status=self.status)
 
     def _menu(self, pos) -> None:
         row = self._first()
@@ -259,7 +258,7 @@ class HistoryView(QWidget):
             self.status.setText(tr("status.saved", saved=c["saved"], dup=c["duplicate"], failed=c["failed"]))
             self.library_changed.emit()
 
-        run_async(work, on_done=done, on_error=lambda exc: self.status.setText(tr("status.error", msg=str(exc))))
+        run_status(work, on_done=done, status=self.status)
 
     def _delete(self) -> None:
         ids = [r["id"] for r in self._selected()]

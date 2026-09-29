@@ -79,3 +79,30 @@ def test_providers_work_on_a_real_main_window(qapp, tmp_path):
     assert any("тём" in dlg.list.item(i).text().lower() or "theme" in dlg.list.item(i).text().lower() for i in range(dlg.list.count()))
     win.quit_app = lambda: None
     ctx.downloads.shutdown()
+
+
+def test_sd_history_search_provider_finds_a_past_generation_by_prompt(qapp, tmp_path):
+    from anihub.context import AppContext
+    from anihub.core.config import Config
+    from anihub.ui.main_window import MainWindow
+    from anihub.ui.palette_providers import sd_history_search
+
+    cfg = Config.load(tmp_path / "c.json")
+    cfg.set("library_path", str(tmp_path / "lib"), save=False)
+    cfg.set("first_run_done", True, save=False)
+    cfg.set("forge.path", str(tmp_path / "forge"), save=False)
+    ctx = AppContext.build(cfg)
+    ctx.db.add_history([{"path": "sd/generated/a.png", "seed": 1, "model": "m", "prompt": "a lonely lighthouse at dusk",
+                        "negative": "", "params": {}, "backend": "main"}])
+    win = MainWindow(ctx)
+    assert win.sd_enabled
+    hits = sd_history_search(win, "lighthouse")
+    assert hits and "lighthouse" in hits[0].title
+    hits[0].action()
+    assert win.nav.currentRow() == win.rows["sd"]
+    assert win.sd_page.tabs.currentWidget() is win.sd_page.history
+    assert win.sd_page.history.search.text() == "a lonely lighthouse at dusk"
+    assert sd_history_search(win, "zz") == []           # no match
+    assert sd_history_search(win, "li") == []           # too short to search
+    win.quit_app = lambda: None
+    ctx.downloads.shutdown()

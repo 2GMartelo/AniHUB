@@ -20,6 +20,8 @@ from anihub.services.downloads import DownloadManager
 from anihub.services.comfyui import ComfyManager
 from anihub.services.forge import ForgeManager
 from anihub.services.gpu_scheduler import GpuScheduler
+from anihub.core.notifications import NotificationCenter
+from anihub.core.undo import UndoStack
 from anihub.services.subscriptions import SubscriptionService
 from anihub.services.updater import Updater
 from anihub.services.suwayomi import SuwayomiManager
@@ -58,6 +60,8 @@ class AppContext:
                                  # and a ComfyUI job (services/seethrough.py's run()) both acquire this same instance
     comfy: ComfyManager  # video/sound/2D-VTube backend (ТЗ_rasshirenie_prilozheniya.md); always constructed, like
                          # `forge` -- comfyui.path empty just means check_install() reports it as not set up yet
+    notifications: NotificationCenter  # in-app notification history; the UI wires on_notify/on_change to Qt signals
+    undo: UndoStack  # Ctrl+Z/Ctrl+Y for library trash/restore (ui/library_view.py's LibraryView._file_op)
 
     @classmethod
     def build(cls, cfg: Config) -> "AppContext":
@@ -74,7 +78,8 @@ class AppContext:
                   Autotagger(model_dir_default(config_dir())), AniList(http, cfg, db), NovelShelf(db, paths),
                   build_anime_sources(http, cfg, paths.anime, config_dir() / "plugins" / "anime"), None,
                   Updater(http, cfg), None, None, build_novel_sources(http, cfg, config_dir() / "plugins" / "novels"),
-                  ExtensionManager(http, cfg, config_dir() / "plugins"), GpuScheduler(), ComfyManager(cfg, config_dir()))
+                  ExtensionManager(http, cfg, config_dir() / "plugins"), GpuScheduler(), ComfyManager(cfg, config_dir()),
+                  NotificationCenter(), UndoStack())
         ctx.watch = WatchService(db, ctx.anilist)
         ctx.downloads = DownloadManager(ctx.library, http, cfg)
         ctx.subscriptions = SubscriptionService(db, ctx.sources, ctx.downloads, cfg)

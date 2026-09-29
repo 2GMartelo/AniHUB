@@ -6,6 +6,8 @@ from typing import Callable
 
 from PySide6.QtCore import QObject, QRunnable, QThread, QThreadPool, Signal, Slot
 
+from anihub.core.i18n import tr
+
 log = logging.getLogger(__name__)
 
 
@@ -79,6 +81,12 @@ def run_async(fn: Callable, *args, on_done: Callable | None = None, on_error: Ca
               pool: QThreadPool | None = None) -> None:
     """Call from the GUI thread. `on_done(result)` / `on_error(exc)` run on the GUI thread."""
     (pool or QThreadPool.globalInstance()).start(_Runnable(fn, args, on_done, on_error, _get_bridge()))
+
+
+def run_status(fn: Callable, *args, status, on_done: Callable | None = None, pool: QThreadPool | None = None) -> None:
+    """`run_async` with the error branch every *View class was hand-writing the same way: show `status.error` on
+    the given label (a QLabel, or anything with `.setText`)."""
+    run_async(fn, *args, on_done=on_done, on_error=lambda exc: status.setText(tr("status.error", msg=str(exc))), pool=pool)
 
 
 def post_to_gui(callback: Callable, arg=None) -> None:

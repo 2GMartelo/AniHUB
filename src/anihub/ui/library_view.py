@@ -28,7 +28,7 @@ from anihub.ui.stats_dialog import StatsDialog
 from anihub.ui.tag_widgets import tag_line_edit
 from anihub.ui.tagquery import apply_tag
 from anihub.ui.viewer import ViewItem, Viewer
-from anihub.ui.workers import run_async
+from anihub.ui.workers import run_async, run_status
 
 PAGE = 200
 ROLE = Qt.ItemDataRole.UserRole
@@ -336,9 +336,8 @@ class LibraryView(QWidget):
         db, paths = self.ctx.db, self.ctx.paths
         fn = export.export_pack if how == "pack" else export.export_html
         self.status.setText(tr("status.loading"))
-        run_async(lambda: fn(db, paths, ids, Path(path), title),
-                  on_done=lambda n: self.status.setText(tr("export.done", n=n, path=path)),
-                  on_error=lambda exc: self.status.setText(tr("status.error", msg=str(exc))))
+        run_status(lambda: fn(db, paths, ids, Path(path), title),
+                  on_done=lambda n: self.status.setText(tr("export.done", n=n, path=path)), status=self.status)
 
     def _import_pack(self) -> None:
         from PySide6.QtWidgets import QFileDialog
@@ -356,8 +355,7 @@ class LibraryView(QWidget):
             self.reload()
             self.changed.emit()
 
-        run_async(lambda: export.import_pack(self.ctx.db, self.ctx.library, Path(path)), on_done=done,
-                  on_error=lambda exc: self.status.setText(tr("status.error", msg=str(exc))))
+        run_status(lambda: export.import_pack(self.ctx.db, self.ctx.library, Path(path)), on_done=done, status=self.status)
 
     def _stats(self) -> None:
         StatsDialog(self.ctx, self).exec()
@@ -627,9 +625,8 @@ class LibraryView(QWidget):
 
     def _run_autotag(self, ids: list[int]) -> None:
         self.status.setText(tr("lib.autotagging", n=len(ids)))
-        run_async(lambda: self.ctx.library.autotag_items(ids, set_rating=False),
-                  on_done=lambda n: (self.status.setText(tr("lib.autotagged", n=n)), self.reload()),
-                  on_error=lambda exc: self.status.setText(tr("status.error", msg=str(exc))))
+        run_status(lambda: self.ctx.library.autotag_items(ids, set_rating=False),
+                  on_done=lambda n: (self.status.setText(tr("lib.autotagged", n=n)), self.reload()), status=self.status)
 
     # --- trash ---------------------------------------------------------------------------------------
 
@@ -650,27 +647,36 @@ class LibraryView(QWidget):
 
     def _trash(self, ids: list[int]) -> None:
         if ids and self._confirm_trash(len(ids)):
-            self._file_op(lambda: self.ctx.library.trash(ids))
+            self._file_op(lambda: self.ctx.library.trash(ids),
+                          undo=(tr("lib.trash_action"), lambda: self.ctx.library.restore(ids), lambda: self.ctx.library.trash(ids)))
 
     def _restore(self, ids: list[int]) -> None:
-        self._file_op(lambda: self.ctx.library.restore(ids))
+        self._file_op(lambda: self.ctx.library.restore(ids),
+                      undo=(tr("lib.restore"), lambda: self.ctx.library.trash(ids), lambda: self.ctx.library.restore(ids)))
 
     def _purge(self, ids: list[int]) -> None:
         if QMessageBox.question(self, tr("lib.purge"), tr("lib.purge_confirm", n=len(ids))) == QMessageBox.StandardButton.Yes:
-            self._file_op(lambda: self.ctx.library.purge(ids))
+            self._file_op(lambda: self.ctx.library.purge(ids))  # permanent: nothing to undo
 
     def _empty_trash(self) -> None:
         n = self.ctx.db.count_search(kind=self.kind, trashed=True)
         if n and QMessageBox.question(self, tr("lib.empty_trash"), tr("lib.purge_confirm", n=n)) == QMessageBox.StandardButton.Yes:
-            self._file_op(lambda: self.ctx.library.empty_trash(self.kind))
+            self._file_op(lambda: self.ctx.library.empty_trash(self.kind))  # permanent: nothing to undo
 
-    def _file_op(self, fn) -> None:
+    def _file_op(self, fn, undo: tuple[str, object, object] | None = None) -> None:
         def done(_n) -> None:
             self.refresh_sidebar()
             self.reload()
             self.changed.emit()
+            if undo is not None:
+                label, undo_fn, redo_fn = undo
+                self.ctx.undo.push(label, lambda: self._run_silently(undo_fn), lambda: self._run_silently(redo_fn))
 
-        run_async(fn, on_done=done, on_error=lambda exc: self.status.setText(tr("status.error", msg=str(exc))))
+        run_status(fn, on_done=done, status=self.status)
+
+    def _run_silently(self, fn) -> None:
+        """Re-apply an undo/redo step (already confirmed once, by the action that pushed it) and refresh the view."""
+        run_status(fn, on_done=lambda _n: (self.refresh_sidebar(), self.reload(), self.changed.emit()), status=self.status)
 
     # --- viewer ----------------------------------------------------------------------------------------
 

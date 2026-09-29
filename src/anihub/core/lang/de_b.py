@@ -657,4 +657,31 @@ DATA = r"""
 1495|ComfyUI-Ordner
 1496|ComfyUI-Port
 1497|An VTube senden
+1498|Benachrichtigungen
+1499|Leeren
+1500|Noch keine Benachrichtigungen
+1501|Tastenkürzel
+1502|Tastenkürzel
+1503|Zurücksetzen
+1504|Befehlspalette
+1505|Benachrichtigungen
+1506|Rückgängig
+1507|Wiederholen
+1508|Zu Kunst wechseln
+1509|Zu Manga wechseln
+1510|Zu Light Novels wechseln
+1511|Zu Generierung wechseln
+1512|Zu Anime wechseln
+1513|Zu Einstellungen wechseln
+1514|Rückgängig gemacht: {label}
+1515|Wiederholt: {label}
+1516|Discord Rich Presence
+1517|Aktivität auf Discord anzeigen
+1518|Anwendungs-ID
+1519|von discord.com/developers/applications
+1520|Durchsuchen: {section}
+1521|Generierung mit Stable Diffusion
+1522|Generierung
+1523|Stable-Diffusion-Generierungen
+1524|Nach Modell
 """

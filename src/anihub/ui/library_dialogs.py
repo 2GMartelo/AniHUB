@@ -16,7 +16,7 @@ from anihub.core.i18n import tr
 from anihub.library.service import collect_image_files
 from anihub.sources.base import RATINGS
 from anihub.ui.tag_widgets import tag_line_edit
-from anihub.ui.workers import run_async
+from anihub.ui.workers import run_async, run_status
 
 CATEGORY_COLORS = {"artist": "#e0575a", "copyright": "#d070d6", "character": "#3fb95a", "meta": "#f0a030"}
 TAG_CATEGORIES = ("general", "character", "artist", "copyright", "meta")
@@ -481,8 +481,7 @@ class DuplicatesDialog(QDialog):
         trash_btn.clicked.connect(self._trash_checked)
         close_btn.clicked.connect(self.close)
         threshold = int(ctx.cfg.get("library.near_threshold", 6))
-        run_async(lambda: ctx.library.duplicate_groups(kind, threshold), on_done=self._fill,
-                  on_error=lambda exc: self.status.setText(tr("status.error", msg=str(exc))))
+        run_status(lambda: ctx.library.duplicate_groups(kind, threshold), on_done=self._fill, status=self.status)
 
     def _fill(self, groups: list) -> None:
         self.tree.clear()

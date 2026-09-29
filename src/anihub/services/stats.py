@@ -29,6 +29,8 @@ class Stats:
     anime_by_status: dict[str, int] = field(default_factory=dict)
     episodes_watched: int = 0
     subscriptions: int = 0
+    generations: int = 0
+    generations_by_model: list[tuple[str, int]] = field(default_factory=list)
 
 
 def month_keys(now: float, months: int) -> list[str]:
@@ -73,6 +75,9 @@ def collect(db: Database, months: int = 12, top: int = 15, now: float | None = N
     s.anime_by_status = {r[0]: r[1] for r in c.execute("SELECT status, COUNT(*) FROM anime_list GROUP BY status")}
     s.episodes_watched = one("SELECT COALESCE(SUM(progress), 0) FROM anime_list")
     s.subscriptions = one("SELECT COUNT(*) FROM subscriptions")
+    s.generations = one("SELECT COUNT(*) FROM sd_history")
+    s.generations_by_model = [(r[0], r[1]) for r in c.execute(
+        "SELECT COALESCE(model, '?'), COUNT(*) n FROM sd_history GROUP BY 1 ORDER BY n DESC, 1 LIMIT ?", (top,))]
     return s
 
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
+from typing import Callable
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QAction, QCloseEvent, QKeySequence, QShortcut
@@ -12,8 +13,10 @@ from PySide6.QtWidgets import (
 
 from anihub import APP_NAME, __version__
 from anihub.context import AppContext
+from anihub.core import keymap
 from anihub.core.i18n import tr
 from anihub.ui.anime_page import AnimePage
+from anihub.ui import bridges
 from anihub.ui.browse import BrowseView
 from anihub.ui.downloads_view import DownloadSignals, DownloadsButton, notify_text, summary_text
 from anihub.ui.forge_controller import ForgeController
@@ -25,6 +28,8 @@ from anihub.ui.subscriptions_view import SubscriptionsView
 from anihub.ui.sd_page import SDPage
 from anihub.ui.settings import SettingsPage
 from anihub.ui.navrail import NavRail
+from anihub.ui.notification_center import NotificationSignals, NotificationsButton, ToastHost
+from anihub.services.discord_presence import DiscordPresence
 from anihub.ui import style
 from anihub.ui.style import EmptyState, state_color
 from anihub.ui.theme import apply_backdrop, is_glass, make_app_icon, paint_backdrop
@@ -82,11 +87,11 @@ class MainWindow(QMainWindow):
             self.forge.poll()  # attach to an already running Forge, if any
 
             # library -> img2img bridge (ТЗ 5.3)
-            self.library.send_to_img2img.connect(self._to_img2img)
-            self.sd_page.saved.send_to_img2img.connect(self._to_img2img)
+            self.library.send_to_img2img.connect(lambda row: bridges.to_img2img(self, row))
+            self.sd_page.saved.send_to_img2img.connect(lambda row: bridges.to_img2img(self, row))
             # library -> VTube bridge (ТЗ_rasshirenie_prilozheniya.md, Stage 3); sd_page.saved's own copy of this
             # signal is handled locally by SDPage itself (no section switch needed, it is already inside sd_page)
-            self.library.send_to_vtube.connect(self._to_vtube)
+            self.library.send_to_vtube.connect(lambda path: bridges.to_vtube(self, path))
         self.manga_ctrl = MangaController(ctx, parent=self)
         self.manga_page = MangaPage(ctx, self.manga_ctrl)
         self.manga_ctrl.new_chapters.connect(self._on_new_chapters)
@@ -177,7 +182,6 @@ class MainWindow(QMainWindow):
         self._subs_timer.start(5 * 60 * 1000)
         QTimer.singleShot(45000, self._poll_subscriptions)
         self._update_subscription_badge()
-        QShortcut(QKeySequence("Ctrl+K"), self, activated=self.open_palette)
         self.error_btn = QToolButton()
         self.error_btn.setObjectName("updateNotice")
         self.error_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
@@ -205,13 +209,76 @@ class MainWindow(QMainWindow):
         self.offline_btn.setChecked(bool(ctx.cfg.get("network.offline", False)))
         self.set_offline(self.offline_btn.isChecked())
 
+        self.notif_signals = NotificationSignals()
+        ctx.notifications.on_notify = self.notif_signals.posted.emit
+        ctx.notifications.on_change = self.notif_signals.changed.emit
+        self.notif_btn = NotificationsButton(ctx, self.notif_signals)
+        self.statusBar().insertPermanentWidget(0, self.notif_btn)
+        self.toast_host = ToastHost(self)
+        self.notif_signals.posted.connect(self.toast_host.show_toast)
+        self._hotkey_shortcuts: dict[str, QShortcut] = {}
+        self._apply_hotkeys()
+        self.settings.saved.connect(self._apply_hotkeys)
+
+        self.discord: DiscordPresence | None = None
+        self._reload_discord()
+        self.settings.saved.connect(self._reload_discord)
+
         self._setup_tray()
         run_async(ctx.library.auto_purge, on_error=lambda exc: None)  # empty what sat in the trash past the grace period
 
+    # --- keyboard shortcuts (core/keymap.py) ----------------------------------------------------------------
+
+    def _hotkey_handlers(self) -> dict[str, Callable[[], None]]:
+        handlers: dict[str, Callable[[], None]] = {
+            "palette": self.open_palette,
+            "notifications": self.notif_btn.open_panel,
+            "undo": self._undo,
+            "redo": self._redo,
+        }
+        for section in ("arts", "manga", "novels", "sd", "anime", "settings"):
+            if section in self.rows:
+                handlers[f"go_{section}"] = (lambda s=section: self.go(s))
+        return handlers
+
+    def _apply_hotkeys(self) -> None:
+        """(Re)builds every global QShortcut from core/keymap.py + the user's overrides -- called once at startup
+        and again whenever Settings saves (a hotkey may have just been rebound)."""
+        for shortcut in self._hotkey_shortcuts.values():
+            shortcut.setParent(None)
+        self._hotkey_shortcuts = {}
+        handlers = self._hotkey_handlers()
+        for action in keymap.ACTIONS:
+            handler = handlers.get(action.id)
+            text = keymap.key_for(self.ctx.cfg, action.id)
+            if handler is None or not text:
+                continue
+            self._hotkey_shortcuts[action.id] = QShortcut(QKeySequence(text), self, activated=handler)
+
+    def _undo(self) -> None:
+        label = self.ctx.undo.undo()
+        if label:
+            self.statusBar().showMessage(tr("undo.done", label=label), 4000)
+
+    def _redo(self) -> None:
+        label = self.ctx.undo.redo()
+        if label:
+            self.statusBar().showMessage(tr("undo.redone", label=label), 4000)
+
+    def _notify(self, title: str, text: str, kind: str = "info") -> None:
+        """Every place that used to call `self.tray.showMessage(...)` directly: log it to the in-app notification
+        history (bell button + panel), show a toast while the window is visible, and fall back to the OS tray
+        balloon only while the window itself is hidden (minimized to tray) so a background AniHUB still notices."""
+        self.ctx.notifications.notify(title, text, kind)
+        if self.isHidden() and getattr(self, "tray", None) is not None:
+            icon = {"error": QSystemTrayIcon.MessageIcon.Critical,
+                    "warning": QSystemTrayIcon.MessageIcon.Warning}.get(kind, QSystemTrayIcon.MessageIcon.Information)
+            self.tray.showMessage(APP_NAME, text, icon, 6000)
+
     def _batch_finished(self, result) -> None:
         self.browse.on_batch(tr("dl.batch_status", details=summary_text(result.counts)))
-        if result.total >= int(self.ctx.cfg.get("downloads.notify_min", 10)) and getattr(self, "tray", None) is not None:
-            self.tray.showMessage(APP_NAME, notify_text(result), QSystemTrayIcon.MessageIcon.Information, 6000)
+        if result.total >= int(self.ctx.cfg.get("downloads.notify_min", 10)):
+            self._notify(tr("dl.title"), notify_text(result))
 
     def _update_subscription_badge(self) -> None:
         n = self.ctx.subscriptions.total_new()
@@ -229,8 +296,8 @@ class MainWindow(QMainWindow):
             self.subscriptions.reload()
             fresh = sum(len(r.new) for r in results if not r.saved)
             saved = sum(r.saved for r in results)
-            if (fresh or saved) and getattr(self, "tray", None) is not None:
-                self.tray.showMessage(APP_NAME, tr("subs.notice", fresh=fresh, saved=saved), QSystemTrayIcon.MessageIcon.Information, 6000)
+            if fresh or saved:
+                self._notify(tr("subs.tab"), tr("subs.notice", fresh=fresh, saved=saved))
 
         run_async(svc.check_all, on_done=done, on_error=lambda exc: None)
 
@@ -288,8 +355,7 @@ class MainWindow(QMainWindow):
         style.bind_icon(self.update_btn, "download", "accent", 16)
         self.update_btn.setText(tr("update.notice", v=release.version))
         self.update_btn.show()
-        if getattr(self, "tray", None) is not None and self.tray.isVisible():
-            self.tray.showMessage(APP_NAME, tr("update.notice", v=release.version), QSystemTrayIcon.MessageIcon.Information, 6000)
+        self._notify(APP_NAME, tr("update.notice", v=release.version))
 
     def _show_update(self) -> None:
         if self._pending_release is not None:
@@ -344,6 +410,25 @@ class MainWindow(QMainWindow):
 
     def _on_forge_state(self, state: str) -> None:
         self.forge_status.setText(f'<span style="color:{state_color(state)}">●</span>&nbsp; Forge: {tr(f"forge.state.{state}")}')
+        if state == "running" and self.discord is not None:
+            self.discord.update(tr("discord.generating"))
+
+    def _reload_discord(self) -> None:
+        if self.discord is not None:
+            self.discord.close()
+        self.discord = None
+        if self.ctx.cfg.get("discord.enabled", False):
+            client_id = str(self.ctx.cfg.get("discord.client_id", "") or "")
+            if client_id:
+                self.discord = DiscordPresence(client_id)
+                self._update_presence()
+
+    def _update_presence(self) -> None:
+        if self.discord is None:
+            return
+        key = self._current_section or next(iter(self.rows), None)
+        if key is not None:
+            self.discord.update(tr("discord.browsing", section=tr(f"nav.{key}")))
 
     def go(self, section: str) -> None:
         """Switch to a section by name ("arts", "manga", "novels", "sd", "anime", "settings"); a hidden one is ignored."""
@@ -365,6 +450,7 @@ class MainWindow(QMainWindow):
         self._current_section = key
         self._cancel_pause(key)
         self._resume_section(key)
+        self._update_presence()
 
     def _resume_section(self, key: str | None) -> None:
         """Only Forge's/Suwayomi's own 2-second state poll is paused/resumed for now (services/queues that make no
@@ -400,30 +486,13 @@ class MainWindow(QMainWindow):
         self.go("anime")
         self.anime_page.tabs.setCurrentWidget(self.anime_page.music_hub)
 
-    def _to_img2img(self, row: dict) -> None:
-        """Open the SD section with the chosen library picture as the img2img source."""
-        from pathlib import Path
-        from anihub.ui.library_view import row_prompt
-        path = self.ctx.paths.root / (row["trash_path"] if row.get("trashed_at") and row.get("trash_path") else row["path"])
-        prompt, negative = row_prompt(self.ctx, row)
-        self.go("sd")
-        self.sd_page.show_generate_tab()
-        self.sd_page.generate.use_as_init(Path(path), prompt, negative)
-
-    def _to_vtube(self, path: Path) -> None:
-        """Open the SD section with the chosen library picture loaded into the VTube tab's own picture picker."""
-        self.go("sd")
-        if self.sd_page.vtube is not None:
-            self.sd_page.tabs.setCurrentWidget(self.sd_page.vtube)
-            self.sd_page.vtube.load_path(path)
 
     def _on_manga_state(self, state: str) -> None:
         self.manga_status.setText(f'<span style="color:{state_color(state)}">●</span>&nbsp; {tr("nav.manga")}: {tr(f"forge.state.{state}")}')
 
     def _on_new_chapters(self, chapters: list) -> None:
         titles = ", ".join(dict.fromkeys(c["manga"]["title"] for c in chapters))
-        self.tray.showMessage(APP_NAME, tr("manga.new_chapters", n=len(chapters), titles=titles[:200]),
-                              QSystemTrayIcon.MessageIcon.Information, 8000)
+        self._notify(tr("nav.manga"), tr("manga.new_chapters", n=len(chapters), titles=titles[:200]))
 
     def _show_from_tray(self) -> None:
         self.showNormal()
@@ -437,6 +506,8 @@ class MainWindow(QMainWindow):
         self.manga_ctrl.stop_blocking()
         if self.lora_train_page is not None and self.lora_train_page.trainer is not None:
             self.lora_train_page.trainer.cancel()  # otherwise the sd-scripts subprocess is left running, holding the GPU
+        if self.discord is not None:
+            self.discord.close()
         self.tray.hide()
         QApplication.quit()
 

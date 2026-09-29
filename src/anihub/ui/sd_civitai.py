@@ -15,7 +15,7 @@ from anihub.context import AppContext
 from anihub.core import agemode
 from anihub.core.i18n import tr
 from anihub.services import civitai
-from anihub.ui.workers import run_async
+from anihub.ui.workers import run_async, run_status
 
 BASES = ["", "SDXL", "Illustrious", "Pony", "SD 1.5", "Flux"]
 
@@ -218,8 +218,7 @@ class CivitaiView(QWidget):
                 self.version.setCurrentIndex(idx)
             self.status.clear()
 
-        run_async(civitai.get_model, self.ctx.http, model_id, self._token(), on_done=done,
-                  on_error=lambda exc: self.status.setText(tr("status.error", msg=str(exc))))
+        run_status(civitai.get_model, self.ctx.http, model_id, self._token(), on_done=done, status=self.status)
 
     # --- details -------------------------------------------------------------------------------------------
 

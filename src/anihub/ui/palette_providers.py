@@ -127,6 +127,26 @@ def anime_list(win, query: str) -> list[Entry]:
     return out
 
 
+def sd_history_search(win, query: str) -> list[Entry]:
+    """Past generations, searched by prompt -- Forge's own history is otherwise only reachable by opening
+    Generation and typing into its own search box."""
+    q = query.strip()
+    if len(q) < 3 or not win.sd_enabled:
+        return []
+
+    def open_row(text: str):
+        def run() -> None:
+            win.go("sd")
+            win.sd_page.tabs.setCurrentWidget(win.sd_page.history)
+            win.sd_page.history.search.setText(text)
+            win.sd_page.history.reload()
+        return run
+
+    rows = win.ctx.db.history(q, 6, 0)
+    return [Entry((row["prompt"] or "").strip()[:90] or f"seed {row['seed']}", open_row(row["prompt"] or ""),
+                  tr("palette.history"), "") for row in rows]
+
+
 def build_providers(win) -> list:
     return [lambda q: sections(win), lambda q: actions(win), lambda q: library_search(win, q), lambda q: novels(win, q),
-            lambda q: anime_list(win, q)]
+            lambda q: anime_list(win, q), lambda q: sd_history_search(win, q)]

@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
 
 from anihub.core.i18n import tr
 from anihub.ui import style
-from anihub.ui.workers import run_async
+from anihub.ui.workers import run_status
 
 
 class InsertDialog(QDialog):
@@ -65,7 +65,7 @@ class InsertDialog(QDialog):
             self._fill()
             self.status.setText(tr("sd.insert_count", n=len(items)))
 
-        run_async(self.loader, on_done=done, on_error=lambda exc: self.status.setText(tr("status.error", msg=str(exc))))
+        run_status(self.loader, on_done=done, status=self.status)
 
     def _refresh(self) -> None:
         def work():
@@ -73,9 +73,8 @@ class InsertDialog(QDialog):
             return self.loader()
 
         self.status.setText(tr("status.loading"))
-        run_async(work, on_done=lambda items: (setattr(self, "_items", items), self._fill(),
-                                               self.status.setText(tr("sd.insert_count", n=len(items)))),
-                  on_error=lambda exc: self.status.setText(tr("status.error", msg=str(exc))))
+        run_status(work, on_done=lambda items: (setattr(self, "_items", items), self._fill(),
+                                               self.status.setText(tr("sd.insert_count", n=len(items)))), status=self.status)
 
     def _fill(self) -> None:
         text = self.filter.text().lower().strip()

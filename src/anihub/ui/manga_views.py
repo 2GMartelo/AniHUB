@@ -15,7 +15,7 @@ from anihub.ui.manga_filters import FilterPanel, SourceSettingsDialog, is_accoun
 from anihub.ui.grid import ThumbGrid, image_to_thumb
 from anihub.ui.manga_controller import MangaController
 from anihub.ui.manga_detail import fmt_date
-from anihub.ui.workers import run_async
+from anihub.ui.workers import run_async, run_status
 
 LANG_NAMES = {"en": "English", "ru": "Русский", "ja": "日本語", "zh": "中文", "ko": "한국어", "es": "Español",
               "fr": "Français", "de": "Deutsch", "pt": "Português", "it": "Italiano", "id": "Indonesia",
@@ -126,7 +126,7 @@ class MangaLibraryTab(QWidget):
             self._fill_facets()
             self._apply_filter()
 
-        run_async(work, on_done=done, on_error=lambda exc: self.status.setText(tr("status.error", msg=str(exc))))
+        run_status(work, on_done=done, status=self.status)
 
     def _fill_facets(self) -> None:
         """Genres and publication statuses that actually occur in the library become filter choices."""
@@ -207,8 +207,7 @@ class MangaBrowseTab(QWidget):
     def reload_sources(self) -> None:
         if not self.ctrl.state.ready:
             return
-        run_async(self.api.sources, on_done=self._sources_loaded,
-                  on_error=lambda exc: self.status.setText(tr("status.error", msg=str(exc))))
+        run_status(self.api.sources, on_done=self._sources_loaded, status=self.status)
 
     def _sources_loaded(self, sources: list[dict]) -> None:
         self._sources = [s for s in sources if not nsfw_hidden(self.ctx, s["extension"]["contentWarning"])]
@@ -543,4 +542,4 @@ class MangaUpdatesTab(QWidget):
                 self.tree.addTopLevelItem(item)
             self.status.setText(tr("manga.updates_count", n=len(nodes)))
 
-        run_async(work, on_done=done, on_error=lambda exc: self.status.setText(tr("status.error", msg=str(exc))))
+        run_status(work, on_done=done, status=self.status)

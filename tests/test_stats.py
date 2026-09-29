@@ -26,6 +26,9 @@ def make(tmp_path):
     db.anime_upsert(media_id=1, title="X", status="CURRENT", progress=5)
     db.anime_upsert(media_id=2, title="Y", status="COMPLETED", progress=12)
     db.add_subscription("s", "danbooru", "cat")
+    db.add_history([{"path": "sd/generated/1.png", "seed": 1, "model": "modelA", "prompt": "p", "negative": "", "params": {}, "backend": "main"},
+                    {"path": "sd/generated/2.png", "seed": 2, "model": "modelA", "prompt": "p", "negative": "", "params": {}, "backend": "main"},
+                    {"path": "sd/generated/3.png", "seed": 3, "model": "modelB", "prompt": "p", "negative": "", "params": {}, "backend": "main"}])
     return db
 
 
@@ -51,11 +54,13 @@ def test_collect_counts_everything_and_ignores_the_trash(tmp_path):
     assert [k for k, _ in s.per_month] == ["2026-04", "2026-05", "2026-06", "2026-07", "2026-08", "2026-09"]
     assert dict(s.per_month)["2026-09"] == 2 and dict(s.per_month)["2026-07"] == 1 and dict(s.per_month)["2026-08"] == 0
     assert "2025-12" not in dict(s.per_month)                                        # older than the window
+    assert s.generations == 3 and s.generations_by_model[0] == ("modelA", 2) and ("modelB", 1) in s.generations_by_model
 
 
 def test_empty_library_gives_zeros(tmp_path):
     s = stats.collect(Database(tmp_path / "e.db"))
     assert s.items == 0 and s.total_bytes == 0 and s.top_tags == [] and len(s.per_month) == 12 and not any(v for _, v in s.per_month)
+    assert s.generations == 0 and s.generations_by_model == []
 
 
 def test_dashboard_renders_charts_and_cards(qapp, tmp_path):
@@ -74,7 +79,7 @@ def test_dashboard_renders_charts_and_cards(qapp, tmp_path):
         time.sleep(0.01)
     assert dlg.body.count() >= 5
     charts = dlg.findChildren(BarChart)
-    assert len(charts) == 5
+    assert len(charts) == 6
     for chart in charts:
         chart.resize(500, chart.minimumHeight())
         image = QImage(chart.size(), QImage.Format.Format_ARGB32_Premultiplied)
