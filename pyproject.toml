@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "anihub"
-version = "0.13.0"
+version = "0.14.0"
 description = "AniHUB: art browser, manga reader, Stable Diffusion frontend and media library"
 requires-python = ">=3.11"
 dependencies = [
