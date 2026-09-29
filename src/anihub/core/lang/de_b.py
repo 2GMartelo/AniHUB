@@ -724,4 +724,6 @@ DATA = r"""
 1562|Tags aus einer Datei laden…
 1563|Gespeichert: {n} Tags → {path}
 1564|Geladen: {nodes} Kategorien, {tags} Tags, {images} Bilder
+1565|Alle Bilder hier neu zeichnen (Forge)
+1566|Hier gibt es nichts neu zu zeichnen
 """

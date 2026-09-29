@@ -997,6 +997,7 @@ class PromptBuilder(QWidget):
             menu.addSeparator()
         if node is not None or sel[0] == "slot":
             menu.addAction(tr("pb.tree.previews"), self._previews_for_view)
+            menu.addAction(tr("pb.tree.regen_view"), self._regenerate_view)
         if node is not None:
             menu.addAction(tr("pb.tree.delete"), lambda: self._delete_node(node))
         menu.addSeparator()
@@ -1290,6 +1291,18 @@ class PromptBuilder(QWidget):
         """One click: every tag of the catalogue gets a new picture drawn on the standard character (the old ones are replaced)."""
         rows = [r for r in self.book.tags() if r["text"] not in pb.NO_PICTURE_TAGS]
         if QMessageBox.question(self, tr("pb.regen_all"), tr("pb.regen_confirm", n=len(rows))) != QMessageBox.StandardButton.Yes:
+            return
+        self._with_forge(lambda api: self._run_previews(api, rows))
+
+    def _regenerate_view(self) -> None:
+        """Like regenerate_all(), but only the tags of whichever group/subgroup is open in the tree right now get a
+        new picture (the old ones are replaced) -- for touching up one category without waiting through the whole
+        catalogue."""
+        rows = [r for r in self._rows.values() if r["text"] not in pb.NO_PICTURE_TAGS]
+        if not rows:
+            self.status.setText(tr("pb.regen_view.empty"))
+            return
+        if QMessageBox.question(self, tr("pb.tree.regen_view"), tr("pb.regen_confirm", n=len(rows))) != QMessageBox.StandardButton.Yes:
             return
         self._with_forge(lambda api: self._run_previews(api, rows))
 

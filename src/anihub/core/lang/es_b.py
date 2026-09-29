@@ -724,4 +724,6 @@ DATA = r"""
 1562|Cargar etiquetas desde un archivo…
 1563|Guardado: {n} etiquetas → {path}
 1564|Cargado: {nodes} categorías, {tags} etiquetas, {images} imágenes
+1565|Redibujar todas las imágenes aquí (Forge)
+1566|Aquí no hay nada que redibujar
 """

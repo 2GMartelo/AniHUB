@@ -724,4 +724,6 @@ DATA = r"""
 1562|Charger des balises depuis un fichier…
 1563|Enregistré : {n} balises → {path}
 1564|Chargé : {nodes} catégories, {tags} balises, {images} images
+1565|Redessiner toutes les images ici (Forge)
+1566|Il n'y a rien à redessiner ici
 """

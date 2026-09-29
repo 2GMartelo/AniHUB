@@ -724,4 +724,6 @@ DATA = r"""
 1562|Carregar tags de um arquivo…
 1563|Salvo: {n} tags → {path}
 1564|Carregado: {nodes} categorias, {tags} tags, {images} imagens
+1565|Redesenhar todas as imagens aqui (Forge)
+1566|Não há nada para redesenhar aqui
 """

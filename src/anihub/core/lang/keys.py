@@ -1567,4 +1567,6 @@ pb.catalog.export
 pb.catalog.import
 pb.catalog.exported
 pb.catalog.imported
+pb.tree.regen_view
+pb.regen_view.empty
 """.split("\n") if k]

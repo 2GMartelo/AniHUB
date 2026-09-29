@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QImage
-from PySide6.QtWidgets import QFileDialog
+from PySide6.QtWidgets import QFileDialog, QMessageBox
 
 from anihub.core import agemode
 from anihub.core.config import Config
@@ -350,6 +350,34 @@ def test_import_catalog_reports_a_bad_file_without_crashing(env, monkeypatch, tm
     monkeypatch.setattr(QFileDialog, "getOpenFileName", staticmethod(lambda *a, **k: (str(bad), "")))
     v._import_catalog()
     assert v.status.text()                                                                 # an error, not a crash
+
+
+def test_regenerate_view_only_redraws_the_currently_open_groups_tags(env, monkeypatch):
+    v = env.view
+    monkeypatch.setattr(QMessageBox, "question", staticmethod(lambda *a, **k: QMessageBox.StandardButton.Yes))
+    captured = {}
+    monkeypatch.setattr(v, "_run_previews", lambda api, rows: captured.__setitem__("rows", rows))
+    v.form["api"] = lambda: object()                              # _with_forge sees a "running" Forge and calls straight through
+
+    select_node(v, "clothing.outfit")
+    v._regenerate_view()
+    assert captured["rows"] and all(r["slot"] == "clothing" for r in captured["rows"])
+    outfit_texts = {r["text"] for r in captured["rows"]}
+
+    select_node(v, "appearance.hair_color")
+    v._regenerate_view()
+    assert all(r["slot"] == "appearance" for r in captured["rows"])
+    assert {r["text"] for r in captured["rows"]} != outfit_texts                        # a different group: different tags
+
+
+def test_regenerate_view_without_forge_reports_status_and_does_not_crash(env, monkeypatch):
+    from anihub.core.i18n import tr
+
+    v = env.view
+    monkeypatch.setattr(QMessageBox, "question", staticmethod(lambda *a, **k: QMessageBox.StandardButton.Yes))
+    select_node(v, "clothing.outfit")
+    v._regenerate_view()
+    assert v.status.text() == tr("pb.need_forge")
 
 
 def test_saved_zoom_is_applied_on_the_next_start(qapp, tmp_path):
