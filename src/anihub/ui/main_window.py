@@ -573,6 +573,8 @@ class MainWindow(QMainWindow):
             Step("offline", lambda: self.offline_btn, section("settings")),
             Step("settings_discord", lambda: self.settings.discord_enabled, section("settings")),
             Step("settings_backup", lambda: self.settings.backup, section("settings")),
+            Step("settings_vtuber", lambda: self.settings.vtuber_box, section("settings")),
+            Step("settings_koikatsu", lambda: self.settings.koikatsu_box, section("settings")),
             Step("palette", None, section("arts", 0)),
             Step("close", None, section("arts", 0)),
             Step("finish", None, section("arts", 0)),

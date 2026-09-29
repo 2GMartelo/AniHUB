@@ -23,8 +23,9 @@ def wait(qapp, cond, limit=5):
 class FakeApi:
     """Stands in for SuwayomiApi: records the calls the dialogs make."""
 
-    def __init__(self, trackers, records=()):
+    def __init__(self, trackers, records=(), cover_bytes: bytes | None = None):
         self._trackers, self._records, self.calls = trackers, list(records), []
+        self._cover_bytes = cover_bytes
 
     def trackers(self):
         return self._trackers
@@ -34,8 +35,12 @@ class FakeApi:
 
     def track_search(self, tracker_id, query):
         self.calls.append(("search", tracker_id, query))
-        return [{"remoteId": "77", "title": "Berserk (found)", "coverUrl": "", "summary": "", "publishingStatus": "Ongoing",
-                 "publishingType": "Manga", "totalChapters": 364, "trackingUrl": ""}]
+        return [{"remoteId": "77", "title": "Berserk (found)", "coverUrl": "https://example.com/cover.png" if self._cover_bytes else "",
+                 "summary": "", "publishingStatus": "Ongoing", "publishingType": "Manga", "totalChapters": 364, "trackingUrl": ""}]
+
+    def fetch_bytes(self, url):
+        self.calls.append(("fetch_bytes", url))
+        return self._cover_bytes
 
     def track_bind(self, manga_id, tracker_id, remote_id):
         self.calls.append(("bind", manga_id, tracker_id, remote_id))
@@ -170,6 +175,44 @@ def test_track_dialog_binds_edits_and_unbinds(qapp, monkeypatch):
     card._unbind()
     wait(qapp, lambda: any(c[0] == "unbind" for c in api.calls))
     assert ("unbind", 10, False) in api.calls                                 # "No" = keep the remote entry
+    dlg.close()
+
+
+def test_search_results_show_a_cover_thumbnail_so_same_named_series_are_tellable_apart(qapp):
+    from PySide6.QtCore import QBuffer, QIODevice
+    from PySide6.QtGui import QImage
+
+    from anihub.ui.manga_tracking import TrackDialog
+
+    img = QImage(20, 28, QImage.Format.Format_RGB32)
+    img.fill(0xFF3366CC)
+    buf = QBuffer()
+    buf.open(QIODevice.OpenModeFlag.WriteOnly)
+    img.save(buf, "PNG")
+    cover_bytes = bytes(buf.data())
+
+    api = FakeApi([ANILIST], cover_bytes=cover_bytes)
+    dlg = TrackDialog(api, {"id": 4, "title": "Berserk"})
+    wait(qapp, lambda: cards_of(dlg))
+    card = cards_of(dlg)[0]
+    card._search()
+    wait(qapp, lambda: card.results.count() == 1)
+    wait(qapp, lambda: not card.results.item(0).icon().isNull())
+    assert ("fetch_bytes", "https://example.com/cover.png") in api.calls
+    dlg.close()
+
+
+def test_a_cover_with_no_url_is_skipped_without_a_fetch_call(qapp):
+    from anihub.ui.manga_tracking import TrackDialog
+
+    api = FakeApi([ANILIST])                                       # no cover_bytes: track_search's own coverUrl comes back ""
+    dlg = TrackDialog(api, {"id": 4, "title": "Berserk"})
+    wait(qapp, lambda: cards_of(dlg))
+    card = cards_of(dlg)[0]
+    card._search()
+    wait(qapp, lambda: card.results.count() == 1)
+    assert card.results.item(0).icon().isNull()
+    assert not any(c[0] == "fetch_bytes" for c in api.calls)
     dlg.close()
 
 

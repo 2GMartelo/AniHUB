@@ -766,4 +766,32 @@ DATA = r"""
 1604|Raccourcis clavier
 1605|Ctrl+Z / Ctrl+Y annulent et rétablissent une mise à la corbeille/restauration dans la bibliothèque — les mêmes raccourcis fonctionnent partout dans l'application.
 1606|Annuler
+1607|Télécharger la sélection
+1608|Trouvés : {n}
+1609|Le téléchargement nécessite votre connexion à koikatsucards.com : exportez ses cookies depuis votre navigateur et importez-les depuis « Importer des identifiants depuis un fichier » dans les Paramètres (Réseau et sources) — comme pour n'importe quel autre site.
+1610|Définissez d'abord le dossier Koikatsu (Paramètres → Génération → Koikatsu).
+1611|Rechercher par étiquette (personnage, œuvre, auteur...)
+1612|Enregistré : {n} → {path}
+1613|koikatsucards.com
+1614|Chercher des cartes sur koikatsucards.com…
+1615|Télécharger Koikatsu
+1616|Koikatsu
+1617|Koikatsu est un jeu commercial qu'AniHUB ne peut pas télécharger à votre place. Indiquez ici votre installation existante pour parcourir/télécharger des cartes de personnage dedans, ou utilisez le bouton pour savoir où obtenir le jeu.
+1618|Dossier Koikatsu
+1619|Live2D Cubism (page de téléchargement)
+1620|Pipeline VTube : rigging et suivi
+1621|Un PSD issu de l'onglet VTube ci-dessus a encore besoin d'un rigger pour en faire un modèle Live2D animable, et d'un suivi facial pour le faire bouger réellement en direct. AniHUB ne fait ni l'un ni l'autre elle-même — ces boutons lancent/installent les autres programmes pour cela.
+1622|Rigger
+1623|Stretchy Studio (dans le navigateur)
+1624|Suivi / sortie de diffusion
+1625|Télécharger VSeeFace
+1626|Terminé. VSeeFace est installé dans {path}.
+1627|Téléchargement et extraction de VSeeFace (environ 190 Mo) dans :\n{dest}
+1628|Installation de VSeeFace
+1629|Dossier VSeeFace
+1630|VTube Studio (via Steam)
+1631|Indiquez ici une installation Koikatsu existante pour rechercher et télécharger des cartes de personnage depuis koikatsucards.com directement dedans (nécessite votre propre connexion là-bas, importée comme les cookies de n'importe quel autre site).
+1632|Koikatsu
+1633|Une fois que vous avez un PSD depuis l'onglet VTube, c'est ici que vous obtenez les autres programmes : un rigger pour en faire un modèle animable, et un suivi facial pour le faire bouger réellement en direct.
+1634|Rigging et suivi
 """

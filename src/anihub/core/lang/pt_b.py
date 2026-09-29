@@ -766,4 +766,32 @@ DATA = r"""
 1604|Atalhos de teclado
 1605|Ctrl+Z / Ctrl+Y desfazem e refazem mover para a lixeira/restaurar na biblioteca — os mesmos atalhos funcionam em qualquer lugar do aplicativo.
 1606|Desfazer
+1607|Baixar selecionados
+1608|Encontrados: {n}
+1609|Baixar requer seu login no koikatsucards.com: exporte os cookies do seu navegador e importe-os em "Importar logins de um arquivo" nas Configurações (Rede e fontes) — do mesmo jeito que para qualquer outro site.
+1610|Defina primeiro a pasta do Koikatsu (Configurações → Geração → Koikatsu).
+1611|Buscar por tag (personagem, obra, autor...)
+1612|Salvo: {n} → {path}
+1613|koikatsucards.com
+1614|Buscar cartas no koikatsucards.com…
+1615|Baixar Koikatsu
+1616|Koikatsu
+1617|Koikatsu é um jogo comercial que a AniHUB não pode baixar por você. Aponte para sua instalação existente para navegar/baixar cartas de personagem nela, ou use o botão para descobrir onde conseguir o jogo.
+1618|Pasta do Koikatsu
+1619|Live2D Cubism (página de download)
+1620|Pipeline VTube: rigging e rastreamento
+1621|Um PSD da aba VTube acima ainda precisa de um rigger para virar um modelo Live2D animável, e de um rastreador facial para realmente controlá-lo ao vivo. A AniHUB não faz nenhuma das duas coisas sozinha — estes botões abrem/instalam os outros programas para isso.
+1622|Rigger
+1623|Stretchy Studio (no navegador)
+1624|Rastreamento / saída para transmissão
+1625|Baixar VSeeFace
+1626|Concluído. VSeeFace está instalado em {path}.
+1627|Baixando e descompactando o VSeeFace (cerca de 190 MB) em:\n{dest}
+1628|Instalando o VSeeFace
+1629|Pasta do VSeeFace
+1630|VTube Studio (via Steam)
+1631|Aponte isso para uma instalação existente do Koikatsu para buscar e baixar cartas de personagem do koikatsucards.com direto nela (precisa do seu próprio login lá, importado do mesmo jeito que os cookies de qualquer outro site).
+1632|Koikatsu
+1633|Assim que você tiver um PSD da aba VTube, é aqui que você consegue os outros programas: um rigger para transformá-lo em um modelo animável, e um rastreador facial para realmente controlá-lo ao vivo.
+1634|Rigging e rastreamento
 """

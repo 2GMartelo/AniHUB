@@ -766,4 +766,32 @@ DATA = r"""
 1604|Atajos de teclado
 1605|Ctrl+Z / Ctrl+Y deshacen y rehacen un movimiento a la papelera/restauración en la biblioteca — los mismos atajos funcionan en cualquier parte de la aplicación.
 1606|Deshacer
+1607|Descargar seleccionados
+1608|Encontrados: {n}
+1609|Descargar requiere su inicio de sesión en koikatsucards.com: exporte sus cookies del navegador e impórtelas desde "Importar accesos desde un archivo" en Ajustes (Red y fuentes) — igual que para cualquier otro sitio.
+1610|Primero configure la carpeta de Koikatsu (Ajustes → Generación → Koikatsu).
+1611|Buscar por etiqueta (personaje, obra, autor...)
+1612|Guardado: {n} → {path}
+1613|koikatsucards.com
+1614|Buscar cartas en koikatsucards.com…
+1615|Descargar Koikatsu
+1616|Koikatsu
+1617|Koikatsu es un juego comercial que AniHUB no puede descargar por usted. Apunte esto a su instalación existente para buscar/descargar cartas de personaje en ella, o use el botón para averiguar dónde conseguir el juego.
+1618|Carpeta de Koikatsu
+1619|Live2D Cubism (página de descarga)
+1620|Flujo VTube: rigging y seguimiento
+1621|Un PSD de la pestaña VTube de arriba aún necesita un rigger para convertirlo en un modelo Live2D animable, y un rastreador facial para manejarlo en vivo de verdad. AniHUB no hace ninguna de las dos cosas por sí misma — estos botones abren/instalan los otros programas para ello.
+1622|Rigger
+1623|Stretchy Studio (en el navegador)
+1624|Seguimiento / salida de transmisión
+1625|Descargar VSeeFace
+1626|Listo. VSeeFace está instalado en {path}.
+1627|Descargando y descomprimiendo VSeeFace (unos 190 MB) en:\n{dest}
+1628|Instalando VSeeFace
+1629|Carpeta de VSeeFace
+1630|VTube Studio (vía Steam)
+1631|Apunte esto a una instalación existente de Koikatsu para buscar y descargar cartas de personaje desde koikatsucards.com directamente en ella (necesita su propio inicio de sesión allí, importado igual que las cookies de cualquier otro sitio).
+1632|Koikatsu
+1633|Una vez que tenga un PSD de la pestaña VTube, aquí es donde consigue los otros programas: un rigger para convertirlo en un modelo animable, y un rastreador facial para manejarlo en vivo de verdad.
+1634|Rigging y seguimiento
 """

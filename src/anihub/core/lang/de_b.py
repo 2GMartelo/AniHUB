@@ -766,4 +766,32 @@ DATA = r"""
 1604|Tastenkürzel
 1605|Strg+Z / Strg+Y machen ein Verschieben in den Papierkorb/Wiederherstellen in der Bibliothek rückgängig bzw. wiederholen es — dieselben Tastenkombinationen funktionieren überall in der App.
 1606|Rückgängig
+1607|Auswahl herunterladen
+1608|Gefunden: {n}
+1609|Zum Herunterladen wird Ihre Anmeldung bei koikatsucards.com benötigt: exportieren Sie dessen Cookies aus Ihrem Browser und importieren Sie sie über „Anmeldedaten aus einer Datei importieren" in den Einstellungen (Netzwerk & Quellen) — genau wie bei jeder anderen Seite.
+1610|Legen Sie zuerst den Koikatsu-Ordner fest (Einstellungen → Generierung → Koikatsu).
+1611|Nach Tag suchen (Charakter, Werk, Autor …)
+1612|Gespeichert: {n} → {path}
+1613|koikatsucards.com
+1614|Karten auf koikatsucards.com suchen…
+1615|Koikatsu herunterladen
+1616|Koikatsu
+1617|Koikatsu ist ein kommerzielles Spiel, das AniHUB nicht für Sie herunterladen kann. Verweisen Sie hier auf Ihre vorhandene Installation, um Charakterkarten darin zu durchsuchen/herunterzuladen, oder nutzen Sie den Button, um herauszufinden, wo Sie das Spiel bekommen.
+1618|Koikatsu-Ordner
+1619|Live2D Cubism (Download-Seite)
+1620|VTube-Pipeline: Rigging und Tracking
+1621|Eine PSD aus dem VTube-Tab oben braucht noch einen Rigger, um sie in ein animierbares Live2D-Modell zu verwandeln, und einen Gesichts-Tracker, um sie wirklich live zu steuern. AniHUB übernimmt keines von beidem selbst — diese Schaltflächen starten/installieren die anderen Programme dafür.
+1622|Rigger
+1623|Stretchy Studio (im Browser)
+1624|Tracking / Streaming-Ausgabe
+1625|VSeeFace herunterladen
+1626|Fertig. VSeeFace ist unter {path} installiert.
+1627|VSeeFace (ca. 190 MB) wird heruntergeladen und entpackt nach:\n{dest}
+1628|VSeeFace wird installiert
+1629|VSeeFace-Ordner
+1630|VTube Studio (über Steam)
+1631|Verweisen Sie hier auf eine vorhandene Koikatsu-Installation, um Charakterkarten von koikatsucards.com zu suchen und direkt dorthin herunterzuladen (benötigt Ihre eigene Anmeldung dort, importiert genauso wie die Cookies jeder anderen Seite).
+1632|Koikatsu
+1633|Sobald Sie eine PSD aus dem VTube-Tab haben, bekommen Sie hier die anderen Programme: einen Rigger, um sie in ein animierbares Modell zu verwandeln, und einen Gesichts-Tracker, um sie wirklich live zu steuern.
+1634|Rigging und Tracking
 """

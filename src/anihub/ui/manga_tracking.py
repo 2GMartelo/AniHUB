@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import html
 
-from PySide6.QtCore import Qt, QUrl, Signal
-from PySide6.QtGui import QDesktopServices
+from PySide6.QtCore import QSize, Qt, QUrl, Signal
+from PySide6.QtGui import QDesktopServices, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QComboBox, QDialog, QDoubleSpinBox, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QListWidget,
     QListWidgetItem, QMessageBox, QPushButton, QStackedWidget, QVBoxLayout, QWidget,
@@ -233,6 +233,8 @@ class TrackCard(QGroupBox):
         self.go = style.primary(QPushButton(tr("search.button")), "search")
         self.results = QListWidget()
         self.results.setMaximumHeight(150)
+        self.results.setIconSize(QSize(32, 44))                     # a cover per result: trackers often list several
+        # near-identically-titled series (sequels, same name different work); the cover tells them apart at a glance
         self.bind_btn = style.secondary(QPushButton(tr("track.bind")), "plus")
         self.bind_btn.setEnabled(False)
         row = QHBoxLayout()
@@ -262,9 +264,25 @@ class TrackCard(QGroupBox):
                 item.setData(Qt.ItemDataRole.UserRole, r["remoteId"])
                 item.setToolTip(r.get("summary", "")[:400])
                 self.results.addItem(item)
+                cover = r.get("coverUrl")
+                if cover:
+                    run_async(self.api.fetch_bytes, cover, on_done=lambda data, it=item: self._set_cover(it, data), on_error=lambda _exc: None)
             self.message.setText(tr("track.found", n=len(found)))
 
         run_async(self.api.track_search, self.tracker["id"], text, on_done=done, on_error=self._failed)
+
+    def _set_cover(self, item: QListWidgetItem, data: bytes) -> None:
+        """`item` may belong to a search this widget has since cleared (a new search, or the dialog closing) by
+        the time the cover finishes downloading -- the C++ side is gone then, so `item` itself throws on touch."""
+        try:
+            row = item.listWidget()
+        except RuntimeError:
+            return
+        if row is None:
+            return
+        pix = QPixmap()
+        if pix.loadFromData(data):
+            item.setIcon(QIcon(pix.scaled(32, 44, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)))
 
     def _bind(self) -> None:
         item = self.results.currentItem()

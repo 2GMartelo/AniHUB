@@ -72,6 +72,39 @@ def test_comfyui_install_dialog_paused_before_extracting_keeps_installed_none(qa
     dlg.close()
 
 
+# --- the VSeeFace install dialog ----------------------------------------------------------------------------------
+
+def test_vseeface_install_dialog_writes_vseeface_path_on_success(qapp, tmp_path, monkeypatch):
+    from anihub.services import vseeface_install
+    from anihub.ui.vseeface_install_dialog import VSeeFaceInstallDialog
+
+    installed_to = tmp_path / "dest" / "VSeeFace"
+    monkeypatch.setattr(vseeface_install, "install", lambda *a, **k: installed_to)
+    ctx = make_ctx(tmp_path)
+    dlg = VSeeFaceInstallDialog(ctx, tmp_path / "dest")
+    pump_until(qapp, lambda: dlg.installed is not None)
+    assert dlg.installed == installed_to
+    assert ctx.cfg.get("vtuber.vseeface_path") == str(installed_to)
+    assert not dlg.close_btn.isHidden() and dlg.cancel_btn.isHidden()
+    dlg.close()
+
+
+def test_vseeface_install_dialog_reports_failure(qapp, tmp_path, monkeypatch):
+    from anihub.services import vseeface_install
+    from anihub.ui.vseeface_install_dialog import VSeeFaceInstallDialog
+
+    def boom(*a, **k):
+        raise vseeface_install.VSeeFaceInstallError("no space")
+
+    monkeypatch.setattr(vseeface_install, "install", boom)
+    ctx = make_ctx(tmp_path)
+    dlg = VSeeFaceInstallDialog(ctx, tmp_path / "dest")
+    pump_until(qapp, lambda: not dlg.close_btn.isHidden())
+    assert "no space" in dlg.state.text()
+    assert not ctx.cfg.get("vtuber.vseeface_path")
+    dlg.close()
+
+
 # --- Settings: the download buttons default to ctx.paths.apps -----------------------------------------------------
 
 @pytest.fixture
@@ -114,6 +147,75 @@ def test_download_train_scripts_button_starts_at_the_apps_folder(page, monkeypat
     _capture_start_dir(monkeypatch, seen)
     settings_page._download_train_scripts()
     assert seen["start"] == str(ctx.paths.apps)
+
+
+def test_download_vseeface_button_starts_at_the_apps_folder(page, monkeypatch):
+    settings_page, ctx = page
+    seen: dict = {}
+    _capture_start_dir(monkeypatch, seen)
+    settings_page._download_vseeface()
+    assert seen["start"] == str(ctx.paths.apps)
+
+
+def test_vtuber_and_koikatsu_boxes_are_visible_even_before_generation_is_enabled(page):
+    """Rigging/tracking/Koikatsu don't need Forge at all -- unlike forge_box/comfyui_box/train_box, these must not
+    be hidden (or garbage-collected) just because the PC can't run Stable Diffusion."""
+    settings_page, ctx = page
+    assert not ctx.sd_enabled
+    assert settings_page.vtuber_box.parent() is not None
+    assert settings_page.koikatsu_box.parent() is not None
+    assert settings_page.vseeface_path.text() == ""
+    assert settings_page.koikatsu_path.text() == ""
+
+
+def test_save_persists_vseeface_and_koikatsu_paths(page):
+    settings_page, ctx = page
+    settings_page.vseeface_path.setText(r"C:\apps\VSeeFace")
+    settings_page.koikatsu_path.setText(r"C:\games\Koikatsu")
+    settings_page._save()
+    assert ctx.cfg.get("vtuber.vseeface_path") == r"C:\apps\VSeeFace"
+    assert ctx.cfg.get("koikatsu.path") == r"C:\games\Koikatsu"
+
+
+# --- VTube Studio via Steam, Stretchy Studio / Cubism as plain links -----------------------------------------------
+
+def test_vtubestudio_button_launches_steam_when_steam_is_present(page, monkeypatch):
+    settings_page, ctx = page
+    from anihub.services import steam_launch
+
+    monkeypatch.setattr(steam_launch, "steam_installed", lambda: True)
+    seen = {}
+    monkeypatch.setattr(steam_launch, "open_steam_install", lambda app_id: seen.setdefault("app_id", app_id))
+    settings_page._open_vtubestudio()
+    assert seen["app_id"] == 1325860
+
+
+def test_vtubestudio_button_falls_back_to_the_store_page_without_steam(page, monkeypatch):
+    settings_page, ctx = page
+    from anihub.services import steam_launch
+
+    monkeypatch.setattr(steam_launch, "steam_installed", lambda: False)
+    seen = {}
+    monkeypatch.setattr(settings_page, "_open_url", lambda url: seen.setdefault("url", url))
+    settings_page._open_vtubestudio()
+    assert "store.steampowered.com/app/1325860" in seen["url"]
+
+
+def test_stretchy_and_cubism_buttons_just_open_their_urls(page, monkeypatch):
+    settings_page, ctx = page
+    seen = []
+    monkeypatch.setattr(settings_page, "_open_url", lambda url: seen.append(url))
+    settings_page.stretchy_btn.click()
+    settings_page.cubism_btn.click()
+    assert seen == ["https://editor.stretchy.studio/", "https://www.live2d.com/en/cubism/download/editor/"]
+
+
+def test_koikatsu_download_button_opens_the_vk_page(page, monkeypatch):
+    settings_page, ctx = page
+    seen = []
+    monkeypatch.setattr(settings_page, "_open_url", lambda url: seen.append(url))
+    settings_page.koikatsu_download_btn.click()
+    assert seen == ["https://vk.ru/@1koikatsu-vse-nuzhnye-ssylki-dlya-ustanovki-kk"]
 
 
 def test_forge_download_button_is_not_hidden_before_generation_is_enabled(page):

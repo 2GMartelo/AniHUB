@@ -239,6 +239,68 @@ class SettingsPage(QWidget):
         self.comfyui_box = QGroupBox(tr("settings.comfyui_group"))
         self.comfyui_box.setLayout(comfyui_form)
 
+        # VTube pipeline (ТЗ_rasshirenie_prilozheniya.md stage 3): a completed PSD from the ComfyUI box above still
+        # needs (a) a rigger to turn it into an animatable Live2D model and (b) a face-tracker to actually puppet
+        # it live -- neither is something AniHUB does itself, so this box is launchers/installers for other
+        # programs, not a pipeline AniHUB runs end to end.
+        vtuber_hint = style.role(QLabel(tr("vtuber.hint")), "dim")
+        vtuber_hint.setWordWrap(True)
+        self.stretchy_btn = style.secondary(QPushButton(tr("vtuber.stretchy_studio")), "external")
+        self.stretchy_btn.clicked.connect(lambda: self._open_url("https://editor.stretchy.studio/"))
+        self.cubism_btn = style.secondary(QPushButton(tr("vtuber.cubism")), "external")
+        self.cubism_btn.clicked.connect(lambda: self._open_url("https://www.live2d.com/en/cubism/download/editor/"))
+        rig_row = QHBoxLayout()
+        rig_row.addWidget(self.stretchy_btn)
+        rig_row.addWidget(self.cubism_btn)
+        rig_row.addStretch(1)
+        self.vseeface_path = QLineEdit(str(cfg.get("vtuber.vseeface_path") or ""))
+        browse_vseeface = QPushButton(tr("wizard.browse"))
+        browse_vseeface.clicked.connect(self._pick_vseeface)
+        vseeface_row = QHBoxLayout()
+        vseeface_row.addWidget(self.vseeface_path, 1)
+        vseeface_row.addWidget(browse_vseeface)
+        self.vseeface_download_btn = style.secondary(QPushButton(tr("vtuber.vseeface.download")), "download")
+        self.vseeface_download_btn.clicked.connect(self._download_vseeface)
+        self.vtubestudio_btn = style.secondary(QPushButton(tr("vtuber.vtubestudio")), "external")
+        self.vtubestudio_btn.clicked.connect(self._open_vtubestudio)
+        track_row = QHBoxLayout()
+        track_row.addWidget(self.vseeface_download_btn)
+        track_row.addWidget(self.vtubestudio_btn)
+        track_row.addStretch(1)
+        vtuber_form = QFormLayout()
+        vtuber_form.addRow(vtuber_hint)
+        vtuber_form.addRow(tr("vtuber.rig_label"), rig_row)
+        vtuber_form.addRow(tr("vtuber.vseeface_path"), vseeface_row)
+        vtuber_form.addRow(tr("vtuber.track_label"), track_row)
+        self.vtuber_box = QGroupBox(tr("vtuber.group"))
+        self.vtuber_box.setLayout(vtuber_form)
+
+        # Koikatsu (ТЗ stage 4): the game itself is a commercial product AniHUB cannot download -- a link to where
+        # to get it, a folder to point at an existing install, and a search/download panel for koikatsucards.com
+        # character cards (services/koikatsucards.py) once that folder is set.
+        koikatsu_hint = style.role(QLabel(tr("koikatsu.hint")), "dim")
+        koikatsu_hint.setWordWrap(True)
+        self.koikatsu_path = QLineEdit(str(cfg.get("koikatsu.path") or ""))
+        browse_koikatsu = QPushButton(tr("wizard.browse"))
+        browse_koikatsu.clicked.connect(self._pick_koikatsu)
+        koikatsu_row = QHBoxLayout()
+        koikatsu_row.addWidget(self.koikatsu_path, 1)
+        koikatsu_row.addWidget(browse_koikatsu)
+        self.koikatsu_download_btn = style.secondary(QPushButton(tr("koikatsu.download")), "external")
+        self.koikatsu_download_btn.clicked.connect(lambda: self._open_url("https://vk.ru/@1koikatsu-vse-nuzhnye-ssylki-dlya-ustanovki-kk"))
+        self.koikatsu_cards_btn = style.secondary(QPushButton(tr("koikatsu.cards")), "search")
+        self.koikatsu_cards_btn.clicked.connect(self._open_koikatsu_cards)
+        koikatsu_btn_row = QHBoxLayout()
+        koikatsu_btn_row.addWidget(self.koikatsu_download_btn)
+        koikatsu_btn_row.addWidget(self.koikatsu_cards_btn)
+        koikatsu_btn_row.addStretch(1)
+        koikatsu_form = QFormLayout()
+        koikatsu_form.addRow(koikatsu_hint)
+        koikatsu_form.addRow(tr("koikatsu.path"), koikatsu_row)
+        koikatsu_form.addRow("", koikatsu_btn_row)
+        self.koikatsu_box = QGroupBox(tr("koikatsu.group"))
+        self.koikatsu_box.setLayout(koikatsu_form)
+
         self.manga_port = QSpinBox(minimum=1024, maximum=65535, value=int(cfg.get("manga.port", 4567)))
         self.manga_poll = QSpinBox(minimum=1, maximum=1440, value=int(cfg.get("manga.poll_minutes", 30)))
         self.suwayomi_path = QLineEdit(str(cfg.get("manga.suwayomi_path") or ""))
@@ -379,7 +441,7 @@ class SettingsPage(QWidget):
         creds.addRow(import_hint)
         creds_box = QGroupBox(tr("settings.creds"))
         creds_box.setLayout(creds)
-        for group in (forge_box, manga_box, gen_box, self.train_box, self.comfyui_box, lib_box, tag_box):
+        for group in (forge_box, manga_box, gen_box, self.train_box, self.comfyui_box, self.vtuber_box, self.koikatsu_box, lib_box, tag_box):
             lay = group.layout()
             if isinstance(lay, QFormLayout):
                 lay.setHorizontalSpacing(18)
@@ -395,7 +457,7 @@ class SettingsPage(QWidget):
         self.deps_box = self._build_deps_box()
 
         # Categorised into tabs (was one long scroll of a dozen-plus group boxes -- hard to find anything in).
-        gen_boxes = [self.sd_box, self.deps_box]
+        gen_boxes = [self.sd_box, self.deps_box, self.vtuber_box, self.koikatsu_box]  # not gated: none of these need Forge
         if ctx.sd_enabled:
             gen_boxes += [forge_box, gen_box, self.train_box, self.comfyui_box]  # hidden together when the PC cannot run Forge
         categories = [
@@ -784,6 +846,54 @@ class SettingsPage(QWidget):
         self.suwayomi_status.setText(tr("settings.suwayomi_status", path=str(manager.install_dir),
                                         state=tr("settings.suwayomi_installed", v=version) if version else tr("settings.suwayomi_missing")))
 
+    # --- VTube pipeline: rigger/tracker launchers + Koikatsu ----------------------------------------------------
+
+    def _open_url(self, url: str) -> None:
+        from PySide6.QtCore import QUrl
+        from PySide6.QtGui import QDesktopServices
+
+        QDesktopServices.openUrl(QUrl(url))
+
+    def _pick_vseeface(self) -> None:
+        folder = QFileDialog.getExistingDirectory(self, tr("vtuber.vseeface_path"), self.vseeface_path.text())
+        if folder:
+            self.vseeface_path.setText(os.path.normpath(folder))
+
+    def _download_vseeface(self) -> None:
+        from anihub.ui.vseeface_install_dialog import VSeeFaceInstallDialog
+
+        folder = QFileDialog.getExistingDirectory(self, tr("vtuber.vseeface.download"), str(self.ctx.paths.apps))
+        if not folder:
+            return
+        dlg = VSeeFaceInstallDialog(self.ctx, Path(folder) / "VSeeFace", self)
+        dlg.exec()
+        if dlg.installed is not None:
+            self.vseeface_path.setText(str(dlg.installed))
+
+    def _open_vtubestudio(self) -> None:
+        """VTube Studio only ships through Steam: hand off to Steam's own install flow if Steam is on this PC,
+        otherwise open the store page so the user can install Steam (or VTube Studio's page) themselves."""
+        from anihub.services import steam_launch
+
+        VTUBE_STUDIO_APP_ID = 1325860
+        if steam_launch.steam_installed():
+            try:
+                steam_launch.open_steam_install(VTUBE_STUDIO_APP_ID)
+                return
+            except OSError:
+                pass
+        self._open_url(f"https://store.steampowered.com/app/{VTUBE_STUDIO_APP_ID}/VTube_Studio/")
+
+    def _pick_koikatsu(self) -> None:
+        folder = QFileDialog.getExistingDirectory(self, tr("koikatsu.path"), self.koikatsu_path.text())
+        if folder:
+            self.koikatsu_path.setText(os.path.normpath(folder))
+
+    def _open_koikatsu_cards(self) -> None:
+        from anihub.ui.koikatsucards_dialog import KoikatsuCardsDialog
+
+        KoikatsuCardsDialog(self.ctx, self).exec()
+
     def _pick_comfyui(self) -> None:
         folder = QFileDialog.getExistingDirectory(self, tr("settings.comfyui_path"), self.comfyui_path.text())
         if folder:
@@ -882,6 +992,8 @@ class SettingsPage(QWidget):
             cfg.set("comfyui.path", self.comfyui_path.text().strip(), save=False)
             cfg.set("comfyui.port", self.comfyui_port.value(), save=False)
             cfg.set("comfyui.idle_minutes", self.comfyui_idle.value(), save=False)
+        cfg.set("vtuber.vseeface_path", self.vseeface_path.text().strip(), save=False)
+        cfg.set("koikatsu.path", self.koikatsu_path.text().strip(), save=False)
         cfg.set("library.near_dedup", self.near_mode.currentData(), save=False)
         cfg.set("library.trash_days", self.trash_days.value(), save=False)
         cfg.set("ui.confirm_trash", self.confirm_trash.isChecked(), save=False)
