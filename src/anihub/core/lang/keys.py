@@ -1563,4 +1563,8 @@ pb.edit_category
 pb.edit_category.title
 pb.edit_category.name
 pb.edit_category.multi
+pb.catalog.export
+pb.catalog.import
+pb.catalog.exported
+pb.catalog.imported
 """.split("\n") if k]

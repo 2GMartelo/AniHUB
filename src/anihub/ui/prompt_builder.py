@@ -918,6 +918,9 @@ class PromptBuilder(QWidget):
         menu.addSeparator()
         menu.addAction(tr("pb.pack.export"), self._export_pack)
         menu.addAction(tr("pb.pack.import"), self._import_pack)
+        menu.addSeparator()
+        menu.addAction(tr("pb.catalog.export"), self._export_catalog)
+        menu.addAction(tr("pb.catalog.import"), self._import_catalog)
         menu.exec(self.more_btn.mapToGlobal(QPoint(0, self.more_btn.height())))
 
     def _export_pack(self) -> None:
@@ -937,6 +940,35 @@ class PromptBuilder(QWidget):
             self._refresh_grid()
             self._refresh_doc()
             self.status.setText(tr("pb.pack.imported", n=n))
+
+    def _export_catalog(self) -> None:
+        path, _ = QFileDialog.getSaveFileName(self, tr("pb.catalog.export"), "promptbook_catalog.zip", "ZIP (*.zip)")
+        if not path:
+            return
+        try:
+            n = self.book.export_catalog(self.ctx.cfg, Path(path))
+        except OSError as exc:
+            self.status.setText(tr("status.error", msg=str(exc)))
+            return
+        self.status.setText(tr("pb.catalog.exported", n=n, path=path))
+
+    def _import_catalog(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(self, tr("pb.catalog.import"), "", "ZIP (*.zip)")
+        if not path:
+            return
+        try:
+            counts = self.book.import_catalog(self.ctx.cfg, Path(path))
+        except (pb.CatalogPackError, OSError) as exc:
+            self.status.setText(tr("status.error", msg=str(exc)))
+            return
+        self.character_count = max(1, min(4, int(self.ctx.cfg.get("promptbuilder.character_count", 1) or 1)))
+        self.active_character = min(self.active_character, self.character_count)
+        self.character_spin.setValue(self.character_count)
+        self._update_character_buttons()
+        self._fill_tree()
+        self._rebuild_cards()
+        self._refresh_grid()
+        self.status.setText(tr("pb.catalog.imported", nodes=counts["nodes"], tags=counts["tags"], images=counts["images"]))
 
     def _restore(self) -> None:
         self.book.restore_defaults()

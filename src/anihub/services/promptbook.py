@@ -14,6 +14,7 @@ from pathlib import Path
 from PySide6.QtCore import QBuffer, QIODevice, Qt
 from PySide6.QtGui import QImage
 
+from anihub import __version__
 from anihub.services.promptbook_data import SLOTS, parse_catalog
 
 SLOT_KEYS = [s[0] for s in SLOTS]
@@ -25,6 +26,12 @@ SEED_VERSION = 1
 PACK_FILE = Path(__file__).resolve().parents[1] / "data" / "promptbook_pack.zip"     # the pictures of the built-in tags that ship with the app
 IMAGE_SIZE = 256
 MIN_W, MAX_W, STEP_W = 0.1, 2.0, 0.1
+CATALOG_PACK_FORMAT = 1        # PromptBook.export_catalog()/import_catalog(): the WHOLE catalogue, not just pictures (see export_pack() below)
+CATALOG_JSON = "catalog.json"
+
+
+class CatalogPackError(Exception):
+    pass
 
 # A fresh library's Character 1 starts looking like Hori Kyouko (Horimiya) rather than blank (ТЗ item 5).
 DEFAULT_CHARACTER_TAGS = [
@@ -771,3 +778,132 @@ class PromptBook:
             self.applied_file.parent.mkdir(parents=True, exist_ok=True)
             self.applied_file.write_text(json.dumps(applied), encoding="utf-8")
         return written
+
+    # --- exporting/restoring the WHOLE catalogue (every category, subcategory and tag, with their own settings) ------
+    # Unlike export_pack()/apply_pack() above (only ever the built-in tags' pictures), this carries everything: the
+    # user's own categories and tags alongside the built-in ones (renamed, hidden, exclusive/multi-select state),
+    # every tag's own picture, and the promptbuilder.* config that lives outside the database (custom sections, their
+    # order, which ones belong to a character) -- meant to save the whole catalogue on one install and load it back
+    # on a clean one.
+
+    def export_catalog(self, cfg, dest: Path) -> int:
+        """Writes every category/subcategory and tag (built-in and the user's own alike) plus their pictures and the
+        promptbuilder.* config to a zip. Returns how many tags were written."""
+        nodes = self.nodes(include_hidden=True)
+        tag_rows = [dict(r) for r in self.conn.execute("SELECT * FROM pb_tags ORDER BY node_id, position, id")]
+        dest = Path(dest)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        tmp = dest.with_name(dest.name + ".tmp")
+        with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as zf:
+            tags_out = []
+            for t in tag_rows:
+                entry = {"id": t["id"], "node_id": t["node_id"], "key": t["key"], "text": t["text"], "label": t["label"],
+                         "hidden": bool(t["hidden"]), "position": t["position"], "image": None}
+                path = self.image_path(t)
+                if path is not None and path.is_file():
+                    member = f"images/{t['id']}.jpg"
+                    zf.write(path, member)
+                    entry["image"] = member
+                tags_out.append(entry)
+            nodes_out = [{"id": n["id"], "parent_id": n["parent_id"], "slot": n["slot"], "key": n["key"], "name": n["name"],
+                          "name_ru": n["name_ru"], "exclusive": bool(n["exclusive"]), "hidden": bool(n["hidden"]),
+                          "position": n["position"]} for n in nodes]
+            config = {
+                "custom_slots": cfg.get("promptbuilder.custom_slots", []) or [],
+                "slot_order": cfg.get("promptbuilder.slot_order", []) or [],
+                "character_overrides": cfg.get("promptbuilder.character_overrides", {}) or {},
+                "character_count": cfg.get("promptbuilder.character_count", 1) or 1,
+            }
+            zf.writestr(CATALOG_JSON, json.dumps({"format": CATALOG_PACK_FORMAT, "app_version": __version__,
+                        "nodes": nodes_out, "tags": tags_out, "config": config}, ensure_ascii=False, indent=1))
+        tmp.replace(dest)
+        return len(tags_out)
+
+    def import_catalog(self, cfg, src: Path) -> dict:
+        """Restores a catalogue saved by export_catalog(). A built-in category/tag (has a `key`) is matched by that
+        key and just gets its name/exclusive/hidden state reapplied; the user's own (no `key`) is matched by
+        (parent, slot, name) so importing the same file twice does not duplicate it, and created otherwise. Returns
+        {'nodes', 'tags', 'images', 'skipped'}."""
+        try:
+            zf = zipfile.ZipFile(src)
+            meta = json.loads(zf.read(CATALOG_JSON))
+        except (zipfile.BadZipFile, KeyError, ValueError) as exc:
+            raise CatalogPackError("this is not an AniHUB prompt-builder catalogue file") from exc
+        if meta.get("format") != CATALOG_PACK_FORMAT:
+            raise CatalogPackError(f"unsupported catalogue format: {meta.get('format')}")
+        counts = {"nodes": 0, "tags": 0, "images": 0, "skipped": 0}
+        id_map: dict[int, int] = {}
+        with zf:
+            remaining = list(meta.get("nodes", []))
+            while remaining:
+                deferred = []
+                progressed = False
+                for n in remaining:
+                    parent_old = n.get("parent_id")
+                    if parent_old is not None and parent_old not in id_map:
+                        deferred.append(n)
+                        continue
+                    node_id = self._import_node(n, id_map.get(parent_old) if parent_old is not None else None)
+                    if node_id is not None:
+                        id_map[n["id"]] = node_id
+                        counts["nodes"] += 1
+                    else:
+                        counts["skipped"] += 1
+                    progressed = True
+                if not progressed:                                   # every remaining node's parent never resolved
+                    counts["skipped"] += len(deferred)
+                    break
+                remaining = deferred
+            for t in meta.get("tags", []):
+                new_node = id_map.get(t["node_id"])
+                if new_node is None:
+                    counts["skipped"] += 1
+                    continue
+                tag_id = self._import_tag(t, new_node)
+                if tag_id is None:
+                    counts["skipped"] += 1
+                    continue
+                counts["tags"] += 1
+                image = t.get("image")
+                if image and image in zf.namelist():
+                    self.set_image(tag_id, zf.read(image))
+                    counts["images"] += 1
+        config = meta.get("config") or {}
+        for key in ("custom_slots", "slot_order", "character_overrides", "character_count"):
+            if key in config:
+                cfg.set(f"promptbuilder.{key}", config[key], save=False)
+        apply_custom_slots(cfg)
+        return counts
+
+    def _import_node(self, n: dict, parent_id: int | None) -> int | None:
+        if n.get("key"):
+            row = self.conn.execute("SELECT id FROM pb_nodes WHERE key=?", (n["key"],)).fetchone()
+            if row is None:
+                return None                                          # a built-in key this install's catalogue no longer has
+            node_id = row["id"]
+            with self.conn:
+                self.conn.execute("UPDATE pb_nodes SET name=?, name_ru=?, exclusive=?, hidden=?, position=? WHERE id=?",
+                                  (n["name"], n["name_ru"], int(n["exclusive"]), int(n["hidden"]), n["position"], node_id))
+            return node_id
+        existing = self.conn.execute("SELECT id FROM pb_nodes WHERE parent_id IS ? AND slot=? AND lower(name)=lower(?)",
+                                     (parent_id, n["slot"], n["name"])).fetchone()
+        node_id = existing["id"] if existing else self.add_node(n["slot"], n["name"], parent_id, n["exclusive"])
+        with self.conn:
+            self.conn.execute("UPDATE pb_nodes SET exclusive=?, position=? WHERE id=?", (int(n["exclusive"]), n["position"], node_id))
+        return node_id
+
+    def _import_tag(self, t: dict, node_id: int) -> int | None:
+        if t.get("key"):
+            row = self.conn.execute("SELECT id FROM pb_tags WHERE key=?", (t["key"],)).fetchone()
+            if row is None:
+                return None
+            tag_id = row["id"]
+            self.edit_tag(tag_id, t["text"], t["label"])
+            with self.conn:
+                self.conn.execute("UPDATE pb_tags SET hidden=?, position=? WHERE id=?", (int(t["hidden"]), t["position"], tag_id))
+            return tag_id
+        tag_id = self.add_tag(node_id, t["text"], t["label"])
+        if tag_id is not None:
+            with self.conn:
+                self.conn.execute("UPDATE pb_tags SET position=? WHERE id=?", (t["position"], tag_id))
+        return tag_id

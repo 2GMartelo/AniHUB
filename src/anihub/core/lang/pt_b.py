@@ -720,4 +720,8 @@ DATA = r"""
 1558|Categoria
 1559|Nome
 1560|Permitir várias tags ao mesmo tempo
+1561|Salvar todas as tags em um arquivo…
+1562|Carregar tags de um arquivo…
+1563|Salvo: {n} tags → {path}
+1564|Carregado: {nodes} categorias, {tags} tags, {images} imagens
 """

@@ -720,4 +720,8 @@ DATA = r"""
 1558|Catégorie
 1559|Nom
 1560|Autoriser plusieurs balises à la fois
+1561|Enregistrer toutes les balises dans un fichier…
+1562|Charger des balises depuis un fichier…
+1563|Enregistré : {n} balises → {path}
+1564|Chargé : {nodes} catégories, {tags} balises, {images} images
 """

@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QImage
+from PySide6.QtWidgets import QFileDialog
 
 from anihub.core import agemode
 from anihub.core.config import Config
@@ -323,6 +324,32 @@ def test_the_default_character_is_seeded_only_once(qapp, tmp_path):
     assert not second.doc.has("character", "hori kyouko (horimiya)")                     # the flag is set: it is not forced back
     second.close()
     db.close()
+
+
+def test_export_then_import_catalog_from_the_more_menu(env, monkeypatch, tmp_path):
+    v = env.view
+    mine = v.book.add_node("clothing", "My picks")
+    v.book.add_tag(mine, "hand-picked tag")                                               # a user catalogue tag to round-trip
+    dest = tmp_path / "catalog.zip"
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", staticmethod(lambda *a, **k: (str(dest), "")))
+    v._export_catalog()
+    assert dest.exists() and "→" in v.status.text()
+
+    v2 = PromptBuilder(env.ctx, form={"get": lambda: ("", ""), "set": lambda p, n: None, "api": lambda: None})
+    monkeypatch.setattr(QFileDialog, "getOpenFileName", staticmethod(lambda *a, **k: (str(dest), "")))
+    v2._import_catalog()
+    assert any("hand-picked tag" == r["text"] for r in v2.book.tags(slot="clothing"))
+    assert v2.status.text()
+    v2.close()
+
+
+def test_import_catalog_reports_a_bad_file_without_crashing(env, monkeypatch, tmp_path):
+    v = env.view
+    bad = tmp_path / "bad.zip"
+    bad.write_bytes(b"nope")
+    monkeypatch.setattr(QFileDialog, "getOpenFileName", staticmethod(lambda *a, **k: (str(bad), "")))
+    v._import_catalog()
+    assert v.status.text()                                                                 # an error, not a crash
 
 
 def test_saved_zoom_is_applied_on_the_next_start(qapp, tmp_path):

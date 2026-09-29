@@ -96,6 +96,82 @@ def test_user_categories_tags_and_pictures(book, tmp_path):
     assert all(n["key"] != "clothing.outfit" for n in book.nodes("clothing")) and any(n["key"] == "clothing.outfit" for n in book.nodes("clothing", include_hidden=True))
 
 
+# --- exporting/restoring the whole catalogue (export_catalog/import_catalog) -----------------------------------------------
+
+def test_export_catalog_then_import_into_a_fresh_book_restores_everything(book, tmp_path):
+    from anihub.core.config import Config
+
+    pb.set_custom_slots([], [])
+    try:
+        outfit = next(n for n in book.nodes("clothing") if n["key"] == "clothing.outfit")
+        book.rename_node(outfit["id"], "My outfits")                      # a built-in category, renamed
+        book.set_exclusive(outfit["id"], True)
+        blue_hair = book.find_tag("blue hair")
+        book.delete_tag(blue_hair["id"])                                  # a built-in tag, hidden
+        mine = book.add_node("clothing", "Winter gear")                   # the user's own category
+        tid = book.add_tag(mine, "puffer jacket", "пуховик")
+        img = QImage(64, 64, QImage.Format.Format_RGB32)
+        img.fill(QColor("#33aaff"))
+        book.set_image(tid, img)
+        cfg = Config({"promptbuilder": {"custom_slots": [{"key": "custom_mood", "label": "Mood", "negative": False}],
+                                         "slot_order": ["custom_mood"], "character_overrides": {"clothing": True},
+                                         "character_count": 3}}, tmp_path / "src_config.json")
+        dest = tmp_path / "catalog.zip"
+        n = book.export_catalog(cfg, dest)
+        assert dest.exists() and n > 0
+
+        db2 = Database(tmp_path / "lib2.db")
+        book2 = PromptBook(db2, tmp_path / "lib2")
+        book2.seed()                                                      # a freshly-seeded catalogue: what a clean install has
+        cfg2 = Config({}, tmp_path / "dst_config.json")
+        counts = book2.import_catalog(cfg2, dest)
+        assert counts["nodes"] > 0 and counts["tags"] > 0 and counts["images"] == 1 and counts["skipped"] == 0
+
+        outfit2 = next(n for n in book2.nodes("clothing", include_hidden=True) if n["key"] == "clothing.outfit")
+        assert outfit2["name"] == "My outfits" and bool(outfit2["exclusive"])
+        assert all(t["text"] != "blue hair" for t in book2.tags(slot="appearance"))                               # hidden: not in the visible tags
+        mine2 = next(n for n in book2.nodes("clothing") if n["name"] == "Winter gear" and n["key"] is None)
+        tag2 = next(t for t in book2.tags([mine2["id"]]) if t["text"] == "puffer jacket")
+        assert tag2["label"] == "пуховик"
+        assert book2.image_path(tag2).exists()
+
+        assert cfg2.get("promptbuilder.custom_slots") == [{"key": "custom_mood", "label": "Mood", "negative": False}]
+        assert cfg2.get("promptbuilder.character_overrides") == {"clothing": True}
+        assert cfg2.get("promptbuilder.character_count") == 3
+        db2.close()
+    finally:
+        pb.set_custom_slots([], [])                                       # import_catalog() rebuilds the global slot state: leave it clean
+
+
+def test_importing_the_same_catalog_twice_does_not_duplicate_user_rows(book, tmp_path):
+    from anihub.core.config import Config
+
+    pb.set_custom_slots([], [])
+    try:
+        mine = book.add_node("clothing", "Winter gear")
+        book.add_tag(mine, "puffer jacket")
+        cfg = Config({}, tmp_path / "c.json")
+        dest = tmp_path / "catalog.zip"
+        book.export_catalog(cfg, dest)
+        book.import_catalog(cfg, dest)
+        book.import_catalog(cfg, dest)
+        matches = [n for n in book.nodes("clothing") if n["name"] == "Winter gear" and n["key"] is None]
+        assert len(matches) == 1
+        tags = book.tags([matches[0]["id"]])
+        assert len(tags) == 1 and tags[0]["text"] == "puffer jacket"
+    finally:
+        pb.set_custom_slots([], [])
+
+
+def test_import_catalog_rejects_a_file_that_is_not_a_catalog(book, tmp_path):
+    from anihub.core.config import Config
+
+    not_a_pack = tmp_path / "not_a_pack.zip"
+    not_a_pack.write_bytes(b"not a zip at all")
+    with pytest.raises(pb.CatalogPackError):
+        book.import_catalog(Config({}, tmp_path / "c.json"), not_a_pack)
+
+
 # --- the document ----------------------------------------------------------------------------------------------------------
 
 def test_tags_land_in_their_own_paragraph_in_writing_order():
