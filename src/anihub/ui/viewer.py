@@ -18,6 +18,7 @@ from anihub.core.i18n import tr
 from anihub.services import promptbook as pb
 from anihub.ui import style
 from anihub.ui.catalog_picker import CatalogPickerDialog
+from anihub.ui.image_context_menu import show_image_menu
 from anihub.ui.zoomview import ZoomLabel
 from anihub.ui.workers import run_async
 
@@ -116,6 +117,7 @@ class Viewer(QWidget):
         self._movie: QMovie | None = None
         self._movie_size = QSize()
         self._request = 0
+        self._current_path: Path | None = None
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.resize(1300, 850)
@@ -124,7 +126,11 @@ class Viewer(QWidget):
         self.image = ZoomLabel(alignment=Qt.AlignmentFlag.AlignCenter)      # Ctrl + wheel zooms, drag pans, double click resets
         self.image.setMinimumSize(200, 200)
         self.image.setWordWrap(True)
+        self.image.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.image.customContextMenuRequested.connect(self._image_menu)
         self.video = QVideoWidget()
+        self.video.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.video.customContextMenuRequested.connect(self._image_menu)
         self.stack = QStackedWidget()
         self.stack.addWidget(self.image)
         self.stack.addWidget(self.video)
@@ -343,10 +349,22 @@ class Viewer(QWidget):
             self._movie.stop()
             self._movie = None
         self._pixmap = None
+        self._current_path = None
         self.image.set_source(None)
         self.image.clear()
 
+    def _image_menu(self, pos) -> None:
+        widget = self.sender()
+        image = None
+        if self._pixmap is not None:
+            image = self._pixmap.toImage()
+        elif self._movie is not None:
+            image = self._movie.currentPixmap().toImage()
+        name = self._current_path.name if self._current_path else "image.png"
+        show_image_menu(self, widget.mapToGlobal(pos), image=image, path=self._current_path, suggested_name=name)
+
     def _show_path(self, path: Path) -> None:
+        self._current_path = path
         if path.suffix.lower() in VIDEO_SUFFIXES:
             self.stack.setCurrentWidget(self.video)
             self.controls.show()

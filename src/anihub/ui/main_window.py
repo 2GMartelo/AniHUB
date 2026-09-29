@@ -19,6 +19,7 @@ from anihub.ui.anime_page import AnimePage
 from anihub.ui import bridges
 from anihub.ui.browse import BrowseView
 from anihub.ui.downloads_view import DownloadSignals, DownloadsButton, notify_text, summary_text
+from anihub.ui.external_folders_view import ExternalFoldersView
 from anihub.ui.forge_controller import ForgeController
 from anihub.ui.library_view import LibraryView
 from anihub.ui.manga_controller import MangaController
@@ -59,6 +60,8 @@ class MainWindow(QMainWindow):
         self.arts = arts = QTabWidget()
         arts.addTab(self.browse, tr("tab.browse"))
         arts.addTab(self.library, tr("tab.library"))
+        self.external_folders = ExternalFoldersView(ctx)
+        arts.addTab(self.external_folders, tr("tab.external"))
         self.subscriptions = SubscriptionsView(ctx)
         arts.addTab(self.subscriptions, tr("subs.tab"))
         self.browse.library_changed.connect(self.library.reload)

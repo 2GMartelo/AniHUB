@@ -180,6 +180,23 @@ def test_save_generation(tmp_path):
     assert svc.save_generation(img, meta).status == "duplicate"
 
 
+def test_save_generation_from_a_folder_override_outside_the_library_stores_an_absolute_path(tmp_path):
+    """core/paths.py's `generations` override can point anywhere, even a different drive -- the saved item's path
+    must not try (and fail) to be relative_to() the library root in that case."""
+    lib_root = tmp_path / "lib"
+    paths = LibraryPaths(lib_root)
+    paths.ensure()
+    svc = LibraryService(Database(paths.db_file), paths, NoHttp())
+    outside = tmp_path / "outside_the_library" / "a.png"
+    outside.parent.mkdir(parents=True)
+    outside.write_bytes(b"png-bytes")
+    res = svc.save_generation(outside, {"prompt": "x", "seed": 1, "width": 8, "height": 8})
+    assert res.status == "saved"
+    row = svc.db.search_items(kind="sd")[0]
+    assert row["path"] == str(outside.resolve())
+    assert (paths.root / row["path"]) == outside.resolve()          # the "root / path" pattern used everywhere else
+
+
 # --- ForgeApi: unload/reload checkpoint (services/forge.py) -- the GPU scheduler's way of freeing Forge's VRAM ----
 
 def make_api(tmp_path, handler):

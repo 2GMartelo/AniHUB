@@ -744,7 +744,7 @@ class GenerateView(QWidget):
         self.message.clear()
         self._update_buttons()
         self.progress_timer.start(700)
-        out_dir = self.ctx.paths.sd / "generated"
+        out_dir = self.ctx.paths.generations
         api = self.controller.manager.api
         wildcards = self.ctx.cfg.get("wildcards") or None
 
@@ -872,7 +872,7 @@ class GenerateView(QWidget):
     def _upscale_selected(self) -> None:
         results = self.grid.selected_payloads()
         upscaler, scale = self.upscaler.currentText(), self.up_scale.value()
-        api, out_dir = self.controller.manager.api, self.ctx.paths.sd / "generated"
+        api, out_dir = self.controller.manager.api, self.ctx.paths.generations
         self.up_btn.setEnabled(False)
         self.message.setText(tr("sd.upscaling", n=len(results)))
 

@@ -83,6 +83,29 @@ class SettingsPage(QWidget):
         library_row.addWidget(self.library, 1)
         library_row.addWidget(open_btn)
 
+        self.folder_fields: dict[str, QLineEdit] = {}
+        folder_defaults = {"generations": str(ctx.paths.sd / "generated"), "vtube": str(ctx.paths.root / "vtube"),
+                           "music": str(ctx.paths.root / "music")}
+        folder_labels = {"generations": tr("settings.folder_generations"), "vtube": tr("settings.folder_vtube"),
+                         "music": tr("settings.folder_music")}
+        folder_rows = []
+        for key in ("generations", "vtube", "music"):
+            edit = QLineEdit(str(cfg.get(f"paths.{key}", "") or ""))
+            edit.setPlaceholderText(folder_defaults[key])
+            browse_btn = style.secondary(QPushButton(tr("settings.browse")), "folder")
+            browse_btn.clicked.connect(lambda _=False, e=edit: self._pick_folder(e))
+            reset_btn = style.ghost(QToolButton(), "refresh")
+            reset_btn.setToolTip(tr("settings.hotkey_reset"))
+            reset_btn.clicked.connect(lambda _=False, e=edit: e.clear())
+            row_widget = QWidget()
+            row_layout = QHBoxLayout(row_widget)
+            row_layout.setContentsMargins(0, 0, 0, 0)
+            row_layout.addWidget(edit, 1)
+            row_layout.addWidget(browse_btn)
+            row_layout.addWidget(reset_btn)
+            self.folder_fields[key] = edit
+            folder_rows.append((folder_labels[key], row_widget))
+
         self.age_mode = QComboBox()
         for mode in agemode.MODES:
             self.age_mode.addItem(tr(f"age.m{mode}"), mode)
@@ -279,6 +302,7 @@ class SettingsPage(QWidget):
                             ("", self.glass), ("", self.smooth), (tr("settings.close"), self.close_action))
         storage_box = form_box(tr("settings.g_storage"), (tr("settings.library"), library_row),
                                (tr("settings.cache_limit"), self.cache_limit))
+        folders_box = form_box(tr("settings.folders_title"), *folder_rows)
         age_box = form_box(tr("age.title"), (tr("age.mode"), self.age_mode), (tr("age.locked"), self.locked_tags),
                            (tr("age.custom"), self.custom_tags))
         network_box = form_box(tr("settings.g_network"), (tr("settings.proxy"), self.proxy),
@@ -339,7 +363,7 @@ class SettingsPage(QWidget):
         categories = [
             (tr("settings.cat_appearance"), [look_box]),
             (tr("settings.cat_hotkeys"), [hotkeys_box]),
-            (tr("settings.cat_library"), [storage_box, lib_box, tag_box]),
+            (tr("settings.cat_library"), [storage_box, folders_box, lib_box, tag_box]),
             (tr("age.title"), [age_box]),
             (tr("settings.cat_network"), [network_box, creds_box]),
             (tr("nav.manga"), [manga_box]),
@@ -495,6 +519,12 @@ class SettingsPage(QWidget):
         for key, value in theme_module.DEFAULT_CUSTOM.items():
             self.custom_buttons[key].set_color(value)
         self._custom_changed()
+
+    def _pick_folder(self, edit: QLineEdit) -> None:
+        start = edit.text().strip() or str(self.ctx.paths.root)
+        path = QFileDialog.getExistingDirectory(self, tr("settings.browse"), start)
+        if path:
+            edit.setText(path)
 
     def _show_locked(self) -> None:
         tags = agemode.locked_tags(self.age_mode.currentData())
@@ -668,6 +698,8 @@ class SettingsPage(QWidget):
             cfg.set(f"hotkeys.{action_id}", "" if text == keymap.BY_ID[action_id].default else text, save=False)
         cfg.set("discord.enabled", self.discord_enabled.isChecked(), save=False)
         cfg.set("discord.client_id", self.discord_client_id.text().strip(), save=False)
+        for key, edit in self.folder_fields.items():
+            cfg.set(f"paths.{key}", edit.text().strip(), save=False)
         cfg.save()
         self.ctx.http.reconfigure()
         self.ctx.refresh_tagger()

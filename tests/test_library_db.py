@@ -262,3 +262,51 @@ def test_queue_order_claim_and_states(db):
     with pytest.raises(ValueError):
         db.queue_update(first["id"], position=5)
     assert db.queue_claim("x")["label"] == "c" and db.queue_claim("x") is None
+
+
+# --- browsing the library's own on-disk folders (ui/library_view.py's "Folders" sidebar section) --------------
+
+def test_folder_tree_mirrors_the_real_paths_of_indexed_items(db):
+    add(db, "a", path="arts/danbooru/a.png")
+    add(db, "b", path="arts/danbooru/b.png")
+    add(db, "c", path="arts/local/2026-09/c.png")
+    add(db, "d", path="arts/local/2026-08/d.png")
+    add(db, "e", path="arts/e.png")                                # directly under arts/: no folder node
+    assert db.folder_tree() == {"danbooru": {}, "local": {"2026-09": {}, "2026-08": {}}}
+
+
+def test_folder_tree_is_scoped_by_kind(db):
+    add(db, "a", path="arts/danbooru/a.png", kind="art")
+    add(db, "b", path="sd/generated/b.png", kind="sd")
+    assert db.folder_tree("art") == {"danbooru": {}}
+    assert db.folder_tree("sd") == {"generated": {}}
+
+
+def test_folder_tree_ignores_trashed_items(db):
+    a = add(db, "a", path="arts/danbooru/a.png")
+    db.update_fields(a, trashed_at=1.0)
+    assert db.folder_tree() == {}
+
+
+def test_folder_tree_skips_items_stored_with_an_absolute_path(db):
+    """core/paths.py's `generations` override: an item saved outside the library root has no on-disk folder node
+    inside it (library/service.py's save_generation stores an absolute path in that case)."""
+    add(db, "a", path="C:/outside/the/library/a.png", kind="sd")
+    assert db.folder_tree("sd") == {}
+
+
+def test_search_items_by_folder_matches_the_prefix_and_its_subfolders(db):
+    a = add(db, "a", path="arts/danbooru/a.png")
+    b = add(db, "b", path="arts/local/2026-09/b.png")
+    c = add(db, "c", path="arts/local/2026-08/c.png")
+    add(db, "d", path="arts/rule34/d.png")
+    assert {r["id"] for r in db.search_items(folder="arts/danbooru")} == {a}
+    assert {r["id"] for r in db.search_items(folder="arts/local")} == {b, c}   # recursive: both months
+    assert db.count_search(folder="arts/local") == 2
+
+
+def test_search_items_by_folder_does_not_match_a_same_prefixed_sibling(db):
+    """"arts/local" must not also match "arts/local2/...": the LIKE pattern needs the trailing slash."""
+    a = add(db, "a", path="arts/local/x.png")
+    add(db, "b", path="arts/local2/y.png")
+    assert {r["id"] for r in db.search_items(folder="arts/local")} == {a}

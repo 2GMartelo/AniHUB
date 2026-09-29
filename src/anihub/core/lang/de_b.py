@@ -684,4 +684,25 @@ DATA = r"""
 1522|Generierung
 1523|Stable-Diffusion-Generierungen
 1524|Nach Modell
+1525|Bild kopieren
+1526|Speichern unter…
+1527|Dateipfad kopieren
+1528|Enthaltenden Ordner öffnen
+1529|Neuer Abschnitt…
+1530|Abschnitt umbenennen
+1531|Abschnitt löschen
+1532|Durchsuchen…
+1533|Ordner
+1534|Generierungen
+1535|VTube-Ausgabe
+1536|Musikbibliothek
+1537|Ordner
+1538|Ordner auf dem Computer
+1539|Ordner hinzufügen…
+1540|Name
+1541|Aus der Liste entfernen
+1542|Zur Bibliothek hinzufügen
+1543|Hinzugefügt: {saved}, Duplikate: {dup}, fehlgeschlagen: {failed}
+1544|Kein Ordner geöffnet
+1545|Fügen Sie links einen Ordner hinzu oder öffnen Sie einen, um die Bilder hier zu sehen -- es wird nichts kopiert.
 """

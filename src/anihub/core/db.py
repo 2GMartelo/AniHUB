@@ -5,7 +5,7 @@ import json
 import sqlite3
 import threading
 import time
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Iterable
 
 SCHEMA_VERSION = 12
@@ -810,7 +810,7 @@ class Database:
             ids.update(r[0] for r in self.conn.execute("SELECT id FROM tags WHERE name LIKE ? ESCAPE '\\'", (_like_escape(prefix) + "%",)))
         return sorted(ids)
 
-    def _where(self, include, exclude, ratings, kind, category_id, collection_id, favorites, min_stars, trashed):
+    def _where(self, include, exclude, ratings, kind, category_id, collection_id, favorites, min_stars, trashed, folder=None):
         where = ["i.kind=?", "i.trashed_at IS NOT NULL" if trashed else "i.trashed_at IS NULL"]
         args: list = [kind]
         if not trashed and (self.blocked_names or self.blocked_prefixes):
@@ -846,6 +846,11 @@ class Database:
         if min_stars:
             where.append("i.stars>=?")
             args.append(min_stars)
+        if folder is not None:
+            # The item's own on-disk subfolder (and everything under it): "arts/danbooru" matches
+            # "arts/danbooru/x.png" as well as "arts/danbooru/sub/y.png".
+            where.append("i.path LIKE ? ESCAPE '\\'")
+            args.append(_like_escape(folder) + "/%")
         return " AND ".join(where), args
 
     def search_items(
@@ -864,9 +869,10 @@ class Database:
         favorites: bool = False,
         min_stars: int = 0,
         trashed: bool = False,
+        folder: str | None = None,
     ) -> list[sqlite3.Row]:
         where, args = self._where(list(include), list(exclude), ratings, kind, category_id, collection_id,
-                                  favorites, min_stars, trashed)
+                                  favorites, min_stars, trashed, folder)
         if where is None:
             return []
         expr = "i.trashed_at" if trashed else SORTS.get(sort, SORTS["added"])
@@ -877,12 +883,26 @@ class Database:
     def count_search(self, include: Iterable[str] = (), exclude: Iterable[str] = (),
                      ratings: Iterable[str] | None = None, kind: str = "art", *, category_id: int | None = None,
                      collection_id: int | None = None, favorites: bool = False, min_stars: int = 0,
-                     trashed: bool = False) -> int:
+                     trashed: bool = False, folder: str | None = None) -> int:
         where, args = self._where(list(include), list(exclude), ratings, kind, category_id, collection_id,
-                                  favorites, min_stars, trashed)
+                                  favorites, min_stars, trashed, folder)
         if where is None:
             return 0
         return self.conn.execute(f"SELECT COUNT(*) FROM items i WHERE {where}", args).fetchone()[0]
+
+    def folder_tree(self, kind: str = "art") -> dict:
+        """A nested {name: {child_name: {...}}} tree of the real on-disk subfolders items of this kind live in
+        (from each item's own stored path, not a filesystem scan -- so it only ever shows folders that actually
+        have something indexed in them). The kind's own top folder ("arts", "sd") is not a node itself."""
+        root: dict = {}
+        for (path,) in self.conn.execute("SELECT path FROM items WHERE kind=? AND trashed_at IS NULL", (kind,)):
+            if Path(path).is_absolute():
+                continue  # outside the library entirely (a redirected "paths.*" folder, core/paths.py): no tree node
+            parts = PurePosixPath(path).parts[1:-1]  # drop the kind's own top folder and the filename
+            node = root
+            for part in parts:
+                node = node.setdefault(part, {})
+        return root
 
     def count_items(self, kind: str = "art") -> int:
         return self.conn.execute(

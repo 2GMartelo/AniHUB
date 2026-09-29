@@ -107,11 +107,11 @@ class MusicTab(QWidget):
     # --- library -----------------------------------------------------------------------------------------
 
     def rescan(self) -> None:
-        self.albums = music.scan(self.ctx.paths.root / "music")
+        self.albums = music.scan(self.ctx.paths.music)
         self._fill()
 
     def _open_folder(self) -> None:
-        folder = self.ctx.paths.root / "music"
+        folder = self.ctx.paths.music
         folder.mkdir(parents=True, exist_ok=True)
         os.startfile(folder)
 

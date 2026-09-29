@@ -21,6 +21,7 @@ from anihub.services.comfyui import ComfyManager
 from anihub.services.forge import ForgeManager
 from anihub.services.gpu_scheduler import GpuScheduler
 from anihub.core.notifications import NotificationCenter
+from anihub.services import promptbook
 from anihub.core.undo import UndoStack
 from anihub.services.subscriptions import SubscriptionService
 from anihub.services.updater import Updater
@@ -65,7 +66,7 @@ class AppContext:
 
     @classmethod
     def build(cls, cfg: Config) -> "AppContext":
-        paths = LibraryPaths(Path(cfg.get("library_path")))
+        paths = LibraryPaths(Path(cfg.get("library_path")), cfg)
         paths.ensure()
         db = Database(paths.db_file)
         http = HttpClient(cfg)
@@ -85,6 +86,7 @@ class AppContext:
         ctx.subscriptions = SubscriptionService(db, ctx.sources, ctx.downloads, cfg)
         ctx.refresh_tagger()
         ctx.refresh_filter()
+        promptbook.apply_custom_slots(cfg)
         return ctx
 
     @property

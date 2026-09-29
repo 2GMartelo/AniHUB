@@ -201,7 +201,7 @@ class VTubeView(QWidget):
                                      group_offload=self.group_offload.isChecked())
 
     def _default_psd_path(self) -> Path:
-        folder = self.ctx.paths.root / "vtube"
+        folder = self.ctx.paths.vtube_out
         folder.mkdir(parents=True, exist_ok=True)
         stem = self.path.stem if self.path is not None else "result"
         return folder / f"{stem}.psd"

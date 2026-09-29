@@ -170,15 +170,19 @@ class LibraryService:
         return SaveResult("saved", item_id, similar=similar)
 
     def save_generation(self, path: Path, meta: dict, rating: str = "general") -> SaveResult:
-        """Add an already-written SD image (inside the library folder) to the library, with its parameters."""
+        """Add an already-written SD image to the library, with its parameters. Usually inside the library folder,
+        but `paths.generations` (core/paths.py) can be redirected outside it -- stored as an absolute path then,
+        the same as sd_history.py's own HistoryView._file() already anticipates for exactly this reason."""
         try:
             sha = _sha256(path)
             if self.db.find_by_hash(sha):
                 return SaveResult("duplicate")
+            resolved, root = path.resolve(), self.paths.root.resolve()
+            rel = resolved.relative_to(root).as_posix() if resolved.is_relative_to(root) else str(resolved)
             item_id = self.db.add_item(
                 tags=[(t, "general") for t in prompt_tags(meta.get("prompt", ""))],
                 kind="sd",
-                path=path.resolve().relative_to(self.paths.root.resolve()).as_posix(),
+                path=rel,
                 sha256=sha,
                 phash=dhash(QImage(str(path))),
                 width=meta.get("width"),

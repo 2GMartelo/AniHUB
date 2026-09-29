@@ -1527,4 +1527,25 @@ discord.generating
 palette.history
 stats.generations
 stats.by_model
+imgmenu.copy
+imgmenu.save_as
+imgmenu.copy_path
+imgmenu.open_folder
+pb.tree.new_section
+pb.tree.rename_section
+pb.tree.delete_section
+settings.browse
+settings.folders_title
+settings.folder_generations
+settings.folder_vtube
+settings.folder_music
+lib.folders
+tab.external
+extfolders.add
+extfolders.label
+extfolders.remove
+extfolders.to_library
+extfolders.imported
+extfolders.empty_title
+extfolders.empty_hint
 """.split("\n") if k]

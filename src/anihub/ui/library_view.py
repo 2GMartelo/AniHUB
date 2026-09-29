@@ -32,6 +32,7 @@ from anihub.ui.workers import run_async, run_status
 
 PAGE = 200
 ROLE = Qt.ItemDataRole.UserRole
+FOLDER_ROOTS = {"art": "arts", "sd": "sd"}  # this kind's own top folder, matched against db.folder_tree()/search_items(folder=...)
 
 
 def split_query(text: str) -> tuple[list[str], list[str]]:
@@ -165,6 +166,12 @@ class LibraryView(QWidget):
         (parent.addChild if parent is not None else self.side.addTopLevelItem)(item)
         return item
 
+    def _add_folder_nodes(self, parent_item: QTreeWidgetItem, node: dict, prefix: str) -> None:
+        for name in sorted(node):
+            full = f"{prefix}/{name}"
+            item = self._add_side(parent_item, name, ("folder", full))
+            self._add_folder_nodes(item, node[name], full)
+
     def refresh_sidebar(self) -> None:
         db, kind = self.ctx.db, self.kind
         self.side.blockSignals(True)
@@ -183,6 +190,10 @@ class LibraryView(QWidget):
         smart = self._add_side(None, tr("lib.smart"), ("header", "smart"), bold=True)
         for _sid, name, _tags in db.smart_tags():
             self._add_side(smart, f"@{name}", ("smart", name))
+        tree = db.folder_tree(kind)
+        if tree:
+            folders = self._add_side(None, tr("lib.folders"), ("header", "folder"), bold=True)
+            self._add_folder_nodes(folders, tree, FOLDER_ROOTS.get(kind, kind))
         self._add_side(None, f"🗑 {tr('lib.trash')} ({db.count_search(kind=kind, trashed=True)})", ("trash", None))
         self.side.expandAll()
         self.side.blockSignals(False)
@@ -244,6 +255,8 @@ class LibraryView(QWidget):
             menu.addAction(tr("tags.manager") + "...", self._tag_manager)
         elif kind_ == "trash":
             menu.addAction(tr("lib.empty_trash"), self._empty_trash)
+        elif kind_ == "folder":
+            menu.addAction(tr("lib.show_folder"), lambda: os.startfile(self.ctx.paths.root / value))
         if not menu.isEmpty():
             menu.exec(self.side.viewport().mapToGlobal(pos))
 
@@ -408,6 +421,8 @@ class LibraryView(QWidget):
             args["include"] = include + [f"@{value}"]
         elif mode == "trash":
             args["trashed"] = True
+        elif mode == "folder":
+            args["folder"] = value
         return args
 
     def reload(self) -> None:

@@ -132,7 +132,7 @@ class ThemesTab(QWidget):
         if not tracks:
             return
         self.download_btn.setEnabled(False)
-        root = self.ctx.paths.root / "music"
+        root = self.ctx.paths.music
 
         def work() -> tuple[int, list[str]]:
             done, errors = 0, []

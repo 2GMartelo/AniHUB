@@ -290,7 +290,8 @@ class PromptBuilder(QWidget):
 
     def __init__(self, ctx: AppContext, form=None, parent=None):
         super().__init__(parent)
-        self.ctx = ctx
+        pb.apply_custom_slots(ctx.cfg)          # keeps pb.SLOT_KEYS/POSITIVE/NEGATIVE in sync even when the
+        self.ctx = ctx                          # caller built its own ctx by hand instead of AppContext.build()
         self.form = form
         self.book = PromptBook(ctx.db, ctx.paths.root)
         self.book.seed()
@@ -414,6 +415,7 @@ class PromptBuilder(QWidget):
         self.tree.tags_dropped.connect(self._tags_dropped)
         self.tree.node_dropped.connect(self._node_dropped)
         self.tree.loras_dropped.connect(self._loras_dropped)
+        self.tree.slot_dropped.connect(self._slot_dropped)
         self._fill_tree()
         self._refresh_grid()
         self._refresh_doc()
@@ -812,7 +814,67 @@ class PromptBuilder(QWidget):
             menu.addAction(tr("pb.tree.previews"), self._previews_for_view)
         if node is not None:
             menu.addAction(tr("pb.tree.delete"), lambda: self._delete_node(node))
+        menu.addSeparator()
+        menu.addAction(tr("pb.tree.new_section"), self._new_slot)
+        if sel[0] == "slot" and pb.is_custom_slot(sel[1]):
+            menu.addAction(tr("pb.tree.rename_section"), lambda: self._rename_slot(sel[1]))
+            menu.addAction(tr("pb.tree.delete_section"), lambda: self._delete_slot(sel[1]))
         menu.exec(self.tree.viewport().mapToGlobal(pos))
+
+    def _rebuild_cards(self) -> None:
+        """Re-derives the right-side paragraph panel from pb.POSITIVE/pb.NEGATIVE (after a section was added,
+        renamed, deleted or reordered) without losing what is already in negative_title (reused, not recreated)."""
+        while self.cards_layout.count():
+            item = self.cards_layout.takeAt(0)
+            widget = item.widget()
+            if widget is None:
+                continue
+            widget.setParent(None)
+            if widget is not self.negative_title:
+                widget.deleteLater()
+        self.cards.clear()
+        for key in pb.POSITIVE:
+            self._add_card(key)
+        self.cards_layout.addSpacing(6)
+        self.cards_layout.addWidget(self.negative_title)
+        for key in pb.NEGATIVE:
+            self._add_card(key)
+        self.cards_layout.addStretch(1)
+        self._refresh_doc()
+
+    def _new_slot(self) -> None:
+        negative = self._current_slot() in pb.NEGATIVE
+        name, ok = QInputDialog.getText(self, tr("pb.tree.new_section"), tr("pb.dlg.name"))
+        name = name.strip()
+        if ok and name:
+            key = pb.add_custom_slot(self.ctx.cfg, name, negative)
+            self._rebuild_cards()
+            self._fill_tree(("slot", key))
+            self._refresh_grid()
+
+    def _rename_slot(self, key: str) -> None:
+        name, ok = QInputDialog.getText(self, tr("pb.tree.rename_section"), tr("pb.dlg.name"),
+                                        text=pb.slot_name(key, get_language()))
+        name = name.strip()
+        if ok and name:
+            pb.rename_custom_slot(self.ctx.cfg, key, name)
+            self._rebuild_cards()
+            self._fill_tree(("slot", key))
+
+    def _delete_slot(self, key: str) -> None:
+        name = pb.slot_name(key, get_language())
+        if QMessageBox.question(self, tr("pb.tree.delete_section"), tr("pb.confirm_delete", name=name)) == QMessageBox.StandardButton.Yes:
+            pb.delete_custom_slot(self.ctx.cfg, key, self.doc)
+            self._rebuild_cards()
+            self._fill_tree()
+            self._refresh_grid()
+
+    def _slot_dropped(self, key: str, target) -> None:
+        before = target[1] if target[0] == "slot" else None
+        pb.reorder_slot(self.ctx.cfg, key, before)
+        self._rebuild_cards()
+        self._fill_tree(("slot", key))
+        self._refresh_grid()
 
     def _new_node(self, slot: str, parent_id: int | None) -> None:
         name, ok = QInputDialog.getText(self, tr("pb.tree.new_category"), tr("pb.dlg.name"))

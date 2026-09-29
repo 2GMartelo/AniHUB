@@ -684,4 +684,25 @@ DATA = r"""
 1522|geração
 1523|gerações no Stable Diffusion
 1524|Por modelo
+1525|Copiar imagem
+1526|Salvar como…
+1527|Copiar caminho do arquivo
+1528|Abrir pasta contendo o arquivo
+1529|Nova seção…
+1530|Renomear seção
+1531|Excluir seção
+1532|Procurar…
+1533|Pastas
+1534|Gerações
+1535|Saída do VTube
+1536|Biblioteca de música
+1537|Pastas
+1538|Pastas no computador
+1539|Adicionar pasta…
+1540|Nome
+1541|Remover da lista
+1542|Adicionar à biblioteca
+1543|Adicionados: {saved}, duplicados: {dup}, falhas: {failed}
+1544|Nenhuma pasta aberta
+1545|Adicione uma pasta à esquerda, ou abra uma para ver as imagens aqui -- nada é copiado.
 """

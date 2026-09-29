@@ -17,13 +17,13 @@ def make_window(qapp, tmp_path, **cfg_values):
     return win, ctx
 
 
-def test_key_for_falls_back_to_the_default():
-    cfg = Config.load(None)
+def test_key_for_falls_back_to_the_default(tmp_path):
+    cfg = Config.load(tmp_path / "c.json")
     assert keymap.key_for(cfg, "palette") == "Ctrl+K"
 
 
-def test_key_for_returns_the_users_override():
-    cfg = Config.load(None)
+def test_key_for_returns_the_users_override(tmp_path):
+    cfg = Config.load(tmp_path / "c.json")
     cfg.set("hotkeys.palette", "Ctrl+P", save=False)
     assert keymap.key_for(cfg, "palette") == "Ctrl+P"
 

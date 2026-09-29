@@ -11,6 +11,7 @@ from PySide6.QtWidgets import QAbstractItemView, QApplication, QListWidget, QTre
 TAG_MIME = "application/x-anihub-tags"          # JSON list of tag ids
 NODE_MIME = "application/x-anihub-node"         # JSON id of a category
 LORA_MIME = "application/x-anihub-loras"        # JSON list of LoRA file paths
+SLOT_MIME = "application/x-anihub-slot"         # JSON key of a top-level section, dropped onto another to reorder
 ROLE = Qt.ItemDataRole.UserRole
 
 
@@ -25,7 +26,8 @@ def read_mime(mime: QMimeData, kind: str):
 
 
 def drop_allowed(kind: str, target) -> bool:
-    """Which tree rows take what: a tag goes into a category; a category into another category or a slot; a LoRA into one of the LoRA groups."""
+    """Which tree rows take what: a tag goes into a category; a category into another category or a slot; a LoRA into one of the LoRA groups;
+    a section (slot) onto another section, to reorder."""
     if not target:
         return False
     if kind == TAG_MIME:
@@ -34,6 +36,8 @@ def drop_allowed(kind: str, target) -> bool:
         return target[0] in ("node", "slot")
     if kind == LORA_MIME:
         return target[0] == "lora" and target[1] is not None
+    if kind == SLOT_MIME:
+        return target[0] == "slot"
     return False
 
 
@@ -42,6 +46,7 @@ class CatalogTree(QTreeWidget):
     tags_dropped = Signal(list, object)             # tag ids, the row they were dropped on
     node_dropped = Signal(int, object)
     loras_dropped = Signal(list, object)
+    slot_dropped = Signal(str, object)              # slot key, the row it was dropped on
 
     def __init__(self):
         super().__init__()
@@ -53,20 +58,20 @@ class CatalogTree(QTreeWidget):
         self._hover = None
 
     def mimeTypes(self) -> list[str]:  # noqa: N802
-        return [TAG_MIME, NODE_MIME, LORA_MIME]
+        return [TAG_MIME, NODE_MIME, LORA_MIME, SLOT_MIME]
 
     def startDrag(self, supported) -> None:  # noqa: N802
         item = self.currentItem()
         data = item.data(0, ROLE) if item is not None else None
-        if not data or data[0] != "node":                     # only real categories are moved
+        if not data or data[0] not in ("node", "slot"):        # only real categories and sections are moved
             return
         drag = QDrag(self)
-        drag.setMimeData(make_mime(NODE_MIME, data[1]))
+        drag.setMimeData(make_mime(NODE_MIME if data[0] == "node" else SLOT_MIME, data[1]))
         drag.exec(Qt.DropAction.MoveAction)
 
     def _kind(self, event) -> str | None:
         mime = event.mimeData()
-        return next((k for k in (TAG_MIME, NODE_MIME, LORA_MIME) if mime.hasFormat(k)), None)
+        return next((k for k in (TAG_MIME, NODE_MIME, LORA_MIME, SLOT_MIME) if mime.hasFormat(k)), None)
 
     def _target(self, pos: QPoint):
         item = self.itemAt(pos)
@@ -84,6 +89,8 @@ class CatalogTree(QTreeWidget):
         ok = bool(kind) and drop_allowed(kind, data)
         if ok and kind == NODE_MIME and data[0] == "node" and data[1] == read_mime(event.mimeData(), NODE_MIME):
             ok = False                                       # not onto itself
+        if ok and kind == SLOT_MIME and data[1] == read_mime(event.mimeData(), SLOT_MIME):
+            ok = False                                       # not onto itself
         if ok:
             self.viewport().update()
             event.acceptProposedAction()
@@ -100,7 +107,8 @@ class CatalogTree(QTreeWidget):
             event.ignore()
             return
         payload = read_mime(event.mimeData(), kind)
-        {TAG_MIME: self.tags_dropped, NODE_MIME: self.node_dropped, LORA_MIME: self.loras_dropped}[kind].emit(payload, data)
+        {TAG_MIME: self.tags_dropped, NODE_MIME: self.node_dropped, LORA_MIME: self.loras_dropped,
+         SLOT_MIME: self.slot_dropped}[kind].emit(payload, data)
         event.acceptProposedAction()
 
     def drawRow(self, painter, option, index) -> None:  # noqa: N802

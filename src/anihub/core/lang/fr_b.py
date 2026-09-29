@@ -684,4 +684,25 @@ DATA = r"""
 1522|génération
 1523|générations Stable Diffusion
 1524|Par modèle
+1525|Copier l'image
+1526|Enregistrer sous…
+1527|Copier le chemin du fichier
+1528|Ouvrir le dossier contenant
+1529|Nouvelle section…
+1530|Renommer la section
+1531|Supprimer la section
+1532|Parcourir…
+1533|Dossiers
+1534|Générations
+1535|Sortie VTube
+1536|Bibliothèque musicale
+1537|Dossiers
+1538|Dossiers sur l'ordinateur
+1539|Ajouter un dossier…
+1540|Nom
+1541|Retirer de la liste
+1542|Ajouter à la bibliothèque
+1543|Ajoutés : {saved}, doublons : {dup}, échecs : {failed}
+1544|Aucun dossier ouvert
+1545|Ajoutez un dossier à gauche, ou ouvrez-en un pour voir ses images ici -- rien n'est copié.
 """

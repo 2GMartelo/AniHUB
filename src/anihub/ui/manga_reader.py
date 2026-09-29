@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
 from anihub.context import AppContext
 from anihub.core.i18n import tr
 from anihub.ui import style
+from anihub.ui.image_context_menu import show_image_menu
 from anihub.ui.zoomview import STEP, clamp_pan, clamp_zoom, zoom_pan
 from anihub.ui.workers import run_async
 
@@ -53,6 +54,7 @@ class PagedCanvas(QWidget):
     half flips; flipping slides the old page out to one side while the next one comes in from the other."""
     clicked_side = Signal(str)  # "left" | "right"
     zoom_changed = Signal(float)
+    menu_requested = Signal(QPoint)  # local position; a right click never flips the page
     SLIDE_MS = 300
 
     def __init__(self):
@@ -184,6 +186,8 @@ class PagedCanvas(QWidget):
             e.ignore()                                                                 # the reader flips the page
 
     def mousePressEvent(self, e: QMouseEvent) -> None:
+        if e.button() != Qt.MouseButton.LeftButton:
+            return
         self._press, self._moved = e.position(), False
 
     def mouseMoveEvent(self, e: QMouseEvent) -> None:
@@ -212,6 +216,9 @@ class PagedCanvas(QWidget):
             self.update()
             self.zoom_changed.emit(1.0)
 
+    def contextMenuEvent(self, e) -> None:  # noqa: N802
+        self.menu_requested.emit(e.pos())
+
 
 class WebtoonView(QScrollArea):
     """Endless vertical strip. The strip has a readable width of its own (a manhwa page is not stretched over the whole
@@ -219,6 +226,7 @@ class WebtoonView(QScrollArea):
     page_changed = Signal(int)
     need_page = Signal(int)
     width_changed = Signal(int)
+    page_menu_requested = Signal(int, QPoint)  # (page index, already-global position)
     DEFAULT_COLUMN = 800
     MIN_COLUMN = 240
     SCROLL_MS = 260
@@ -246,11 +254,13 @@ class WebtoonView(QScrollArea):
         for lab in self.labels:
             lab.deleteLater()
         self.labels, self.images = [], {}
-        for _ in range(count):
+        for i in range(count):
             lab = QLabel(alignment=Qt.AlignmentFlag.AlignCenter)
             lab.setFixedHeight(int(self._width() * 1.4))
             lab.setStyleSheet("color: #9aa0a6;")
             lab.setText("…")
+            lab.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+            lab.customContextMenuRequested.connect(lambda pos, i=i, lab=lab: self.page_menu_requested.emit(i, lab.mapToGlobal(pos)))
             self.lay.addWidget(lab)
             self.labels.append(lab)
 
@@ -445,9 +455,11 @@ class Reader(QWidget):
         self.page_slider.valueChanged.connect(self._slider_moved)
         self.canvas.clicked_side.connect(self._on_click_side)
         self.canvas.zoom_changed.connect(lambda z: self._remember("manga.reader.zoom", round(z, 3)))
+        self.canvas.menu_requested.connect(self._show_page_menu)
         self.web.width_changed.connect(lambda w: self._remember("manga.reader.webtoon_width", int(w)))
         self.web.need_page.connect(self._ensure)
         self.web.page_changed.connect(self._on_web_page)
+        self.web.page_menu_requested.connect(self._show_web_page_menu)
         self.save_timer = QTimer(self)
         self.save_timer.setSingleShot(True)
         self.save_timer.timeout.connect(self._save_progress)
@@ -631,6 +643,26 @@ class Reader(QWidget):
     def _on_click_side(self, side: str) -> None:
         forward = (side == "left") if (self.rtl and self.mode != "webtoon") else (side == "right")
         self.next_page() if forward else self.prev_page()
+
+    def _page_filename(self, i: int) -> str:
+        title = self.manga.get("title", "manga")
+        name = self.chapter.get("name", "")
+        return f"{title} - {name} - p{i + 1:03d}.png".replace("/", "-")
+
+    def _show_page_menu(self, pos) -> None:
+        """A right click on the paged canvas: whichever half of a double-page spread was clicked."""
+        shown = self._shown()
+        if not shown:
+            return
+        i = shown[0] if pos.x() < self.canvas.width() / 2 else shown[-1]
+        img = self.images.get(i)
+        if img is not None:
+            show_image_menu(self.canvas, self.canvas.mapToGlobal(pos), image=img, suggested_name=self._page_filename(i))
+
+    def _show_web_page_menu(self, i: int, global_pos) -> None:
+        img = self.web.images.get(i)
+        if img is not None:
+            show_image_menu(self.web, global_pos, image=img, suggested_name=self._page_filename(i))
 
     def _on_web_page(self, i: int) -> None:
         if i != self.page:

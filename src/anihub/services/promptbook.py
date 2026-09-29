@@ -31,6 +31,97 @@ def slot_name(key: str, lang: str = "en") -> str:
     return ru if lang == "ru" else en
 
 
+# --- user-created sections --------------------------------------------------------------------------------------
+# SLOT_KEYS/POSITIVE/NEGATIVE/SLOT_NAMES above are the built-in sections (quality, character, clothing...); the
+# user can add their own on top, and reorder ALL of them (built-in and custom together). These four names are
+# reassigned wholesale by set_custom_slots() -- the same "global mutable state, rebuilt from config" pattern
+# ui/theme.py already uses for custom colours -- rather than threading a "slots" argument through PromptDoc,
+# PromptBuilder and catalog_picker.py, which already reference them as plain module constants in a dozen places.
+
+def is_custom_slot(key: str) -> bool:
+    return not any(s[0] == key for s in SLOTS)
+
+
+def custom_slot_key(existing: set[str], label: str) -> str:
+    """A short, stable, unique key for a user-typed section name."""
+    base = "custom_" + re.sub(r"[^a-z0-9]+", "_", label.strip().lower()).strip("_")
+    base = base if base != "custom_" else "custom_section"
+    key, n = base, 2
+    while key in existing:
+        key = f"{base}_{n}"
+        n += 1
+    return key
+
+
+def set_custom_slots(custom: list[dict], order: list[str]) -> None:
+    """Rebuilds SLOT_KEYS/POSITIVE/NEGATIVE/SLOT_NAMES from the built-ins plus `custom` ({key, label, negative}
+    dicts), in `order` (missing keys are appended in their original order)."""
+    global SLOT_KEYS, POSITIVE, NEGATIVE, SLOT_NAMES
+    by_key = {s[0]: s for s in SLOTS}
+    for c in custom:
+        by_key[c["key"]] = (c["key"], c["label"], c["label"], bool(c.get("negative", False)))
+    keys = [k for k in order if k in by_key] + [k for k in by_key if k not in order]
+    entries = [by_key[k] for k in keys]
+    SLOT_KEYS = [e[0] for e in entries]
+    POSITIVE = [e[0] for e in entries if not e[3]]
+    NEGATIVE = [e[0] for e in entries if e[3]]
+    SLOT_NAMES = {e[0]: (e[1], e[2]) for e in entries}
+
+
+def apply_custom_slots(cfg) -> None:
+    """Call once when the app (or a test) starts, and again whenever the user's sections change."""
+    set_custom_slots(cfg.get("promptbuilder.custom_slots", []) or [], cfg.get("promptbuilder.slot_order", []) or [])
+
+
+def add_custom_slot(cfg, label: str, negative: bool) -> str:
+    custom = list(cfg.get("promptbuilder.custom_slots", []) or [])
+    existing = {s[0] for s in SLOTS} | {c["key"] for c in custom}
+    key = custom_slot_key(existing, label)
+    custom.append({"key": key, "label": label.strip(), "negative": negative})
+    cfg.set("promptbuilder.custom_slots", custom, save=False)
+    # Appended after the CURRENT effective order (SLOT_KEYS), not the possibly empty/stale one in cfg: a fresh
+    # config with no stored slot_order yet must still put a new section at the very end, not first.
+    order = list(SLOT_KEYS) + [key]
+    cfg.set("promptbuilder.slot_order", order)
+    apply_custom_slots(cfg)
+    return key
+
+
+def rename_custom_slot(cfg, key: str, label: str) -> None:
+    custom = list(cfg.get("promptbuilder.custom_slots", []) or [])
+    for c in custom:
+        if c["key"] == key:
+            c["label"] = label.strip()
+    cfg.set("promptbuilder.custom_slots", custom)
+    apply_custom_slots(cfg)
+
+
+def delete_custom_slot(cfg, key: str, doc: "PromptDoc | None" = None) -> None:
+    """Removes a user-created section. Any tags it held move to "extra" / "neg_unwanted", the same fallback
+    parse_prompt() already uses for text it does not recognise."""
+    custom = [c for c in cfg.get("promptbuilder.custom_slots", []) or [] if c["key"] != key]
+    cfg.set("promptbuilder.custom_slots", custom, save=False)
+    order = [k for k in (cfg.get("promptbuilder.slot_order", []) or []) if k != key]
+    cfg.set("promptbuilder.slot_order", order)
+    if doc is not None:
+        fallback = "neg_unwanted" if key in NEGATIVE else "extra"
+        doc.entries(fallback).extend(doc.entries(key))
+        doc.slots.pop(key, None)
+    apply_custom_slots(cfg)
+
+
+def reorder_slot(cfg, key: str, before: str | None) -> None:
+    """Moves `key` to sit right before `before` in the user's slot order (or to the very end when `before` is
+    None or not a known slot)."""
+    order = [k for k in SLOT_KEYS if k != key]
+    if before is not None and before in order:
+        order.insert(order.index(before), key)
+    else:
+        order.append(key)
+    cfg.set("promptbuilder.slot_order", order)
+    apply_custom_slots(cfg)
+
+
 def norm(text: str) -> str:
     return re.sub(r"\s+", " ", text.strip().lower().replace("_", " "))
 
