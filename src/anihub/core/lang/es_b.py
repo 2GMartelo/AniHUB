@@ -726,4 +726,44 @@ DATA = r"""
 1564|Cargado: {nodes} categorías, {tags} etiquetas, {images} imágenes
 1565|Redibujar todas las imágenes aquí (Forge)
 1566|Aquí no hay nada que redibujar
+1567|Hecho. Suwayomi {v} está instalado.
+1568|Descargando y descomprimiendo Suwayomi-Server (unos 340 MB, con su propio Java) en:\n{dest}
+1569|Instalando Suwayomi
+1570|Carpeta: {path}
+1571|Cambiar carpeta…
+1572|¿Usar {path} como carpeta de la biblioteca a partir de ahora? Los archivos existentes NO se mueven allí automáticamente — cópielos usted mismo antes si quiere conservarlos.
+1573|Guardado. Reinicie AniHUB para que la nueva carpeta surta efecto.
+1574|ComfyUI (necesario para la pestaña VTube)
+1575|ComfyUI es lo que hace funcionar la pestaña "VTube" dentro de Generación (convierte una imagen en un PSD por capas) — configúrelo aquí si quiere usarlo.
+1576|Descargar todas las dependencias
+1577|¿Descargar lo que falta: {items}?
+1578|Listo.
+1579|Comprueba Forge, ComfyUI, sd-scripts, Suwayomi y el modelo del autoetiquetador, y descarga los que aún falten — directamente en la carpeta "apps" de esta biblioteca (o la carpeta habitual del autoetiquetador), sin preguntas adicionales. Nunca toca su biblioteca de artes/manga en sí.
+1580|Ya está todo instalado.
+1581|Modelo
+1582|(el que Forge ya tenga cargado)
+1583|Volver a explorar la carpeta de modelos
+1584|Un modelo por defecto, leído directamente del disco (Forge no necesita estar en ejecución). Una vez que Forge se haya ejecutado realmente, recuerda su propio último modelo usado, y esto solo se usa como respaldo la primera vez.
+1585|instalado ({v})
+1586|no instalado
+1587|Carpeta de Suwayomi
+1588|Carpeta: {path} — {state}
+1589|Su propia biblioteca de bandas sonoras, radio por internet y búsqueda de openings/endings de anime (AnimeThemes) — un reproductor, tres pestañas.
+1590|Música
+1591|Gestor de etiquetas, reglas automáticas (hacer X cuando un elemento nuevo coincida con Y), buscador de duplicados, autoetiquetar todo lo no etiquetado, comprobación de integridad, estadísticas, e importar una colección que alguien compartió con usted — todo a un clic desde aquí.
+1592|Herramientas de biblioteca
+1593|La campana guarda un historial de todo lo que la aplicación le ha dicho (descargas, actualizaciones, capítulos nuevos...) — también aparece un aviso mientras la ventana está abierta.
+1594|Notificaciones
+1595|Convierte una imagen en un PSD por capas (mediante ComfyUI + el paquete de nodos See-through) listo para un rigger de Live2D o para retocar en Krita/Photoshop. Configure antes la carpeta de ComfyUI en Ajustes si aún no lo ha hecho.
+1596|VTube
+1597|Copias de seguridad zip automáticas de la biblioteca con el intervalo que usted defina, las antiguas se eliminan; restaurar una se programa aquí y se aplica la próxima vez que se inicie AniHUB.
+1598|Copias de seguridad
+1599|Muestra "qué está haciendo" bajo su nombre de Discord mientras Discord mismo se ejecuta localmente — necesita un ID de aplicación gratuito de discord.com/developers, pegado abajo.
+1600|Estado de Discord
+1601|"Cambiar carpeta" redirige la biblioteca a otra carpeta (no mueve los archivos por sí sola — cópielos usted mismo antes y reinicie AniHUB después). Las generaciones, los resultados de VTube y la música se pueden redirigir por separado más abajo en esta misma pestaña.
+1602|Carpeta de la biblioteca
+1603|Cualquier atajo global se puede reasignar aquí — haga clic en un campo y pulse la nueva combinación. La flechita lo restablece a su valor por defecto.
+1604|Atajos de teclado
+1605|Ctrl+Z / Ctrl+Y deshacen y rehacen un movimiento a la papelera/restauración en la biblioteca — los mismos atajos funcionan en cualquier parte de la aplicación.
+1606|Deshacer
 """

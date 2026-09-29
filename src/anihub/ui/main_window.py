@@ -538,6 +538,8 @@ class MainWindow(QMainWindow):
         steps += [
             Step("subscribe", lambda: self.browse.subscribe_btn, section("arts", 0)),
             Step("library2", lambda: self.library.side, section("arts", 1)),
+            Step("undo", None, section("arts", 1)),
+            Step("library_tools", lambda: self.library.tools_btn, section("arts", 1)),
             Step("downloads", lambda: self.downloads_btn, section("arts", 0)),
             Step("nav_manga", rail("manga"), section("manga")),
             Step("reader", None, section("manga")),
@@ -553,16 +555,24 @@ class MainWindow(QMainWindow):
                 Step("sd_lora", self.sd_page.tabs.tabBar, sd_tab(self.sd_page.tabs.indexOf(self.sd_page.lora))),
                 Step("sd_character", self.sd_page.tabs.tabBar, sd_tab(self.sd_page.tabs.indexOf(self.sd_page.character))),
             ]
+            if self.sd_page.vtube is not None:
+                steps.append(Step("sd_vtube", lambda: self.sd_page.vtube, sd_tab(self.sd_page.tabs.indexOf(self.sd_page.vtube))))
         if self.lora_train_enabled:
             steps.append(Step("nav_lora_train", rail("lora_train"), section("lora_train")))
         steps += [
             Step("nav_anime", rail("anime"), section("anime")),
             Step("anime_tabs", self.anime_page.tabs.tabBar, section("anime")),
             Step("anime_shelf", lambda: self.anime_page.watch.source_box, lambda: (self.go("anime"), self.anime_page.tabs.setCurrentWidget(self.anime_page.watch))),
+            Step("anime_music", lambda: self.anime_page.music_hub, lambda: (self.go("anime"), self.anime_page.tabs.setCurrentWidget(self.anime_page.music_hub))),
+            Step("notifications", lambda: self.notif_btn, section("arts", 0)),
             Step("logins", lambda: self.settings.import_btn, section("settings")),
+            Step("settings_folders", lambda: self.settings.library, section("settings")),
+            Step("settings_hotkeys", lambda: next(iter(self.settings.hotkey_edits.values()), None), section("settings")),
             Step("appearance", lambda: self.settings.theme, section("settings")),
             Step("age", lambda: self.settings.age_mode, section("settings")),
             Step("offline", lambda: self.offline_btn, section("settings")),
+            Step("settings_discord", lambda: self.settings.discord_enabled, section("settings")),
+            Step("settings_backup", lambda: self.settings.backup, section("settings")),
             Step("palette", None, section("arts", 0)),
             Step("close", None, section("arts", 0)),
             Step("finish", None, section("arts", 0)),
@@ -601,6 +611,7 @@ class MainWindow(QMainWindow):
         for url in event.mimeData().urls():
             if url.isLocalFile() and cookie_import.is_cookie_file(url.toLocalFile()):
                 cookie_import.import_path(self.ctx, Path(url.toLocalFile()), self)
+                self.settings.reload_credentials()
         event.acceptProposedAction()
 
     def showEvent(self, event) -> None:

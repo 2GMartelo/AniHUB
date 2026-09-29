@@ -726,4 +726,44 @@ DATA = r"""
 1564|Geladen: {nodes} Kategorien, {tags} Tags, {images} Bilder
 1565|Alle Bilder hier neu zeichnen (Forge)
 1566|Hier gibt es nichts neu zu zeichnen
+1567|Fertig. Suwayomi {v} ist installiert.
+1568|Suwayomi-Server (etwa 340 MB, mit eigenem Java) wird heruntergeladen und entpackt nach:\n{dest}
+1569|Suwayomi wird installiert
+1570|Ordner: {path}
+1571|Ordner ändern…
+1572|{path} ab jetzt als Bibliotheksordner verwenden? Vorhandene Dateien werden NICHT automatisch dorthin verschoben — kopieren Sie sie vorher selbst, wenn Sie sie behalten möchten.
+1573|Gespeichert. Starten Sie AniHUB neu, damit der neue Ordner wirksam wird.
+1574|ComfyUI (für den VTube-Tab nötig)
+1575|ComfyUI ist das, was den „VTube“-Tab innerhalb der Generierung antreibt (verwandelt ein Bild in eine geschichtete PSD) — richten Sie es hier ein, wenn Sie es nutzen möchten.
+1576|Alle Abhängigkeiten herunterladen
+1577|Fehlendes herunterladen: {items}?
+1578|Fertig.
+1579|Prüft Forge, ComfyUI, sd-scripts, Suwayomi und das Auto-Tagger-Modell und lädt herunter, was davon noch fehlt — direkt in den eigenen „apps“-Ordner dieser Bibliothek (bzw. den üblichen Ordner des Auto-Taggers), ohne weitere Rückfragen. Rührt dabei nie an Ihre eigentliche Kunst-/Manga-Bibliothek.
+1580|Es ist bereits alles installiert.
+1581|Modell
+1582|(das, was Forge selbst gerade geladen hat)
+1583|Modellordner erneut durchsuchen
+1584|Ein Standard-Checkpoint, direkt von der Festplatte gelesen (Forge muss dafür nicht laufen). Sobald Forge tatsächlich einmal gelaufen ist, merkt es sich seinen eigenen zuletzt verwendeten Checkpoint, und dies dient dann nur noch als Rückfall beim allerersten Mal.
+1585|installiert ({v})
+1586|nicht installiert
+1587|Suwayomi-Ordner
+1588|Ordner: {path} — {state}
+1589|Ihre eigene Soundtrack-Bibliothek, Internetradio und Suche nach Anime-Openings/-Endings (AnimeThemes) — ein Player, drei Tabs.
+1590|Musik
+1591|Tag-Manager, automatische Regeln (X tun, wenn ein neues Element zu Y passt), Duplikatsuche, alles noch nicht Getaggte automatisch taggen, Integritätsprüfung, Statistiken und das Importieren einer Sammlung, die jemand mit Ihnen geteilt hat — alles von hier aus mit einem Klick.
+1592|Bibliothekswerkzeuge
+1593|Die Glocke bewahrt einen Verlauf von allem auf, was die App Ihnen mitgeteilt hat (Downloads, Updates, neue Kapitel …) — solange das Fenster geöffnet ist, erscheint zusätzlich ein Toast.
+1594|Benachrichtigungen
+1595|Verwandelt ein Bild in eine geschichtete PSD (über ComfyUI + das See-through-Node-Paket), bereit für einen Live2D-Rigger oder zum Nachbearbeiten in Krita/Photoshop. Stellen Sie zuerst den ComfyUI-Ordner in den Einstellungen ein, falls noch nicht geschehen.
+1596|VTube
+1597|Automatische Zip-Backups der Bibliothek im von Ihnen festgelegten Intervall, alte werden entfernt; eine Wiederherstellung wird hier vorgemerkt und beim nächsten Start von AniHUB angewendet.
+1598|Backups
+1599|Zeigt „was Sie gerade tun“ unter Ihrem Discord-Namen an, solange Discord selbst lokal läuft — benötigt eine kostenlose Application-ID von discord.com/developers, unten eingefügt.
+1600|Discord-Status
+1601|„Ordner ändern“ richtet die Bibliothek auf einen anderen Ordner aus (verschiebt selbst keine Dateien dorthin — kopieren Sie sie vorher selbst und starten Sie AniHUB danach neu). Generierungen, VTube-Ergebnisse und Musik lassen sich weiter unten auf diesem Tab jeweils einzeln umleiten.
+1602|Bibliotheksordner
+1603|Jede globale Tastenkombination kann hier neu belegt werden — klicken Sie auf ein Feld und drücken Sie die neue Kombination. Der kleine Pfeil setzt sie auf ihren Standardwert zurück.
+1604|Tastenkürzel
+1605|Strg+Z / Strg+Y machen ein Verschieben in den Papierkorb/Wiederherstellen in der Bibliothek rückgängig bzw. wiederholen es — dieselben Tastenkombinationen funktionieren überall in der App.
+1606|Rückgängig
 """

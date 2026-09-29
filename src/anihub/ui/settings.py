@@ -79,9 +79,12 @@ class SettingsPage(QWidget):
         self.library = QLineEdit(cfg.get("library_path"), readOnly=True)
         open_btn = QPushButton(tr("settings.open_folder"))
         open_btn.clicked.connect(lambda: os.startfile(cfg.get("library_path")))
+        change_btn = style.secondary(QPushButton(tr("settings.change_library")), "folder")
+        change_btn.clicked.connect(self._change_library)
         library_row = QHBoxLayout()
         library_row.addWidget(self.library, 1)
         library_row.addWidget(open_btn)
+        library_row.addWidget(change_btn)
 
         self.folder_fields: dict[str, QLineEdit] = {}
         folder_defaults = {"generations": str(ctx.paths.sd / "generated"), "vtube": str(ctx.paths.root / "vtube"),
@@ -138,8 +141,19 @@ class SettingsPage(QWidget):
         self.forge_nowebui = QCheckBox(tr("settings.forge_nowebui"), checked=bool(cfg.get("forge.nowebui")))
         self.forge_args = QLineEdit(str(cfg.get("forge.extra_args") or ""))
         self.forge_idle = QSpinBox(minimum=0, maximum=1440, value=int(cfg.get("forge.idle_minutes", 0) or 0))
+        self.forge_model = QComboBox()
+        self.forge_model.setToolTip(tr("settings.forge_model.tip"))
+        refresh_model = style.ghost(QToolButton(), "refresh")
+        refresh_model.setToolTip(tr("settings.forge_model.refresh"))
+        refresh_model.clicked.connect(self._refresh_forge_models)
+        model_row = QHBoxLayout()
+        model_row.addWidget(self.forge_model, 1)
+        model_row.addWidget(refresh_model)
+        self._refresh_forge_models(select=str(cfg.get("forge.default_model") or ""))
+        self.forge_path.textChanged.connect(lambda: self._refresh_forge_models())
         forge = QFormLayout()
         forge.addRow(tr("settings.forge_path"), forge_row)
+        forge.addRow(tr("settings.forge_model"), model_row)
         forge.addRow(tr("settings.forge_port"), self.forge_port)
         forge.addRow("", self.forge_nowebui)
         forge.addRow(tr("settings.forge_args"), self.forge_args)
@@ -214,17 +228,34 @@ class SettingsPage(QWidget):
         self.comfyui_download_btn.clicked.connect(self._download_comfyui)
         self.comfyui_port = QSpinBox(minimum=1024, maximum=65535, value=int(cfg.get("comfyui.port", 8188)))
         self.comfyui_idle = QSpinBox(minimum=0, maximum=1440, value=int(cfg.get("comfyui.idle_minutes", 0) or 0))
+        comfyui_hint = style.role(QLabel(tr("settings.comfyui_hint")), "dim")
+        comfyui_hint.setWordWrap(True)
         comfyui_form = QFormLayout()
+        comfyui_form.addRow(comfyui_hint)
         comfyui_form.addRow(tr("settings.comfyui_path"), comfyui_row)
         comfyui_form.addRow("", self.comfyui_download_btn)
         comfyui_form.addRow(tr("settings.comfyui_port"), self.comfyui_port)
         comfyui_form.addRow(tr("settings.forge_idle"), self.comfyui_idle)
-        self.comfyui_box = QGroupBox("ComfyUI")
+        self.comfyui_box = QGroupBox(tr("settings.comfyui_group"))
         self.comfyui_box.setLayout(comfyui_form)
 
         self.manga_port = QSpinBox(minimum=1024, maximum=65535, value=int(cfg.get("manga.port", 4567)))
         self.manga_poll = QSpinBox(minimum=1, maximum=1440, value=int(cfg.get("manga.poll_minutes", 30)))
+        self.suwayomi_path = QLineEdit(str(cfg.get("manga.suwayomi_path") or ""))
+        browse_suwayomi = QPushButton(tr("wizard.browse"))
+        browse_suwayomi.clicked.connect(self._pick_suwayomi)
+        suwayomi_row = QHBoxLayout()
+        suwayomi_row.addWidget(self.suwayomi_path, 1)
+        suwayomi_row.addWidget(browse_suwayomi)
+        self.suwayomi_download_btn = style.secondary(QPushButton(tr("manga.install")), "download")
+        self.suwayomi_download_btn.clicked.connect(self._download_suwayomi)
+        self.suwayomi_status = style.role(QLabel(), "dim")
+        self.suwayomi_status.setWordWrap(True)
+        self._refresh_suwayomi_status()
         manga = QFormLayout()
+        manga.addRow(tr("settings.suwayomi_path"), suwayomi_row)
+        manga.addRow("", self.suwayomi_download_btn)
+        manga.addRow("", self.suwayomi_status)
         manga.addRow(tr("settings.manga_port"), self.manga_port)
         manga.addRow(tr("settings.manga_poll"), self.manga_poll)
         manga_box = QGroupBox(tr("nav.manga"))
@@ -247,6 +278,8 @@ class SettingsPage(QWidget):
         # autotagger
         self.tag_enabled = QCheckBox(tr("settings.autotag_enable"), checked=bool(cfg.get("autotag.enabled")))
         self.tag_status = QLabel()
+        self.tag_path = style.role(QLabel(tr("settings.autotag_path", path=str(ctx.autotagger.model_dir))), "dim")
+        self.tag_path.setWordWrap(True)
         self.tag_download = QPushButton(tr("settings.autotag_download"))
         self.tag_pause_btn = QPushButton(tr("settings.autotag_pause"))
         self.tag_pause_btn.hide()
@@ -264,6 +297,7 @@ class SettingsPage(QWidget):
         tag = QFormLayout()
         tag.addRow("", self.tag_enabled)
         tag.addRow(tr("settings.autotag_model"), self.tag_status)
+        tag.addRow("", self.tag_path)
         tag.addRow("", tag_dl_row)
         tag.addRow("", self.tag_bar)
         tag.addRow(tr("settings.autotag_general"), self.tag_general)
@@ -332,7 +366,7 @@ class SettingsPage(QWidget):
                 hint.setWordWrap(True)
                 creds.addRow("", hint)
         self.import_btn = import_btn = style.secondary(QPushButton(tr("cookies.import")), "upload")
-        import_btn.clicked.connect(lambda: cookie_import.pick_and_import(ctx, self))
+        import_btn.clicked.connect(self._import_cookies)
         forget_btn = style.ghost(QPushButton(tr("cookies.clear")), "trash")
         forget_btn.clicked.connect(lambda: cfg.set("cookie.jar", {}))
         import_hint = style.role(QLabel(tr("cookies.hint")), "dim")
@@ -358,9 +392,10 @@ class SettingsPage(QWidget):
         self.note = style.role(QLabel(), "dim")
 
         self.sd_box = self._build_sd_box()
+        self.deps_box = self._build_deps_box()
 
         # Categorised into tabs (was one long scroll of a dozen-plus group boxes -- hard to find anything in).
-        gen_boxes = [self.sd_box]
+        gen_boxes = [self.sd_box, self.deps_box]
         if ctx.sd_enabled:
             gen_boxes += [forge_box, gen_box, self.train_box, self.comfyui_box]  # hidden together when the PC cannot run Forge
         categories = [
@@ -529,6 +564,34 @@ class SettingsPage(QWidget):
         if path:
             edit.setText(path)
 
+    def _change_library(self) -> None:
+        """Repoints library_path at a different folder -- does NOT move any existing files there itself (an
+        automatic multi-GB move of the user's real library is too risky to do silently); the change only takes
+        effect after a restart, since the DB connection, thumbnail cache and every already-open view are tied to
+        the folder AppContext.build() opened at this app's own startup."""
+        current = self.library.text().strip() or str(Path.home())
+        folder = QFileDialog.getExistingDirectory(self, tr("settings.change_library"), str(Path(current).parent))
+        if not folder or os.path.normpath(folder) == os.path.normpath(current):
+            return
+        if QMessageBox.question(self, tr("settings.change_library"), tr("settings.change_library.confirm", path=folder)) != QMessageBox.StandardButton.Yes:
+            return
+        self.ctx.cfg.set("library_path", os.path.normpath(folder))
+        self.library.setText(os.path.normpath(folder))
+        QMessageBox.information(self, tr("settings.change_library"), tr("settings.change_library.restart"))
+
+    def _import_cookies(self) -> None:
+        cookie_import.pick_and_import(self.ctx, self)
+        self.reload_credentials()
+
+    def reload_credentials(self) -> None:
+        """The credential fields are built once from cfg at __init__ time (SettingsPage itself lives for the whole
+        app run, never recreated); a cookie import writes straight into cfg from outside this class (Settings'
+        own "Import" button, a file dropped on the main window, or a command-line argument), so without this the
+        fields would keep showing blank/stale values until the app is restarted, even though the import itself
+        worked."""
+        for key, field in self.cred_fields.items():
+            field.setText(str(self.ctx.cfg.get(key) or ""))
+
     def _show_locked(self) -> None:
         tags = agemode.locked_tags(self.age_mode.currentData())
         self.locked_tags.setPlainText(", ".join(tags) if tags else tr("age.locked.none"))
@@ -583,6 +646,79 @@ class SettingsPage(QWidget):
         run_async(sysreq.assess_forge, on_done=done,
                   on_error=lambda exc: (self.sd_check_btn.setEnabled(True), self.sd_status.setText(tr("status.error", msg=str(exc)))))
 
+    def _build_deps_box(self) -> QGroupBox:
+        self.deps_status = style.role(QLabel(tr("settings.download_all.hint")), "dim")
+        self.deps_status.setWordWrap(True)
+        self.deps_btn = style.secondary(QPushButton(tr("settings.download_all")), "download")
+        self.deps_btn.clicked.connect(self._download_everything)
+        layout = QVBoxLayout()
+        layout.addWidget(self.deps_status)
+        layout.addWidget(self.deps_btn, 0, Qt.AlignmentFlag.AlignLeft)
+        box = QGroupBox(tr("settings.download_all"))
+        box.setLayout(layout)
+        return box
+
+    def _missing_deps(self) -> list[str]:
+        """Every dependency not yet installed/pointed at, in install order. Forge/ComfyUI/sd-scripts are only ever
+        offered when sd_enabled (their own fields are unparented and liable to be garbage-collected otherwise,
+        same reason _save() guards them -- and there is nothing useful to install on a PC the check ruled out
+        anyway)."""
+        names = []
+        if self.ctx.sd_enabled:
+            if not self.forge_path.text().strip():
+                names.append("Forge")
+            if not self.comfyui_path.text().strip():
+                names.append("ComfyUI")
+            if not self.train_path.text().strip():
+                names.append("sd-scripts")
+        if not self.ctx.suwayomi.installed():
+            names.append("Suwayomi")
+        if not self.ctx.autotagger.available:
+            names.append("WD14")
+        return names
+
+    def _download_everything(self) -> None:
+        """Installs everything from `_missing_deps()`, each straight into <library>/apps/<Name> (or WD14's own
+        %APPDATA% model folder) with no folder picker -- the point of this button is "just get what's missing",
+        not another round of "where do you want it" per dependency."""
+        from anihub.ui.comfyui_install_dialog import ComfyuiInstallDialog
+        from anihub.ui.forge_install_dialog import ForgeInstallDialog
+        from anihub.ui.lora_train_install_dialog import LoraTrainInstallDialog
+        from anihub.ui.suwayomi_install_dialog import SuwayomiInstallDialog
+
+        missing = self._missing_deps()
+        if not missing:
+            self.deps_status.setText(tr("settings.download_all.none"))
+            return
+        if QMessageBox.question(self, tr("settings.download_all"), tr("settings.download_all.confirm", items=", ".join(missing))) != QMessageBox.StandardButton.Yes:
+            return
+        apps = self.ctx.paths.apps
+        for name in missing:
+            if name == "Forge":
+                dlg = ForgeInstallDialog(self.ctx, apps / "Forge", self)
+                dlg.exec()
+                if dlg.installed is not None:
+                    self.forge_path.setText(str(dlg.installed))
+            elif name == "ComfyUI":
+                dlg = ComfyuiInstallDialog(self.ctx, apps / "ComfyUI", self)
+                dlg.exec()
+                if dlg.installed is not None:
+                    self.comfyui_path.setText(str(dlg.installed))
+            elif name == "sd-scripts":
+                dlg = LoraTrainInstallDialog(self.ctx, apps / "sd-scripts", self)
+                dlg.exec()
+                if dlg.installed is not None:
+                    self.train_path.setText(str(dlg.installed))
+            elif name == "Suwayomi":
+                dlg = SuwayomiInstallDialog(self.ctx, apps / "Suwayomi", self)
+                dlg.exec()
+                if dlg.installed:
+                    self.suwayomi_path.setText(str(apps / "Suwayomi"))
+                self._refresh_suwayomi_status()
+            elif name == "WD14":
+                self._download_model()
+        self.deps_status.setText(tr("settings.download_all.done"))
+
     def _download_forge(self) -> None:
         from pathlib import Path
 
@@ -596,10 +732,57 @@ class SettingsPage(QWidget):
         if dlg.installed is not None:
             self.forge_path.setText(str(dlg.installed))
 
+    def _refresh_forge_models(self, select: str = "") -> None:
+        """Lists the checkpoints already sitting in <forge>/models/Stable-diffusion -- straight off disk, no
+        running Forge needed (unlike the live dropdown inside Generate itself, api.models()). Only meant as a
+        default/visibility pick; Forge's own remembered checkpoint (sdapi's sd_model_checkpoint) still wins once
+        Forge has actually been run once -- see sd_page.py's load_forge_data()."""
+        select = select or self.forge_model.currentData() or ""
+        self.forge_model.clear()
+        self.forge_model.addItem(tr("settings.forge_model.auto"), "")
+        folder = Path(self.forge_path.text().strip()) / "models" / "Stable-diffusion" if self.forge_path.text().strip() else None
+        if folder and folder.is_dir():
+            for path in sorted(folder.rglob("*")):
+                if path.is_file() and path.suffix.lower() in (".safetensors", ".ckpt"):
+                    rel = path.relative_to(folder).as_posix()
+                    self.forge_model.addItem(path.stem, rel)
+        if select:
+            idx = self.forge_model.findData(select)
+            if idx >= 0:
+                self.forge_model.setCurrentIndex(idx)
+
     def _pick_forge(self) -> None:
         folder = QFileDialog.getExistingDirectory(self, tr("settings.forge_path"), self.forge_path.text())
         if folder:
             self.forge_path.setText(os.path.normpath(folder))
+
+    def _pick_suwayomi(self) -> None:
+        folder = QFileDialog.getExistingDirectory(self, tr("settings.suwayomi_path"), self.suwayomi_path.text())
+        if folder:
+            self.suwayomi_path.setText(os.path.normpath(folder))
+            self._refresh_suwayomi_status()
+
+    def _download_suwayomi(self) -> None:
+        from anihub.ui.suwayomi_install_dialog import SuwayomiInstallDialog
+
+        folder = QFileDialog.getExistingDirectory(self, tr("manga.install"), str(self.ctx.paths.apps))
+        if not folder:
+            return
+        dest = Path(folder) / "Suwayomi"
+        dlg = SuwayomiInstallDialog(self.ctx, dest, self)
+        dlg.exec()
+        if dlg.installed:
+            self.suwayomi_path.setText(str(dest))
+        self._refresh_suwayomi_status()
+
+    def _refresh_suwayomi_status(self) -> None:
+        """installed()/install_dir reflect the manager AppContext.build() already constructed at this app's own
+        startup, from whatever manga.suwayomi_path was at that time -- a path typed/picked here only takes effect
+        for Suwayomi itself after Settings is saved and the app is restarted, same as changing the library folder."""
+        manager = self.ctx.suwayomi
+        version = manager.installed()
+        self.suwayomi_status.setText(tr("settings.suwayomi_status", path=str(manager.install_dir),
+                                        state=tr("settings.suwayomi_installed", v=version) if version else tr("settings.suwayomi_missing")))
 
     def _pick_comfyui(self) -> None:
         folder = QFileDialog.getExistingDirectory(self, tr("settings.comfyui_path"), self.comfyui_path.text())
@@ -687,6 +870,7 @@ class SettingsPage(QWidget):
             # __init__); with no parent, Qt is free to garbage-collect their C++ side, so reading these fields when
             # sd_enabled is False would hit an already-deleted QLineEdit instead of just being pointless.
             cfg.set("forge.path", self.forge_path.text().strip(), save=False)
+            cfg.set("forge.default_model", self.forge_model.currentData() or "", save=False)
             cfg.set("forge.port", self.forge_port.value(), save=False)
             cfg.set("forge.nowebui", self.forge_nowebui.isChecked(), save=False)
             cfg.set("forge.extra_args", self.forge_args.text().strip(), save=False)
@@ -706,6 +890,7 @@ class SettingsPage(QWidget):
         cfg.set("autotag.character_threshold", self.tag_char.value(), save=False)
         cfg.set("manga.port", self.manga_port.value(), save=False)
         cfg.set("manga.poll_minutes", self.manga_poll.value(), save=False)
+        cfg.set("manga.suwayomi_path", self.suwayomi_path.text().strip(), save=False)
         for action_id, edit in self.hotkey_edits.items():
             text = edit.keySequence().toString()
             cfg.set(f"hotkeys.{action_id}", "" if text == keymap.BY_ID[action_id].default else text, save=False)

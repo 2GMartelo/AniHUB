@@ -75,7 +75,8 @@ class AppContext:
         backends = build_backends(cfg, config_dir())
         ctx = cls(cfg, paths, db, http, build_sources(http, cfg), LibraryService(db, paths, http, cfg), media,
                   backends[0], backends,
-                  SuwayomiManager(cfg, config_dir() / "suwayomi", paths.manga / "suwayomi", config_dir() / "logs"),
+                  SuwayomiManager(cfg, Path(cfg.get("manga.suwayomi_path") or config_dir() / "suwayomi"),
+                                  paths.manga / "suwayomi", config_dir() / "logs"),
                   Autotagger(model_dir_default(config_dir())), AniList(http, cfg, db), NovelShelf(db, paths),
                   build_anime_sources(http, cfg, paths.anime, config_dir() / "plugins" / "anime"), None,
                   Updater(http, cfg), None, None, build_novel_sources(http, cfg, config_dir() / "plugins" / "novels"),

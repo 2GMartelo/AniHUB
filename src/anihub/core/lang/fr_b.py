@@ -726,4 +726,44 @@ DATA = r"""
 1564|Chargé : {nodes} catégories, {tags} balises, {images} images
 1565|Redessiner toutes les images ici (Forge)
 1566|Il n'y a rien à redessiner ici
+1567|Terminé. Suwayomi {v} est installé.
+1568|Téléchargement et extraction de Suwayomi-Server (environ 340 Mo, avec son propre Java) dans :\n{dest}
+1569|Installation de Suwayomi
+1570|Dossier : {path}
+1571|Changer de dossier…
+1572|Utiliser {path} comme dossier de bibliothèque à partir de maintenant ? Les fichiers existants n'y sont PAS déplacés automatiquement — copiez-les vous-même d'abord si vous voulez les garder.
+1573|Enregistré. Redémarrez AniHUB pour que le nouveau dossier prenne effet.
+1574|ComfyUI (nécessaire pour l'onglet VTube)
+1575|ComfyUI fait fonctionner l'onglet « VTube » dans Génération (transforme une image en PSD par calques) — configurez-le ici si vous voulez l'utiliser.
+1576|Télécharger toutes les dépendances
+1577|Télécharger ce qui manque : {items} ?
+1578|Terminé.
+1579|Vérifie Forge, ComfyUI, sd-scripts, Suwayomi et le modèle de l'auto-étiqueteur, et télécharge ceux qui manquent encore — directement dans le dossier « apps » de cette bibliothèque (ou le dossier habituel de l'auto-étiqueteur), sans questions supplémentaires. Ne touche jamais à votre bibliothèque d'arts/mangas elle-même.
+1580|Tout est déjà installé.
+1581|Modèle
+1582|(celui que Forge a déjà chargé)
+1583|Rescanner le dossier des modèles
+1584|Un modèle par défaut, lu directement depuis le disque (Forge n'a pas besoin d'être lancé). Une fois que Forge a réellement tourné, il se souvient de son propre dernier modèle utilisé, et ceci ne sert que de repli pour la première fois.
+1585|installé ({v})
+1586|non installé
+1587|Dossier Suwayomi
+1588|Dossier : {path} — {state}
+1589|Votre propre bibliothèque de bandes originales, la radio internet et la recherche d'openings/endings d'anime (AnimeThemes) — un lecteur, trois onglets.
+1590|Musique
+1591|Gestionnaire de balises, règles automatiques (faire X quand un nouvel élément correspond à Y), détecteur de doublons, étiqueter automatiquement tout ce qui n'a pas d'étiquette, vérification d'intégrité, statistiques, et importer une collection que quelqu'un a partagée avec vous — tout à un clic d'ici.
+1592|Outils de bibliothèque
+1593|La cloche garde un historique de tout ce que l'application vous a signalé (téléchargements, mises à jour, nouveaux chapitres...) — une notification apparaît aussi tant que la fenêtre est ouverte.
+1594|Notifications
+1595|Transforme une image en PSD par calques (via ComfyUI + le pack de nœuds See-through), prêt pour un rigger Live2D ou une retouche dans Krita/Photoshop. Configurez d'abord le dossier de ComfyUI dans les Paramètres si ce n'est pas déjà fait.
+1596|VTube
+1597|Sauvegardes zip automatiques de la bibliothèque selon l'intervalle que vous définissez, les anciennes sont supprimées ; une restauration est planifiée ici et appliquée au prochain démarrage d'AniHUB.
+1598|Sauvegardes
+1599|Affiche « ce que vous faites » sous votre nom Discord tant que Discord lui-même tourne localement — nécessite un identifiant d'application gratuit depuis discord.com/developers, collé ci-dessous.
+1600|Statut Discord
+1601|« Changer de dossier » redirige la bibliothèque vers un autre dossier (elle n'y déplace pas les fichiers elle-même — copiez-les vous-même d'abord, puis redémarrez AniHUB). Les générations, les résultats VTube et la musique peuvent chacun être redirigés séparément plus bas dans cet onglet.
+1602|Dossier de la bibliothèque
+1603|Tout raccourci global peut être réattribué ici — cliquez sur un champ et appuyez sur la nouvelle combinaison. La petite flèche le réinitialise à sa valeur par défaut.
+1604|Raccourcis clavier
+1605|Ctrl+Z / Ctrl+Y annulent et rétablissent une mise à la corbeille/restauration dans la bibliothèque — les mêmes raccourcis fonctionnent partout dans l'application.
+1606|Annuler
 """

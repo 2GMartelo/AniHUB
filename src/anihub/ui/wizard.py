@@ -62,7 +62,7 @@ class LibraryPage(QWizardPage):
         self.cfg = cfg
         self.label = QLabel()
         self.label.setWordWrap(True)
-        self.edit = QLineEdit(str(Path(cfg.get("library_path") or Path.home() / "AniHUB")))
+        self.edit = QLineEdit(str(Path(cfg.get("library_path") or Path.home() / "AniHUB" / "library")))
         self.browse = QPushButton()
         self.info = QLabel()
         row = QHBoxLayout()

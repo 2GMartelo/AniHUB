@@ -174,6 +174,37 @@ def make_window(qapp, tmp_path, enabled, forge_path=None):
     return win, ctx
 
 
+def test_tutorial_covers_music_vtube_notifications_and_settings_boxes(qapp, tmp_path):
+    """Music/notifications/settings_folders/settings_hotkeys/settings_discord/settings_backup/undo/library_tools
+    are always-available features and should be in the tour regardless of Generation being enabled; sd_vtube only
+    once ComfyUI is actually configured (ctx.vtube_enabled), same gate sd_page.py itself uses for the tab."""
+    win, ctx = make_window(qapp, tmp_path, None, forge_path=str(tmp_path / "forge"))
+    keys = [s.key for s in win.tutorial_steps()]
+    for key in ("undo", "library_tools", "anime_music", "notifications", "settings_folders",
+                "settings_hotkeys", "settings_discord", "settings_backup"):
+        assert key in keys, key
+    assert "sd_vtube" not in keys                                        # forge only, no comfyui.path yet
+    win._quitting = True
+    win.close()
+
+    from anihub.context import AppContext
+    from anihub.ui.main_window import MainWindow
+
+    cfg2 = Config.load(tmp_path / "c2.json")
+    cfg2.set("library_path", str(tmp_path / "lib2"), save=False)
+    cfg2.set("first_run_done", True, save=False)
+    cfg2.set("forge.path", str(tmp_path / "forge"), save=False)
+    cfg2.set("comfyui.path", str(tmp_path / "comfy"), save=False)
+    ctx2 = AppContext.build(cfg2)
+    win2 = MainWindow(ctx2)
+    win2.resize(1400, 850)
+    win2.show()
+    assert ctx2.vtube_enabled and win2.sd_page.vtube is not None
+    assert "sd_vtube" in [s.key for s in win2.tutorial_steps()]
+    win2._quitting = True
+    win2.close()
+
+
 def test_sections_are_ordered_manga_then_novels_and_generation_is_optional(qapp, tmp_path):
     # an old config (no "sd.enabled" key) that already has Forge set up: keeps generation
     win, ctx = make_window(qapp, tmp_path, None, forge_path=str(tmp_path / "forge"))

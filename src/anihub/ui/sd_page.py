@@ -426,7 +426,7 @@ class GenerateView(QWidget):
         def done(result) -> None:
             models, samplers, schedulers, current, modules, upscalers, latent = result
             self._data_loaded = True
-            wanted_model = self.model.currentData() or current
+            wanted_model = self.model.currentData() or current or self.ctx.cfg.get("forge.default_model", "")
             self.model.clear()
             for m in models:
                 self.model.addItem(m["model_name"], m["title"])

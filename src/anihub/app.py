@@ -104,9 +104,13 @@ def main() -> int:
 
     from anihub.ui import cookie_import
 
+    def _import_arg_cookies(a: str) -> None:
+        cookie_import.import_path(ctx, Path(a), window)
+        window.settings.reload_credentials()
+
     for arg in sys.argv[1:]:                                        # a cookies / logins file given to the program (drag it onto the exe, "open with")
         if cookie_import.is_cookie_file(arg) and Path(arg).is_file():
-            QTimer.singleShot(600, lambda a=arg: cookie_import.import_path(ctx, Path(a), window))
+            QTimer.singleShot(600, lambda a=arg: _import_arg_cookies(a))
     if "--music" in sys.argv[1:]:                                   # launched from the "AniHUB Music" shortcut/exe
         QTimer.singleShot(0, window.open_music)
     if cfg.get("tutorial.pending"):                                 # set by the setup wizard: show the tour once
