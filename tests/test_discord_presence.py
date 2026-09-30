@@ -1,4 +1,6 @@
 """services/discord_presence.py (pure unit tests, no real Discord/IPC) and its MainWindow wiring."""
+import sys
+
 from anihub.context import AppContext
 from anihub.core.config import Config
 from anihub.services import discord_presence as dp
@@ -92,6 +94,20 @@ def make_window(qapp, tmp_path, **cfg_values):
     ctx = AppContext.build(cfg)
     win = MainWindow(ctx)
     return win, ctx
+
+
+def test_constructing_the_window_never_hits_sys_excepthook(qapp, tmp_path, monkeypatch):
+    """Real bug report: NavRail.setCurrentRow(0) (called early in MainWindow.__init__, to select the first
+    section) fires _on_section_changed -> _update_presence() synchronously, and self.discord used to only be
+    assigned much later in __init__ -- AttributeError on every single startup. PySide swallows a slot's Python
+    exception (logs it via sys.excepthook, does not re-raise), so a bare construction call alone would not have
+    caught this -- it has to watch sys.excepthook itself, the same path the real crash report came through."""
+    caught = []
+    monkeypatch.setattr(sys, "excepthook", lambda *a: caught.append(a))
+    win, ctx = make_window(qapp, tmp_path)
+    assert not caught, caught
+    win._quitting = True
+    win.close()
 
 
 def test_main_window_has_no_discord_presence_when_disabled(qapp, tmp_path):

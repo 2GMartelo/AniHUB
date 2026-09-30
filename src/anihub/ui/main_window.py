@@ -136,6 +136,8 @@ class MainWindow(QMainWindow):
             self.pages.addWidget(page)
         self._current_section: str | None = None
         self._away_timers: dict[str, QTimer] = {}
+        self.discord: DiscordPresence | None = None  # NavRail.setCurrentRow() below fires _on_section_changed -> _update_presence()
+                                                       # synchronously, before Discord's own real setup further down -- must exist by then
         self.nav.currentRowChanged.connect(self._on_section_changed)
         self.nav.setCurrentRow(0)
         for key in ("sd", "manga"):                    # every section starts inactive; only the initial one (index 0) resumes
@@ -223,7 +225,6 @@ class MainWindow(QMainWindow):
         self._apply_hotkeys()
         self.settings.saved.connect(self._apply_hotkeys)
 
-        self.discord: DiscordPresence | None = None
         self._reload_discord()
         self.settings.saved.connect(self._reload_discord)
 

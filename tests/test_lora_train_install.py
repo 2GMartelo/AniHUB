@@ -70,6 +70,23 @@ def test_find_system_python_none_when_nothing_on_path(monkeypatch):
     assert ti.find_system_python() is None
 
 
+def test_find_system_python_rejects_a_nonzero_exit_even_if_the_text_looks_right(monkeypatch):
+    """Real bug report: `py -3.11 --version` on a machine with no 3.11 installed exits non-zero, but the launcher's
+    own "not installed" message can still contain something the old regex-only check misread as a real "Python
+    3.11" answer -- find_system_python() then handed back a command that failed for real 3 steps later, deep into
+    the install, as a cryptic "py.EXE exited with 103" instead of the clear "no suitable Python found" it should
+    have raised immediately."""
+    monkeypatch.setattr(ti.shutil, "which", lambda name: "py.exe" if name == "py" else None)
+
+    def fake_run(cmd, **kwargs):
+        # even output that LOOKS like a valid "Python 3.11" answer must not count once the exit code says the
+        # launcher actually failed to run that version
+        return subprocess.CompletedProcess(cmd, 103, stdout="Python 3.11.9\n", stderr="")
+
+    monkeypatch.setattr(ti.subprocess, "run", fake_run)
+    assert ti.find_system_python() is None
+
+
 # --- extracting the source archive -----------------------------------------------------------------------------------------
 
 def make_repo_zip(tmp_path: Path, branch_folder="sd-scripts-main") -> Path:

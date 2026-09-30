@@ -77,6 +77,11 @@ def find_system_python() -> list[str] | None:
             out = subprocess.run(cmd + ["--version"], capture_output=True, text=True, timeout=10, creationflags=NO_WINDOW)
         except (OSError, subprocess.SubprocessError):
             continue
+        if out.returncode != 0:
+            continue                                      # e.g. `py -3.11` with no 3.11 installed: the launcher's own
+                                                            # error text can still mention other numbers, so the exit
+                                                            # code -- not a regex match on the combined output -- is
+                                                            # what actually says whether this candidate exists
         m = re.search(r"Python (\d+)\.(\d+)", out.stdout + out.stderr)
         if m and MIN_PY <= (int(m.group(1)), int(m.group(2))) <= MAX_PY:
             return cmd
