@@ -376,3 +376,71 @@ def test_watch_tab_shelf_saves_titles_and_reopens_them_from_their_own_source(qap
     assert tab._src.name == "local" and tab.entry.title == "Frieren"
     tab._set_shelf(None)
     assert ctx.db.saved_get("local", "Frieren") is None and tab.grid.count() == 0
+
+
+# --- HTML-scraping sources (extensions/animefox_*.py, hentflix.py) --------------------------------------------------------------------
+
+class FakePages:
+    def __init__(self, pages):
+        self.pages, self.asked = pages, []
+
+    def get_text(self, url, params=None, headers=None, interval_ms=None):
+        self.asked.append((url, headers))
+        return self.pages[url]
+
+
+SITE_HTML = {
+    "https://s.test/anime/?page=1": '<a href="/anime/frieren/"><img data-src="/c/1.jpg" alt="Frieren"></a><a href="/anime/frieren/">Frieren: Beyond</a>'
+                                    '<a href="/anime/page/2">x</a><a href="/anime/?page=2">next</a><a href="/genre/x/"><img src="/g.jpg"></a>',
+    "https://s.test/anime/frieren/": '<a href="/anime/frieren/episode-2/">Episode 2</a><a href="/anime/frieren/episode-1/">Episode 1</a>',
+    "https://s.test/anime/frieren/episode-1/": '<iframe src="//player.test/embed/9"></iframe>',
+    "https://player.test/embed/9": 'var s = {"file":"https:\\/\\/cdn.test\\/v\\/720p.m3u8"}; <source src="https://cdn.test/v/1080p.mp4">',
+}
+
+
+def _site():
+    from anihub.sources.anime.sitescrape import ScrapedSite
+
+    class Site(ScrapedSite):
+        name, title = "site", "Site"
+        site, list_url, search_url, entry_re = "https://s.test", "https://s.test/anime/?page={page}", "", r"^/anime/[^/?#]+/?$"
+
+    return Site(FakePages(SITE_HTML), None)
+
+
+def test_scraped_site_lists_titles_by_their_cover_and_follows_pagination():
+    entries, more = _site().search("")
+    assert [(e.id, e.title, e.cover) for e in entries] == [("/anime/frieren/", "Frieren: Beyond", "https://s.test/c/1.jpg")] and more
+
+
+def test_scraped_site_filters_the_listing_when_the_site_has_no_search():
+    assert _site().search("zzz")[0] == [] and len(_site().search("frieren")[0]) == 1
+
+
+def test_scraped_site_orders_episodes_and_finds_streams_in_the_player_frame():
+    site = _site()
+    entry = site.search("")[0][0]
+    eps = site.episodes(entry)
+    assert [(e.id, e.number) for e in eps] == [("/anime/frieren/episode-1/", 1.0), ("/anime/frieren/episode-2/", 2.0)]
+    streams = site.streams(entry, eps[0])
+    assert [(s.url, s.label) for s in streams] == [("https://cdn.test/v/1080p.mp4", "1080p"), ("https://cdn.test/v/720p.m3u8", "720p")]
+    assert streams[0].headers["Referer"] == "https://player.test/"
+
+
+def test_scraped_site_says_when_no_video_is_found():
+    import pytest
+    from anihub.sources.anime.base import AnimeSourceError, Episode
+
+    site = _site()
+    site.http.pages["https://s.test/anime/frieren/episode-2/"] = "<p>nothing</p>"
+    with pytest.raises(AnimeSourceError, match="no video address"):
+        site.streams(site.search("")[0][0], Episode("/anime/frieren/episode-2/", 2.0))
+
+
+def test_the_shipped_site_extensions_load_and_adult_ones_are_flagged():
+    import pathlib
+    from anihub.sources.anime import load_plugins
+
+    classes = {c.name: c for c in load_plugins(pathlib.Path(__file__).resolve().parents[1] / "extensions")}
+    assert {"animefox_anime", "animefox_hentai", "hentflix"} <= set(classes)
+    assert [classes[n].nsfw for n in ("animefox_anime", "animefox_hentai", "hentflix")] == [False, True, True]

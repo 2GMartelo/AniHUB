@@ -2,6 +2,39 @@
   "name": "AniHUB extensions",
   "extensions": [
     {
+      "id": "animefox_anime",
+      "kind": "anime",
+      "name": "AnimeFox",
+      "lang": "multi",
+      "version": "1.0",
+      "description": "Anime catalogue of animefox.org (/anime/).",
+      "nsfw": false,
+      "file": "animefox_anime.py",
+      "sha256": "5c8eac29fb2b855a80c3e28f2d4779eda6a09989bcd326e4d716cb0c0a51a636"
+    },
+    {
+      "id": "animefox_hentai",
+      "kind": "anime",
+      "name": "AnimeFox 18+",
+      "lang": "multi",
+      "version": "1.0",
+      "description": "Adult catalogue of animefox.org (/hentai/), 18+ age mode only.",
+      "nsfw": true,
+      "file": "animefox_hentai.py",
+      "sha256": "06bc33d24e0b19323de950c97ca0bd44a813919578f1ba245f6c6186ac2bd3e6"
+    },
+    {
+      "id": "hentflix",
+      "kind": "anime",
+      "name": "Hentflix",
+      "lang": "multi",
+      "version": "1.0",
+      "description": "Adult catalogue of hentflix.org, 18+ age mode only.",
+      "nsfw": true,
+      "file": "hentflix.py",
+      "sha256": "c0eae1e6fe145fea0213fbe96220c3d558eba12bd63adf9b571d1c8390241343"
+    },
+    {
       "id": "m3u_playlist",
       "kind": "anime",
       "name": "M3U playlist",
